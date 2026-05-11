@@ -1,0 +1,27 @@
+{
+  "name": "myquizz",
+  "version": "1.0.0",
+  "main": "app.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ntd1411/myquizz.git"
+  },
+  "author": "Dung",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ntd1411/myquizz/issues"
+  },
+  "homepage": "https://github.com/Ntd1411/myquizz#readme",
+  "description": "",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
