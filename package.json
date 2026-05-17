@@ -4,8 +4,12 @@
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/app.ts",
-    "build": "tsc"
+    "dev": "docker compose up --build",
+    "start": "node dist/app.js",
+    "build": "tsc",
+    "db:migrate": "tsx src/infrastructure/database/migrate.ts migrate",
+    "db:seed": "tsx src/infrastructure/database/migrate.ts seed",
+    "db:migrate:seed": "tsx src/infrastructure/database/migrate.ts migrate:seed"
   },
   "repository": {
     "type": "git",
@@ -19,8 +23,14 @@
   "homepage": "https://github.com/Ntd1411/myquizz#readme",
   "description": "",
   "dependencies": {
-    "@types/express": "^5.0.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "pg": "^8.20.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
