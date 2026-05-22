@@ -1,5 +1,5 @@
-import 'dotenv/config';
-import { jwt, z } from 'zod'
+import 'dotenv/config'
+import { z } from 'zod'
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -21,16 +21,16 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().default('6379').transform(Number),
   REDIS_PASSWORD: z.string().default('12345678')
-});
+})
 
-const envParsed = envSchema.safeParse(process.env);
+const envParsed = envSchema.safeParse(process.env)
 
 if (!envParsed.success) {
-  console.error('Invalid environment variables:', envParsed.error.format());
-  process.exit(1);
+  console.error('Invalid environment variables:', envParsed.error.format())
+  process.exit(1)
 }
 
-const env = envParsed.data;
+const env = envParsed.data
 
 export const config = {
   database: {
