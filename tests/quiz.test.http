@@ -1,0 +1,30 @@
+@baseUrl = http://localhost:3000
+@email = test@example.com
+@password = Test123456
+@fullname = Test User
+@phone = 0123456789
+
+### 1. Register user mới
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "fullname": "{{fullname}}",
+  "phone": "{{phone}}"
+}
+
+### 2. Login để lấy accessToken
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### 3. Get me
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{login.response.body.accessToken}}

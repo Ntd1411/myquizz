@@ -1,5 +1,8 @@
 import { pool } from "../../infrastructure/database/connection.js";
-import { type User } from "./auth.type.js";
+import {
+  type RefreshSession,
+  type User,
+} from "../../shared/types/shared.types.js";
 
 export class AuthRepository {
   // Tìm user theo email
@@ -92,7 +95,7 @@ export class AuthRepository {
   }
 
   // Kiểm tra refresh token hợp lệ
-  async findRefreshToken(refreshToken: string): Promise<any> {
+  async findRefreshToken(refreshToken: string): Promise<RefreshSession | null> {
     const result = await pool.query(
       "SELECT * FROM refresh_sessions WHERE refresh_token = $1",
       [refreshToken],
@@ -102,17 +105,15 @@ export class AuthRepository {
 
   // Revoke refresh token
   async revokeRefreshToken(refreshToken: string): Promise<void> {
-    await pool.query(
-      "DELETE FROM refresh_sessions WHERE refresh_token = $1",
-      [refreshToken],
-    );
+    await pool.query("DELETE FROM refresh_sessions WHERE refresh_token = $1", [
+      refreshToken,
+    ]);
   }
 
   async revokeUserSessions(userId: number): Promise<void> {
-    await pool.query(
-      "DELETE FROM refresh_sessions WHERE user_id = $1",
-      [userId],
-    );
+    await pool.query("DELETE FROM refresh_sessions WHERE user_id = $1", [
+      userId,
+    ]);
   }
 }
 
