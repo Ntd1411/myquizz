@@ -38,7 +38,16 @@ export class UserRepository {
 
     const result = await pool.query(query, values);
 
-    return result.rowCount !== null && result.rowCount > 0;
+    return result.rowCount !== null && result.rowCount === 1;
+  }
+
+  // Delete user account
+  async deleteAccount(userId: number): Promise<boolean> {
+    const result = await pool.query(
+      "UPDATE users SET is_active = false WHERE id = $1",
+      [userId],
+    );
+    return result.rowCount !== null && result.rowCount === 1;
   }
 }
 

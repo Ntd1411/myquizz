@@ -52,7 +52,7 @@ export async function loginService(
   ipAddress: string,
 ) {
   // Find user by email
-  const user = await authRepository.findByEmail(email);
+  const user = await sharedRepository.findByEmail(email);
 
   if (!user) {
     throw new AppError(401, "Invalid email or password");

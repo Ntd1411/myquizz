@@ -5,14 +5,6 @@ import {
 } from "../../shared/types/shared.types.js";
 
 export class AuthRepository {
-  // Find user by email
-  async findByEmail(email: string): Promise<User | null> {
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
-      email,
-    ]);
-    return result.rows[0] || null;
-  }
-
   // Create new user
   async addUser(data: {
     fullname: string;

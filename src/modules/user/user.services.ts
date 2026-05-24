@@ -62,8 +62,20 @@ export async function updateProfileService(
   const updates: Record<string, string> = {};
 
   if (fullname) updates.fullname = fullname;
-  if (email) updates.email = email;
-  if (phone) updates.phone = phone;
+  if (email) {
+    const user = await sharedRepository.findByEmail(email);
+    if (user) {
+      throw new AppError(400, "Email is already in use");
+    }
+    updates.email = email;
+  }
+  if (phone) {
+    const user = await sharedRepository.findByPhone(phone);
+    if (user) {
+      throw new AppError(400, "Phone number is already in use");
+    }
+    updates.phone = phone;
+  }
   if (description) updates.description = description;
 
   if (Object.keys(updates).length === 0) {
@@ -74,5 +86,22 @@ export async function updateProfileService(
 
   if (!isProfileUpdated) {
     throw new AppError(500, "Failed to update profile");
+  }
+}
+
+export async function deleteAccountService(
+  user: User,
+  password: string,
+): Promise<void> {
+  const isPasswordCorrect = await verifyPassword(password, user.password);
+
+  if (!isPasswordCorrect) {
+    throw new AppError(403, "Invalid credentials");
+  }
+
+  const isDeleted = await userRepository.deleteAccount(user.id);
+
+  if (!isDeleted) {
+    throw new AppError(500, "Failed to delete account");
   }
 }

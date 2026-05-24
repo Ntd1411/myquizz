@@ -61,3 +61,7 @@ export const updateProfileSchema = Joi.object({
     "string.max": "Description must not exceed 200 characters",
   }),
 });
+
+export const deleteAccountSchema = Joi.object({
+  password: Joi.string().min(8).required(),
+});

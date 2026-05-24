@@ -1,6 +1,11 @@
 import type { Response, NextFunction } from "express";
 import type { AuthRequest, User } from "../../shared/types/shared.types.js";
-import { changePasswordService, getUserService, updateProfileService } from "./user.services.js";
+import {
+  changePasswordService,
+  deleteAccountService,
+  getUserService,
+  updateProfileService,
+} from "./user.services.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 export async function getMe(
@@ -89,4 +94,15 @@ export async function deleteAccount(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
-) {}
+) {
+  try {
+    const user = req.user as User;
+    const { password } = req.body;
+
+    await deleteAccountService(user, password);
+
+    res.json({ message: "Account deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+}

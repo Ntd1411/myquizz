@@ -27,6 +27,22 @@ export class SharedRepository {
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
     return result.rows[0] || null;
   }
+
+  // Find user by email
+  async findByEmail(email: string): Promise<User | null> {
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    return result.rows[0] || null;
+  }
+
+  // Find user by phone
+  async findByPhone(phone: string): Promise<User | null> {
+    const result = await pool.query("SELECT * FROM users WHERE phone = $1", [
+      phone,
+    ]);
+    return result.rows[0] || null;
+  }
 }
 
 export const sharedRepository = new SharedRepository();

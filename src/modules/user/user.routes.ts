@@ -11,6 +11,7 @@ import {
 import { validate } from "../../shared/validators/validator.js";
 import {
   changePasswordSchema,
+  deleteAccountSchema,
   updateProfileSchema,
 } from "../../shared/validators/schemas.js";
 
@@ -31,4 +32,9 @@ userRouter.patch(
   validate(updateProfileSchema),
   updateProfile,
 );
-userRouter.delete("/account", authMiddleware, deleteAccount);
+userRouter.delete(
+  "/account",
+  authMiddleware,
+  validate(deleteAccountSchema),
+  deleteAccount,
+);

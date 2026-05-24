@@ -140,7 +140,7 @@ Content-Type: application/json
 
 {
   "fullname": "Another Name",
-  "email": "another@example.com",
+  "email": "other@example.com",
   "phone": "+84912345678",
   "description": "Updated description for profile"
 }
@@ -217,3 +217,36 @@ Content-Type: application/json
 ### 24. Get me để verify profile đã được update
 GET {{baseUrl}}/users/me
 Authorization: Bearer {{login_new.response.body.accessToken}}
+
+### 25. Delete account - thành công
+DELETE {{baseUrl}}/users/account
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "password": "NewPassword123456"
+}
+
+### 26. Test error: password sai
+DELETE {{baseUrl}}/users/account
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "password": "WrongPassword123456"
+}
+
+### 27. Test error: không gửi password
+DELETE {{baseUrl}}/users/account
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{}
+
+### 28. Test error: không authenticate
+DELETE {{baseUrl}}/users/account
+Content-Type: application/json
+
+{
+  "password": "NewPassword123456"
+}
