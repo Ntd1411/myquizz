@@ -1,13 +1,15 @@
 import { pool } from "../../infrastructure/database/connection.js";
-import type { User } from "../../shared/types/shared.types.js";
+import { AppError } from "../../shared/errors/AppError.js";
 
 export class UserRepository {
-  // Get user by ID
-  async getUserById(userId: string): Promise<User | null> {
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [
-      userId,
-    ]);
-    return result.rows[0] || null;
+  // Change user password
+  async changePassword(userId: number, newPasswordHash: string): Promise<boolean> {
+    const result = await pool.query(
+      "UPDATE users SET password = $1 WHERE id = $2",
+      [newPasswordHash, userId],
+    );
+
+    return result.rowCount !== null && result.rowCount > 0;
   }
 }
 

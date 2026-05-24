@@ -1,7 +1,6 @@
 import { type Request } from "express";
 export interface AuthRequest extends Request {
-  userId?: number;
-  user?: any;
+  user?: User;
   token?: string;
 }
 
@@ -14,6 +13,7 @@ export interface User {
   role: "admin" | "moderator" | "user";
   is_active: boolean;
   avatar?: string;
+  description?: string;
   created_at: string;
   updated_at: string;
 }

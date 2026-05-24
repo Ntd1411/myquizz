@@ -96,6 +96,15 @@ export async function refreshTokenService(refreshToken: string) {
     throw new AppError(401, "Invalid refresh token");
   }
 
+  const user = await sharedRepository.findById(decoded.userId);
+  if (!user) {
+    throw new AppError(401, "User not found");
+  }
+
+  if (!user.is_active) {
+    throw new AppError(403, "Account is deactivated");
+  }
+
   const hashedRefreshToken = await hashToken(refreshToken);
 
   const refreshSession =

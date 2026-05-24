@@ -28,3 +28,71 @@ Content-Type: application/json
 ### 3. Get me
 GET {{baseUrl}}/users/me
 Authorization: Bearer {{login.response.body.accessToken}}
+
+### 4. Change password
+PATCH {{baseUrl}}/users/password
+Authorization: Bearer {{login.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "oldPassword": "{{password}}",
+  "newPassword": "NewPassword123456"
+}
+
+### 5. Try login với password cũ (phải fail)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### 6. Login với password mới
+# @name login_new
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "NewPassword123456"
+}
+
+### 7. Test error: oldPassword sai
+PATCH {{baseUrl}}/users/password
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "oldPassword": "WrongPassword123456",
+  "newPassword": "AnotherPassword123456"
+}
+
+### 8. Test error: oldPassword và newPassword giống nhau
+PATCH {{baseUrl}}/users/password
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "oldPassword": "NewPassword123456",
+  "newPassword": "NewPassword123456"
+}
+
+### 9. Test error: password quá ngắn
+PATCH {{baseUrl}}/users/password
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "oldPassword": "NewPassword123456",
+  "newPassword": "Short"
+}
+
+### 10. Test error: không có authorization
+PATCH {{baseUrl}}/users/password
+Content-Type: application/json
+
+{
+  "oldPassword": "NewPassword123456",
+  "newPassword": "AnotherPassword123456"
+}

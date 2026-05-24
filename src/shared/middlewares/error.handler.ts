@@ -7,7 +7,7 @@ export function errorHandler(
   res: Response,
   next: NextFunction,
 ) {
-  console.error("Error:", err);
+  // console.error("Error:", err);
 
   // Xử lý AppError
   if (err instanceof AppError) {

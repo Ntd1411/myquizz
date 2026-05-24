@@ -89,7 +89,7 @@ export async function logout(
 ) {
   try {
     const accessToken = req.token || "";
-    const userId = req.userId || 0;
+    const userId = req.user?.id || 0;
     const refreshToken = req.cookies.refreshToken || "";
 
     if (!accessToken || !refreshToken) {

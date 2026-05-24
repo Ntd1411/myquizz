@@ -1,8 +1,8 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
 import { verifyToken } from "../utils/auth.utils.js";
 import { AppError } from "../errors/AppError.js";
 import { sharedRepository } from "../repositories/shared.repository.js";
-import { type AuthRequest} from '../types/shared.types.js'
+import { type AuthRequest } from "../types/shared.types.js";
 
 export async function authMiddleware(
   req: AuthRequest,
@@ -30,7 +30,17 @@ export async function authMiddleware(
     throw new AppError(401, "Invalid access token");
   }
 
+  const user = await sharedRepository.findById(decoded.userId);
+
+  if (!user) {
+    throw new AppError(401, "Invalid access token");
+  }
+
+  if (!user.is_active) {
+    throw new AppError(403, "Account is deactivated");
+  }
+
   req.token = token;
-  req.userId = decoded.userId;
+  req.user = user;
   next();
 }

@@ -1,12 +1,26 @@
-import { Router } from 'express'
-import { authMiddleware } from '../../shared/middlewares/auth.middleware.js'
-import { changePassword, deleteAccount, getMe, getUserById, updateProfile, uploadAvatar } from './user.controller.js'
+import { Router } from "express";
+import { authMiddleware } from "../../shared/middlewares/auth.middleware.js";
+import {
+  changePassword,
+  deleteAccount,
+  getMe,
+  getUser,
+  updateProfile,
+  uploadAvatar,
+} from "./user.controller.js";
+import { validate } from "../../shared/validators/validator.js";
+import { changePasswordSchema } from "../../shared/validators/schemas.js";
 
-export const userRouter = Router()
+export const userRouter = Router();
 
-userRouter.get('/me', authMiddleware, getMe)
-userRouter.get('/:userId', getUserById)
-userRouter.patch('/password', authMiddleware, changePassword)
-userRouter.patch('/avatar', authMiddleware, uploadAvatar)
-userRouter.patch('/profile', authMiddleware, updateProfile)
-userRouter.delete('/account', authMiddleware, deleteAccount)
+userRouter.get("/me", authMiddleware, getMe);
+userRouter.get("/:userId", getUser);
+userRouter.patch(
+  "/password",
+  authMiddleware,
+  validate(changePasswordSchema),
+  changePassword,
+);
+userRouter.patch("/avatar", authMiddleware, uploadAvatar);
+userRouter.patch("/profile", authMiddleware, updateProfile);
+userRouter.delete("/account", authMiddleware, deleteAccount);
