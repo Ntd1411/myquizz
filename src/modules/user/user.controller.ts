@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from "express";
 import type { AuthRequest, User } from "../../shared/types/shared.types.js";
-import { changePasswordService, getUserService } from "./user.services.js";
+import { changePasswordService, getUserService, updateProfileService } from "./user.services.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 export async function getMe(
@@ -72,7 +72,18 @@ export async function updateProfile(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
-) {}
+) {
+  try {
+    const userId = req.user?.id as number;
+    const { fullname, email, phone, description } = req.body;
+
+    await updateProfileService(userId, fullname, email, phone, description);
+
+    res.json({ message: "Profile updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function deleteAccount(
   req: AuthRequest,

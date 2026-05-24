@@ -9,7 +9,10 @@ import {
   uploadAvatar,
 } from "./user.controller.js";
 import { validate } from "../../shared/validators/validator.js";
-import { changePasswordSchema } from "../../shared/validators/schemas.js";
+import {
+  changePasswordSchema,
+  updateProfileSchema,
+} from "../../shared/validators/schemas.js";
 
 export const userRouter = Router();
 
@@ -22,5 +25,10 @@ userRouter.patch(
   changePassword,
 );
 userRouter.patch("/avatar", authMiddleware, uploadAvatar);
-userRouter.patch("/profile", authMiddleware, updateProfile);
+userRouter.patch(
+  "/profile",
+  authMiddleware,
+  validate(updateProfileSchema),
+  updateProfile,
+);
 userRouter.delete("/account", authMiddleware, deleteAccount);

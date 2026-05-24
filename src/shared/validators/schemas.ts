@@ -42,3 +42,22 @@ export const changePasswordSchema = Joi.object({
     "any.required": "New password is required",
   }),
 });
+
+export const updateProfileSchema = Joi.object({
+  fullname: Joi.string().min(2).max(100).messages({
+    "string.min": "Full name must be at least 2 characters",
+    "string.max": "Full name must not exceed 100 characters",
+  }),
+  email: Joi.string().email().messages({
+    "string.email": "Email must be a valid email address",
+  }),
+  phone: Joi.string()
+    .pattern(/^\+?[0-9]{7,15}$/)
+    .messages({
+      "string.pattern.base":
+        "Phone number must be between 7 and 15 digits, and can start with +",
+    }),
+  description: Joi.string().max(200).messages({
+    "string.max": "Description must not exceed 200 characters",
+  }),
+});

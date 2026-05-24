@@ -46,3 +46,33 @@ export async function changePasswordService(
     throw new AppError(500, "Failed to change password");
   }
 }
+
+export async function uploadAvatarService(
+  userId: number,
+  avatarUrl: string,
+): Promise<void> {}
+
+export async function updateProfileService(
+  userId: number,
+  fullname?: string,
+  email?: string,
+  phone?: string,
+  description?: string,
+): Promise<void> {
+  const updates: Record<string, string> = {};
+
+  if (fullname) updates.fullname = fullname;
+  if (email) updates.email = email;
+  if (phone) updates.phone = phone;
+  if (description) updates.description = description;
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError(400, "No fields to update");
+  }
+
+  const isProfileUpdated = await userRepository.updateProfile(userId, updates);
+
+  if (!isProfileUpdated) {
+    throw new AppError(500, "Failed to update profile");
+  }
+}

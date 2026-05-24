@@ -13,14 +13,6 @@ export class AuthRepository {
     return result.rows[0] || null;
   }
 
-  // Check if user is admin
-  async isAdmin(userId: number): Promise<boolean> {
-    const result = await pool.query("SELECT role FROM users WHERE id = $1", [
-      userId,
-    ]);
-    return result.rows[0]?.role === "admin";
-  }
-
   // Create new user
   async addUser(data: {
     fullname: string;

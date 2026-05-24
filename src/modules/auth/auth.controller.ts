@@ -49,7 +49,7 @@ export async function register(
       fullname,
       phone || null,
     );
-    res.json(result);
+    res.status(201).json(result);
   } catch (error) {
     next(error);
   }

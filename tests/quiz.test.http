@@ -96,3 +96,124 @@ Content-Type: application/json
   "oldPassword": "NewPassword123456",
   "newPassword": "AnotherPassword123456"
 }
+
+### 11. Update profile - thay đổi fullname
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "fullname": "Updated Full Name"
+}
+
+### 12. Update profile - thay đổi email
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "email": "newemail@example.com"
+}
+
+### 13. Update profile - thay đổi phone
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "phone": "0987654321"
+}
+
+### 14. Update profile - thay đổi description
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "description": "This is my new description"
+}
+
+### 15. Update profile - thay đổi nhiều field cùng lúc
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "fullname": "Another Name",
+  "email": "another@example.com",
+  "phone": "+84912345678",
+  "description": "Updated description for profile"
+}
+
+### 16. Test error: fullname quá ngắn
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "fullname": "A"
+}
+
+### 17. Test error: fullname quá dài
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "fullname": "This is a very long name that exceeds one hundred characters limit and should be rejected by the validation schema"
+}
+
+### 18. Test error: email không hợp lệ
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "email": "invalid-email"
+}
+
+### 19. Test error: phone không hợp lệ (quá ngắn)
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "phone": "123"
+}
+
+### 20. Test error: phone không hợp lệ (ký tự không hợp lệ)
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "phone": "phone123abc"
+}
+
+### 21. Test error: description quá dài
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "description": "This is an extremely longThis is an extremely longThis is an extremely longThis is an extremely longThis is an extremely long description that exceeds the maximum allowed length of two hundred characters and therefore should be rejected by the validation"
+}
+
+### 22. Test error: không gửi field nào (body rỗng)
+PATCH {{baseUrl}}/users/profile
+Authorization: Bearer {{login_new.response.body.accessToken}}
+Content-Type: application/json
+
+{}
+
+### 23. Test error: không authenticate
+PATCH {{baseUrl}}/users/profile
+Content-Type: application/json
+
+{
+  "fullname": "Someone"
+}
+
+### 24. Get me để verify profile đã được update
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{login_new.response.body.accessToken}}
