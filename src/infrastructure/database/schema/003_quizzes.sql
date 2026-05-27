@@ -7,7 +7,7 @@ create table quizzes (
   quiz_image varchar(255),
   quiz_category int references quiz_categories(id),
   is_public boolean not null default true,
-  is_active boolean not null default true,
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp
 );

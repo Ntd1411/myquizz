@@ -6,7 +6,7 @@ create table questions (
   question_image varchar(255),
   answer_options jsonb,
   correct_answer jsonb,
-  is_active boolean not null default true,
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp
 );

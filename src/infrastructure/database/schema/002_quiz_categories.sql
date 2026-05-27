@@ -3,5 +3,6 @@ create table quiz_categories (
   category_name varchar(100) not null unique,
   description varchar(255),
   icon varchar(255),
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp
 );

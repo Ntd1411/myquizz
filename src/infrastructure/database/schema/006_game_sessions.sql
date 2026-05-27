@@ -7,6 +7,7 @@ create table game_sessions (
   total_players int not null default 0,
   total_questions int not null default 0,
   session_status varchar(50) not null check (session_status in ('waiting', 'active', 'finished')),
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp
 );

@@ -7,6 +7,7 @@ create table player_sessions (
   is_host boolean not null default false,
   answered_questions jsonb,
   correct_answers_count int not null default 0,
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp
 );

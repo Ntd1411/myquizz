@@ -8,6 +8,7 @@ create table users (
   is_active boolean not null default true,
   avatar varchar(255),
   description varchar(255),
+  deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp
 );
