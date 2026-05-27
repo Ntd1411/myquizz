@@ -11,9 +11,9 @@ export interface User {
   phone?: string;
   password: string;
   role: "admin" | "moderator" | "user";
-  is_active: boolean;
   avatar?: string;
   description?: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }

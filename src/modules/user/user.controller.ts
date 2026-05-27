@@ -2,7 +2,7 @@ import type { Response, NextFunction } from "express";
 import type { AuthRequest, User } from "../../shared/types/shared.types.js";
 import {
   changePasswordService,
-  deleteAccountService,
+  deactivateAccountService,
   getUserService,
   updateProfileService,
   uploadAvatarService,
@@ -110,7 +110,7 @@ export async function updateProfile(
   }
 }
 
-export async function deleteAccount(
+export async function deactivateAccount(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
@@ -119,9 +119,9 @@ export async function deleteAccount(
     const user = req.user as User;
     const { password } = req.body;
 
-    await deleteAccountService(user, password);
+    await deactivateAccountService(user, password);
 
-    res.json({ message: "Account deleted successfully" });
+    res.json({ message: "Account deactivated successfully" });
   } catch (error) {
     next(error);
   }

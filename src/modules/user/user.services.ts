@@ -96,7 +96,7 @@ export async function updateProfileService(
   }
 }
 
-export async function deleteAccountService(
+export async function deactivateAccountService(
   user: User,
   password: string,
 ): Promise<void> {
@@ -106,9 +106,9 @@ export async function deleteAccountService(
     throw new AppError(403, "Invalid credentials");
   }
 
-  const isDeleted = await userRepository.deleteAccount(user.id);
+  const isDeactivated = await userRepository.deactivate(user.id);
 
-  if (!isDeleted) {
-    throw new AppError(500, "Failed to delete account");
+  if (!isDeactivated) {
+    throw new AppError(500, "Failed to deactivate account");
   }
 }

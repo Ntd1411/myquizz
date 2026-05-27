@@ -59,7 +59,7 @@ export async function loginService(
   }
 
   // Check if user is active
-  if (!user.is_active) {
+  if (user.deleted_at !== null) {
     throw new AppError(403, "Account is deactivated");
   }
 
@@ -101,7 +101,7 @@ export async function refreshTokenService(refreshToken: string) {
     throw new AppError(401, "User not found");
   }
 
-  if (!user.is_active) {
+  if (user.deleted_at !== null) {
     throw new AppError(403, "Account is deactivated");
   }
 

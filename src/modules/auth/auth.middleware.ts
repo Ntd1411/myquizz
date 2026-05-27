@@ -36,7 +36,7 @@ export async function authMiddleware(
     throw new AppError(401, "Invalid access token");
   }
 
-  if (!user.is_active) {
+  if (user.deleted_at !== null) {
     throw new AppError(403, "Account is deactivated");
   }
 

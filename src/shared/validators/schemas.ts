@@ -62,6 +62,10 @@ export const updateProfileSchema = Joi.object({
   }),
 });
 
-export const deleteAccountSchema = Joi.object({
+export const deactivateAccountSchema = Joi.object({
   password: Joi.string().min(8).required(),
 });
+
+export const createQuizSchema = Joi.object();
+
+export const updateQuizSchema = Joi.object();

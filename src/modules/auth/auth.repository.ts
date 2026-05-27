@@ -51,13 +51,6 @@ export class AuthRepository {
     return result.rows.length > 0;
   }
 
-  // Deactivate user
-  async deactivate(userId: number): Promise<void> {
-    await pool.query("UPDATE users SET is_active = false WHERE id = $1", [
-      userId,
-    ]);
-  }
-
   // Save refresh token
   async saveRefreshToken(
     userId: number,
