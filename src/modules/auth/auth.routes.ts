@@ -4,7 +4,7 @@ import {
   loginSchema,
   registerSchema,
 } from "../../shared/validators/schemas.js";
-import { authMiddleware } from "../../shared/middlewares/auth.middleware.js";
+import { authMiddleware } from "./auth.middleware.js";
 import { login, register, refreshToken, logout } from "./auth.controller.js";
 
 export const authRouter = Router();

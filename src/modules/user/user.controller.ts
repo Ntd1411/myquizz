@@ -5,8 +5,10 @@ import {
   deleteAccountService,
   getUserService,
   updateProfileService,
+  uploadAvatarService,
 } from "./user.services.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { storageService } from "../../infrastructure/storage/storage.service.js";
 
 export async function getMe(
   req: AuthRequest,
@@ -71,7 +73,25 @@ export async function uploadAvatar(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
-) {}
+) {
+  try {
+    const file = req.file;
+    if (!file) {
+      throw new AppError(400, "No file uploaded");
+    }
+
+    const fileUrl = await storageService.upload(
+      file,
+      `avatars/${req.user?.id}`,
+    );
+
+    await uploadAvatarService(req.user?.id as number, fileUrl);
+
+    res.json({ message: "Avatar uploaded successfully", fileUrl });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function updateProfile(
   req: AuthRequest,

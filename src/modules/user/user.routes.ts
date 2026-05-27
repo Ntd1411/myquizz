@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authMiddleware } from "../../shared/middlewares/auth.middleware.js";
+import { authMiddleware } from "../auth/auth.middleware.js";
 import {
   changePassword,
   deleteAccount,
@@ -14,6 +14,7 @@ import {
   deleteAccountSchema,
   updateProfileSchema,
 } from "../../shared/validators/schemas.js";
+import { uploadMiddleware } from "../../infrastructure/config/multer.config.js";
 
 export const userRouter = Router();
 
@@ -25,7 +26,12 @@ userRouter.patch(
   validate(changePasswordSchema),
   changePassword,
 );
-userRouter.patch("/avatar", authMiddleware, uploadAvatar);
+userRouter.post(
+  "/avatar",
+  authMiddleware,
+  uploadMiddleware.single("avatar"),
+  uploadAvatar,
+);
 userRouter.patch(
   "/profile",
   authMiddleware,

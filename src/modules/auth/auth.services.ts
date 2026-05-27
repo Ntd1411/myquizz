@@ -1,4 +1,4 @@
-import { config } from "../../infrastructure/config/config.js";
+import { env } from "../../infrastructure/config/envconfig.js";
 import { authRepository } from "./auth.repository.js";
 import ms from "ms";
 import {
@@ -80,7 +80,7 @@ export async function loginService(
     deviceName,
     ipAddress,
     hashedRefreshToken,
-    new Date(Date.now() + ms(config.jwt.jwtRefreshExpiresIn as ms.StringValue)),
+    new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue)),
   );
 
   const { password: _, ...userData } = user;
@@ -125,7 +125,7 @@ export async function refreshTokenService(refreshToken: string) {
     refreshSession.device_name,
     refreshSession.ip_address,
     await hashToken(tokens.refreshToken),
-    new Date(Date.now() + ms(config.jwt.jwtRefreshExpiresIn as ms.StringValue)),
+    new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue)),
   );
 
   return tokens;

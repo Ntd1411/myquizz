@@ -1,8 +1,8 @@
 import type { Response, NextFunction } from "express";
-import { verifyToken } from "../utils/auth.utils.js";
-import { AppError } from "../errors/AppError.js";
-import { sharedRepository } from "../repositories/shared.repository.js";
-import { type AuthRequest } from "../types/shared.types.js";
+import { verifyToken } from "../../shared/utils/auth.utils.js";
+import { AppError } from "../../shared/errors/AppError.js";
+import { sharedRepository } from "../../shared/repositories/shared.repository.js";
+import { type AuthRequest } from "../../shared/types/shared.types.js";
 
 export async function authMiddleware(
   req: AuthRequest,

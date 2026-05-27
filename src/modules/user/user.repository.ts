@@ -41,6 +41,16 @@ export class UserRepository {
     return result.rowCount !== null && result.rowCount === 1;
   }
 
+  // Upload avatar user
+  async uploadAvatar(userId: number, avatarUrl: string): Promise<boolean> {
+    const result = await pool.query(
+      "UPDATE users SET avatar = $1 WHERE id = $2",
+      [avatarUrl, userId],
+    );
+
+    return result.rowCount !== null && result.rowCount === 1;
+  }
+
   // Delete user account
   async deleteAccount(userId: number): Promise<boolean> {
     const result = await pool.query(

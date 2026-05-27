@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { config } from "../../infrastructure/config/config.js";
+import { env } from "../../infrastructure/config/envconfig.js";
 import ms from "ms";
 import { type AuthRequest } from "../../shared/types/shared.types.js";
 import {
@@ -21,9 +21,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     // Set HttpOnly cookie
     res.cookie("refreshToken", result.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: ms(config.jwt.jwtRefreshExpiresIn as ms.StringValue),
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: env.NODE_ENV === "production",
+      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.json({
@@ -71,9 +71,9 @@ export async function refreshToken(
 
     res.cookie("refreshToken", tokens.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: ms(config.jwt.jwtRefreshExpiresIn as ms.StringValue),
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: env.NODE_ENV === "production",
+      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.json({ accessToken: tokens.accessToken });
@@ -102,8 +102,8 @@ export async function logout(
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: env.NODE_ENV === "production",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.json({ message: "Logged out successfully" });

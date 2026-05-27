@@ -3,6 +3,7 @@ import type { User } from "../../shared/types/shared.types.js";
 import { userRepository } from "./user.repository.js";
 import { sharedRepository } from "../../shared/repositories/shared.repository.js";
 import { hashPassword, verifyPassword } from "../../shared/utils/auth.utils.js";
+import { storageService } from "../../infrastructure/storage/storage.service.js";
 
 export async function getUserService(userId: number): Promise<User> {
   const user = await sharedRepository.findById(userId);
@@ -50,7 +51,13 @@ export async function changePasswordService(
 export async function uploadAvatarService(
   userId: number,
   avatarUrl: string,
-): Promise<void> {}
+): Promise<void> {
+  const isAvatarUploaded = await userRepository.uploadAvatar(userId, avatarUrl);
+
+  if (!isAvatarUploaded) {
+    throw new AppError(500, "Failed to upload avatar");
+  }
+}
 
 export async function updateProfileService(
   userId: number,

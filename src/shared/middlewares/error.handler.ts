@@ -17,6 +17,19 @@ export function errorHandler(
     });
   }
 
+  // Multer errors - PHẢI XỬ LÝ TRƯỚC validation errors
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res
+      .status(413)
+      .json({ error: "File too large. Maximum size is 20MB" });
+  }
+  if (err.code === "LIMIT_UNEXPECTED_FILE") {
+    return res.status(400).json({ error: "Field name không hợp lệ" });
+  }
+  if (err.message?.includes("File type not supported")) {
+    return res.status(400).json({ error: err.message });
+  }
+
   // Validation errors (Zod/Joi)
   if (err.isJoi || err.errors) {
     return res.status(400).json({ error: err.message });

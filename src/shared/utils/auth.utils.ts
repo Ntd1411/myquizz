@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { config } from "../../infrastructure/config/config.js";
+import { env } from "../../infrastructure/config/envconfig.js";
 import ms from "ms";
 import { AppError } from "../errors/AppError.js";
 
@@ -24,17 +24,15 @@ export async function verifyPassword(
 
 // Token generation
 export function generateTokens(userId: number) {
-  const accessToken = jwt.sign(
-    { userId, type: "access" },
-    config.jwt.jwtSecret,
-    { expiresIn: config.jwt.jwtExpiresIn as ms.StringValue },
-  );
+  const accessToken = jwt.sign({ userId, type: "access" }, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN as ms.StringValue,
+  });
 
   const refreshToken = jwt.sign(
     { userId, type: "refresh" },
-    config.jwt.jwtRefreshSecret,
+    env.JWT_REFRESH_SECRET,
     {
-      expiresIn: config.jwt.jwtRefreshExpiresIn as ms.StringValue,
+      expiresIn: env.JWT_REFRESH_EXPIRES_IN as ms.StringValue,
     },
   );
 
@@ -43,8 +41,7 @@ export function generateTokens(userId: number) {
 
 export function verifyToken(token: string, type: "access" | "refresh"): any {
   try {
-    const secret =
-      type === "access" ? config.jwt.jwtSecret : config.jwt.jwtRefreshSecret;
+    const secret = type === "access" ? env.JWT_SECRET : env.JWT_REFRESH_SECRET;
     return jwt.verify(token, secret);
   } catch (error) {
     throw new AppError(401, `Invalid ${type} token`);

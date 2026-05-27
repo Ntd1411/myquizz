@@ -1,13 +1,13 @@
 import express from "express";
 import cors from "cors";
-import { config } from "./infrastructure/config/config.js";
+import { env } from "./infrastructure/config/envconfig.js";
 import { runMigrations } from "./infrastructure/database/migrate.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { errorHandler } from "./shared/middlewares/error.handler.js";
 import cookieParser from "cookie-parser";
 import { userRouter } from "./modules/user/user.routes.js";
 
-const port = config.server.port;
+const port = env.PORT;
 await runMigrations();
 
 const app = express();
@@ -15,10 +15,8 @@ const app = express();
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowedOrigins = config.cors.allowOrigin
-        .split(",")
-        .map((o) => o.trim());
-      allowedOrigins.push(config.cors.frontendUrl);
+      const allowedOrigins = env.ALLOW_ORIGIN.split(",").map((o) => o.trim());
+      allowedOrigins.push(env.FRONTEND_URL);
 
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
