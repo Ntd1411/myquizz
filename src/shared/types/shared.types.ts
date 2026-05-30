@@ -1,4 +1,4 @@
-import { type Request } from "express";
+import { type Request } from 'express'
 export interface AuthRequest extends Request {
   user?: User;
   token?: string;
@@ -10,7 +10,7 @@ export interface User {
   email: string;
   phone?: string;
   password: string;
-  role: "admin" | "moderator" | "user";
+  role: 'admin' | 'moderator' | 'user';
   avatar?: string;
   description?: string;
   deleted_at: string | null;

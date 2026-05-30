@@ -1,72 +1,72 @@
-import { type IStorageService } from "../../shared/types/storage.types.js";
+import { type IStorageService } from '../../shared/types/storage.types.js'
 import {
   S3Client,
   PutObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
-import { digitalOceanConfig } from "../config/storage.js";
-import { v4 as uuidv4 } from "uuid";
-import type {} from "multer";
-import { AppError } from "../../shared/errors/AppError.js";
+  DeleteObjectCommand
+} from '@aws-sdk/client-s3'
+import { digitalOceanConfig } from '../config/storage.js'
+import { v4 as uuidv4 } from 'uuid'
+import type {} from 'multer'
+import { AppError } from '../../shared/errors/AppError.js'
 
 export class DigitalOceanStorageService implements IStorageService {
-  private client: S3Client;
-  private bucketName: string;
+  private client: S3Client
+  private bucketName: string
 
   constructor() {
     this.client = new S3Client({
       endpoint: digitalOceanConfig.endpoint,
       region: digitalOceanConfig.region,
-      credentials: digitalOceanConfig.credentials,
-    });
-    this.bucketName = digitalOceanConfig.bucket;
+      credentials: digitalOceanConfig.credentials
+    })
+    this.bucketName = digitalOceanConfig.bucket
   }
 
   async upload(file: Express.Multer.File, path: string): Promise<string> {
-    const key = `${path}/${uuidv4()}-${file.originalname}`;
+    const key = `${path}/${uuidv4()}-${file.originalname}`
 
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,
       Body: file.buffer,
       ContentType: file.mimetype,
-      ACL: "public-read",
-    });
+      ACL: 'public-read'
+    })
 
-    await this.client.send(command);
+    await this.client.send(command)
 
-    return this.getPublicUrl(key);
+    return this.getPublicUrl(key)
   }
 
   async delete(fileUrl: string): Promise<void> {
-    const key = this.extractKeyFromUrl(fileUrl);
+    const key = this.extractKeyFromUrl(fileUrl)
 
     if (!key) {
-      throw new AppError(500, `Cannot extract key from URL: ${fileUrl}`);
+      throw new AppError(500, `Cannot extract key from URL: ${fileUrl}`)
     }
 
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
-      Key: key,
-    });
+      Key: key
+    })
 
-    await this.client.send(command);
+    await this.client.send(command)
   }
 
   private getPublicUrl(key: string): string {
-    return `${digitalOceanConfig.endpoint}/${this.bucketName}/${key}`;
+    return `${digitalOceanConfig.endpoint}/${this.bucketName}/${key}`
   }
 
   private extractKeyFromUrl(fileUrl: string): string | undefined {
     try {
-      const url = new URL(fileUrl);
-      const pathname = url.pathname;
+      const url = new URL(fileUrl)
+      const pathname = url.pathname
 
-      return pathname.startsWith("/") ? pathname.slice(1) : pathname;
+      return pathname.startsWith('/') ? pathname.slice(1) : pathname
     } catch {
-      return undefined;
+      return undefined
     }
   }
 }
 
-export const storageService = new DigitalOceanStorageService();
+export const storageService = new DigitalOceanStorageService()

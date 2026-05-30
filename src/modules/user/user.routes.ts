@@ -1,46 +1,46 @@
-import { Router } from "express";
-import { authMiddleware } from "../auth/auth.middleware.js";
+import { Router } from 'express'
+import { authMiddleware } from '../auth/auth.middleware.js'
 import {
   changePassword,
   deactivateAccount,
   getMe,
   getUser,
   updateProfile,
-  uploadAvatar,
-} from "./user.controller.js";
-import { validate } from "../../shared/validators/validator.js";
+  uploadAvatar
+} from './user.controller.js'
+import { validate } from '../../shared/validators/validator.js'
 import {
   changePasswordSchema,
   deactivateAccountSchema,
-  updateProfileSchema,
-} from "../../shared/validators/schemas.js";
-import { uploadMiddleware } from "../../infrastructure/config/multer.config.js";
+  updateProfileSchema
+} from '../../shared/validators/schemas.js'
+import { uploadMiddleware } from '../../infrastructure/config/multer.config.js'
 
-export const userRouter = Router();
+export const userRouter = Router()
 
-userRouter.get("/me", authMiddleware, getMe);
+userRouter.get('/me', authMiddleware, getMe)
 userRouter.patch(
-  "/me",
+  '/me',
   authMiddleware,
   validate(updateProfileSchema),
-  updateProfile,
-);
+  updateProfile
+)
 userRouter.delete(
-  "/me",
+  '/me',
   authMiddleware,
   validate(deactivateAccountSchema),
-  deactivateAccount,
-);
-userRouter.get("/:userId", getUser);
+  deactivateAccount
+)
+userRouter.get('/:userId', getUser)
 userRouter.patch(
-  "/me/password",
+  '/me/password',
   authMiddleware,
   validate(changePasswordSchema),
-  changePassword,
-);
+  changePassword
+)
 userRouter.patch(
-  "/me/avatar",
+  '/me/avatar',
   authMiddleware,
-  uploadMiddleware.single("avatar"),
-  uploadAvatar,
-);
+  uploadMiddleware.single('avatar'),
+  uploadAvatar
+)

@@ -1,4 +1,4 @@
-import { env } from "./envconfig.js";
+import { env } from './envconfig.js'
 
 export const digitalOceanConfig = {
   endpoint: env.SPACES_ENDPOINT,
@@ -6,6 +6,6 @@ export const digitalOceanConfig = {
   bucket: env.SPACES_BUCKET,
   credentials: {
     accessKeyId: env.SPACES_ACCESS_KEY,
-    secretAccessKey: env.SPACES_SECRET_KEY,
-  },
-};
+    secretAccessKey: env.SPACES_SECRET_KEY
+  }
+}

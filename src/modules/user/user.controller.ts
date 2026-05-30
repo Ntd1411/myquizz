@@ -1,128 +1,144 @@
-import type { Response, NextFunction } from "express";
-import type { AuthRequest, User } from "../../shared/types/shared.types.js";
+import type { Response, NextFunction } from 'express'
+import type { AuthRequest, User } from '../../shared/types/shared.types.js'
 import {
   changePasswordService,
   deactivateAccountService,
   getUserService,
   updateProfileService,
-  uploadAvatarService,
-} from "./user.services.js";
-import { AppError } from "../../shared/errors/AppError.js";
-import { storageService } from "../../infrastructure/storage/storage.service.js";
+  uploadAvatarService
+} from './user.services.js'
+import { AppError } from '../../shared/errors/AppError.js'
+import { storageService } from '../../infrastructure/storage/storage.service.js'
 
-export async function getMe(
+export function getMe(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const { password, ...userWithoutPassword } = req.user as User;
+    const { password: _, ...userWithoutPassword } = req.user as User
 
-    res.json(userWithoutPassword);
+    res.json(userWithoutPassword)
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function getUser(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const userId = Number(req.params.userId);
+    const userId = Number(req.params.userId)
 
     if (!Number.isInteger(userId) || userId <= 0) {
-      throw new AppError(400, "Invalid user ID");
+      throw new AppError(400, 'Invalid user ID')
     }
 
-    const user = await getUserService(userId);
+    const user = await getUserService(userId)
 
     const userData = {
       id: user.id,
       fullname: user.fullname,
       email: user.email,
       avatar: user.avatar,
-      description: user.description,
-    };
+      description: user.description
+    }
 
-    res.json(userData);
+    res.json(userData)
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function changePassword(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const user = req.user as User;
-    const { oldPassword, newPassword } = req.body;
+    const user = req.user as User
+    const { oldPassword, newPassword } = req.body as {
+      oldPassword?: string
+      newPassword?: string
+    }
 
-    await changePasswordService(user, oldPassword, newPassword);
+    if (!oldPassword || !newPassword) {
+      throw new AppError(400, 'Old password and new password are required')
+    }
 
-    res.json({ message: "Password changed successfully" });
+    await changePasswordService(user, oldPassword, newPassword)
+
+    res.json({ message: 'Password changed successfully' })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function uploadAvatar(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const file = req.file;
+    const file = req.file
     if (!file) {
-      throw new AppError(400, "No file uploaded");
+      throw new AppError(400, 'No file uploaded')
     }
 
     const fileUrl = await storageService.upload(
       file,
-      `avatars/${req.user?.id}`,
-    );
+      `avatars/${req.user?.id}`
+    )
 
-    await uploadAvatarService(req.user?.id as number, fileUrl);
+    await uploadAvatarService(req.user?.id as number, fileUrl)
 
-    res.json({ message: "Avatar uploaded successfully", fileUrl });
+    res.json({ message: 'Avatar uploaded successfully', fileUrl })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function updateProfile(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const userId = req.user?.id as number;
-    const { fullname, email, phone, description } = req.body;
+    const userId = req.user?.id as number
+    const { fullname, email, phone, description } = req.body as {
+      fullname?: string
+      email?: string
+      phone?: string
+      description?: string
+    }
 
-    await updateProfileService(userId, fullname, email, phone, description);
+    await updateProfileService(userId, fullname, email, phone, description)
 
-    res.json({ message: "Profile updated successfully" });
+    res.json({ message: 'Profile updated successfully' })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function deactivateAccount(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const user = req.user as User;
-    const { password } = req.body;
+    const user = req.user as User
+    const { password } = req.body as { password?: string }
 
-    await deactivateAccountService(user, password);
+    if (!password) {
+      throw new AppError(400, 'Password is required to deactivate account')
+    }
 
-    res.json({ message: "Account deactivated successfully" });
+    await deactivateAccountService(user, password)
+
+    res.json({ message: 'Account deactivated successfully' })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }

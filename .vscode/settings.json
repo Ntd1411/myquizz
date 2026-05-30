@@ -1,3 +1,14 @@
 {
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "editor.formatOnSave": false,
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
   "postman.settings.dotenv-detection-notification-visibility": false
 }

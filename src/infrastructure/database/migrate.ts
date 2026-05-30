@@ -21,7 +21,7 @@ async function initMigrationsTable() {
 }
 
 async function getMigratedFiles(): Promise<Set<string>> {
-  const result = await pool.query(
+  const result = await pool.query<{ filename: string }>(
     `SELECT filename FROM ${MIGRATIONS_TABLE}`
   )
   return new Set(result.rows.map(r => r.filename))
@@ -37,20 +37,20 @@ async function recordMigration(filename: string) {
 export async function runMigrations() {
   try {
     console.log('Starting database migrations...\n')
-    
+
     await initMigrationsTable()
     const migratedFiles = await getMigratedFiles()
-    
+
     // Chạy schema files nếu lần đầu
     const schemaDir = path.join(__dirname, 'schema')
     const schemaFiles = fs.readdirSync(schemaDir).sort()
-    
+
     console.log('Schema files:')
     for (const file of schemaFiles) {
       if (!migratedFiles.has(file)) {
         const filePath = path.join(schemaDir, file)
         const sql = fs.readFileSync(filePath, 'utf8')
-        
+
         console.log(`  Running: ${file}`)
         await pool.query(sql)
         await recordMigration(file)
@@ -59,18 +59,18 @@ export async function runMigrations() {
         console.log(` ${file} (already run)`)
       }
     }
-    
+
     // Chạy migration files
     const migrationsDir = path.join(__dirname, 'migrations')
     if (fs.existsSync(migrationsDir)) {
       const migrationFiles = fs.readdirSync(migrationsDir).sort()
-      
+
       console.log('\nMigration files:')
       for (const file of migrationFiles) {
         if (!migratedFiles.has(file)) {
           const filePath = path.join(migrationsDir, file)
           const sql = fs.readFileSync(filePath, 'utf8')
-          
+
           console.log(`  Running: ${file}`)
           await pool.query(sql)
           await recordMigration(file)
@@ -80,7 +80,7 @@ export async function runMigrations() {
         }
       }
     }
-    
+
     console.log('\n All migrations completed!')
   } catch (error) {
     console.error(' Migration failed:', error)
@@ -91,24 +91,24 @@ export async function runMigrations() {
 export async function seedDatabase() {
   try {
     console.log(' Seeding database...\n')
-    
+
     const seedsDir = path.join(__dirname, 'seeds')
     if (!fs.existsSync(seedsDir)) {
       console.log('No seeds directory found')
       return
     }
-    
+
     const seedFiles = fs.readdirSync(seedsDir).sort()
-    
+
     for (const file of seedFiles) {
       const filePath = path.join(seedsDir, file)
       const sql = fs.readFileSync(filePath, 'utf8')
-      
+
       console.log(`  Seeding: ${file}`)
       await pool.query(sql)
       console.log(`  ${file} completed`)
     }
-    
+
     console.log('\nSeeding completed!')
   } catch (error) {
     console.error('Seeding failed:', error)
@@ -119,7 +119,7 @@ const args = process.argv.slice(2)
 const command = args[0]
 
 if (command === 'migrate' || command === 'seed' || command === 'migrate:seed') {
-  (async () => {
+  await (async () => {
     try {
       if (command === 'migrate' || command === 'migrate:seed') {
         await runMigrations()

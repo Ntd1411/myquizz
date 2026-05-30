@@ -1,113 +1,129 @@
-import type { Request, Response, NextFunction } from "express";
-import { env } from "../../infrastructure/config/envconfig.js";
-import ms from "ms";
-import { type AuthRequest } from "../../shared/types/shared.types.js";
+import type { Request, Response, NextFunction } from 'express'
+import { env } from '../../infrastructure/config/envconfig.js'
+import ms from 'ms'
+import { type AuthRequest } from '../../shared/types/shared.types.js'
 import {
   loginService,
   logoutService,
   refreshTokenService,
-  registerService,
-} from "./auth.services.js";
+  registerService
+} from './auth.services.js'
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body as { email?: string; password?: string }
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: 'Email and password are required' })
+    }
 
-    const deviceName = req.headers["user-agent"] || "Unknown Device";
-    const ipAddress = req.ip || req.socket.remoteAddress || "unknown";
+    const deviceName = req.headers['user-agent'] || 'Unknown Device'
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown'
 
-    const result = await loginService(email, password, deviceName, ipAddress);
+    const result = await loginService(email, password, deviceName, ipAddress)
 
     // Set HttpOnly cookie
-    res.cookie("refreshToken", result.refreshToken, {
+    res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
+      secure: env.NODE_ENV === 'production',
       maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
-    });
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
 
     res.json({
       user: result.user,
-      accessToken: result.accessToken,
-    });
+      accessToken: result.accessToken
+    })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function register(
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const { email, phone, password, fullname } = req.body;
+    const { email, phone, password, fullname } = req.body as {
+      email?: string
+      phone?: string
+      password?: string
+      fullname?: string
+    }
+
+    if (!email || !password || !fullname) {
+      return res.status(400).json({
+        message: 'Email, password, and fullname are required'
+      })
+    }
 
     const result = await registerService(
       email,
       password,
       fullname,
-      phone || null,
-    );
-    res.status(201).json(result);
+      phone || null
+    )
+    res.status(201).json(result)
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function refreshToken(
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!refreshToken) {
-      return res.status(401).json({ error: "Refresh token missing" });
+      return res.status(401).json({ error: 'Refresh token missing' })
     }
 
-    const tokens = await refreshTokenService(refreshToken);
+    const tokens = await refreshTokenService(refreshToken)
 
-    res.cookie("refreshToken", tokens.refreshToken, {
+    res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
+      secure: env.NODE_ENV === 'production',
       maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
-    });
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
 
-    res.json({ accessToken: tokens.accessToken });
+    res.json({ accessToken: tokens.accessToken })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 export async function logout(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   try {
-    const accessToken = req.token || "";
-    const userId = req.user?.id || 0;
-    const refreshToken = req.cookies.refreshToken || "";
+    const accessToken = req.token || ''
+    const userId = req.user?.id || 0
+    const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!accessToken || !refreshToken) {
       return res
         .status(400)
-        .json({ message: "Access token and refresh token are required" });
+        .json({ message: 'Access token and refresh token are required' })
     }
 
-    await logoutService(userId, accessToken, refreshToken);
+    await logoutService(userId, accessToken, refreshToken)
 
-    res.clearCookie("refreshToken", {
+    res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
-    });
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
 
-    res.json({ message: "Logged out successfully" });
+    res.json({ message: 'Logged out successfully' })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
