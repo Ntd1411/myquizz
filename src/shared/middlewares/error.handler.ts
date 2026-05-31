@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Request, Response, NextFunction } from 'express'
 import { AppError } from '../errors/AppError.js'
+import z from 'zod'
 
 export function errorHandler(
   err: any,
@@ -13,12 +14,25 @@ export function errorHandler(
 ) {
   // console.error("Error:", err);
 
-  // Xử lý AppError
+  // AppError instances
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       error: err.message,
       ...(err.details && { details: err.details })
     })
+  }
+
+  // Zod validation errors
+  if (err instanceof z.ZodError) {
+    const fieldErrors = err.issues.reduce(
+      (acc, issue) => {
+        const field = issue.path.join('.')
+        acc[field] = issue.message
+        return acc
+      },
+      {} as Record<string, string>
+    )
+    return res.status(400).json({ error: 'Validation error', details: fieldErrors })
   }
 
   // Multer errors
@@ -31,11 +45,6 @@ export function errorHandler(
     return res.status(400).json({ error: 'Field name không hợp lệ' })
   }
   if (err.message?.includes('File type not supported')) {
-    return res.status(400).json({ error: err.message })
-  }
-
-  // Validation errors (Zod/Joi)
-  if (err.isJoi || err.errors) {
     return res.status(400).json({ error: err.message })
   }
 

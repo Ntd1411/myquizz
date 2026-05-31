@@ -11,7 +11,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().default('12345678'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   ALLOW_ORIGIN: z.string(),
-  FRONTEND_URL: z.string().url(),
+  FRONTEND_URL: z.url(),
   DB_USER: z.string().default('postgres'),
   DB_PASSWORD: z.string().default('postgres'),
   DB_HOST: z.string().default('localhost'),

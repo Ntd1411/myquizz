@@ -1,71 +1,75 @@
-import Joi from 'joi'
+import { z } from 'zod'
 
-export const loginSchema = Joi.object({
-  email: Joi.string().email().required().messages({
-    'any.required': 'Email is required',
-    'string.email': 'Email must be a valid email address'
-  }),
-  password: Joi.string().required().messages({
-    'any.required': 'Password is required'
-  })
+export const loginSchema = z.object({
+  email: z.email('Email must be valid'),
+  password: z.string().min(1, 'Password is required')
 })
 
-export const registerSchema = Joi.object({
-  email: Joi.string().email().required().messages({
-    'string.email': 'Email must be a valid email address',
-    'any.required': 'Email is required'
-  }),
-  password: Joi.string().min(8).required().messages({
-    'string.min': 'Password must be at least 8 characters',
-    'any.required': 'Password is required'
-  }),
-  fullname: Joi.string().min(2).max(100).required().messages({
-    'string.min': 'Full name must be at least 2 characters',
-    'string.max': 'Full name must not exceed 100 characters',
-    'any.required': 'Full name is required'
-  }),
-  phone: Joi.string()
-    .pattern(/^\+?[0-9]{7,15}$/)
-    .messages({
-      'string.pattern.base':
-        'Phone number must be between 7 and 15 digits, and can start with +'
+export const registerSchema = z.object({
+  email: z.email('Email must be valid'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  fullname: z.string().min(2, 'Full name must be at least 2 characters').max(100, 'Full name must be at most 100 characters'),
+  phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Phone must be 7-15 digits').optional()
+})
+
+export const changePasswordSchema = z.object({
+  oldPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters')
+})
+
+export const updateProfileSchema = z.object({
+  fullname: z.string().min(2, 'Full name must be at least 2 characters').max(100, 'Full name must be at most 100 characters').optional(),
+  email: z.email('Email must be valid').optional(),
+  phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Phone must be 7-15 digits').optional(),
+  description: z.string().max(200, 'Description must be at most 200 characters').optional()
+})
+
+export const deactivateAccountSchema = z.object({
+  password: z.string().min(8, 'Password must be at least 8 characters')
+})
+
+export const createQuestionSchema = z.object({
+  question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
+  question_text: z.string().min(5, 'Question must be at least 5 characters').max(200, 'Question must be at most 200 characters'),
+  question_image: z.url('Must be valid URL').optional(),
+  answer_options: z.array(
+    z.object({
+      option_text: z.string().min(2, 'Option must be at least 2 characters').max(100, 'Option must be at most 100 characters')
     })
-})
-
-export const changePasswordSchema = Joi.object({
-  oldPassword: Joi.string().min(8).required().messages({
-    'string.min': 'Old password must be at least 8 characters',
-    'any.required': 'Old password is required'
-  }),
-  newPassword: Joi.string().min(8).required().messages({
-    'string.min': 'New password must be at least 8 characters',
-    'any.required': 'New password is required'
-  })
-})
-
-export const updateProfileSchema = Joi.object({
-  fullname: Joi.string().min(2).max(100).messages({
-    'string.min': 'Full name must be at least 2 characters',
-    'string.max': 'Full name must not exceed 100 characters'
-  }),
-  email: Joi.string().email().messages({
-    'string.email': 'Email must be a valid email address'
-  }),
-  phone: Joi.string()
-    .pattern(/^\+?[0-9]{7,15}$/)
-    .messages({
-      'string.pattern.base':
-        'Phone number must be between 7 and 15 digits, and can start with +'
+  ).min(2, 'Question must have at least 2 options').optional(),
+  correct_answer: z.union([
+    z.object({
+      option_text: z.string().min(2, 'Correct answer must be at least 2 characters').max(100, 'Correct answer must be at most 100 characters'),
+      hint: z.string().max(200, 'Hint must be at most 200 characters').optional(),
+      explanation: z.string().max(500, 'Explanation must be at most 500 characters').optional()
     }),
-  description: Joi.string().max(200).messages({
-    'string.max': 'Description must not exceed 200 characters'
-  })
+    z.array(
+      z.object({
+        option_text: z.string().min(2, 'Correct answer must be at least 2 characters').max(100, 'Correct answer must be at most 100 characters'),
+        hint: z.string().max(200, 'Hint must be at most 200 characters').optional(),
+        explanation: z.string().max(500, 'Explanation must be at most 500 characters').optional()
+      })
+    )
+  ])
 })
 
-export const deactivateAccountSchema = Joi.object({
-  password: Joi.string().min(8).required()
+export const createQuizSchema = z.object({
+  quiz_name: z.string().min(3, 'Quiz name at least 3 chars').max(100, 'Quiz name must be at most 100 characters'),
+  quiz_description: z.string().max(500, 'Quiz description must be at most 500 characters').optional(),
+  quiz_language: z.string().min(1, 'Language is required'),
+  quiz_image: z.url('Must be valid URL').optional(),
+  quiz_category: z.string().max(50, 'Quiz category must be at most 50 characters').optional(),
+  is_public: z.boolean(),
+  questions: z.array(createQuestionSchema).min(1, 'Quiz must have at least 1 question')
 })
 
-export const createQuizSchema = Joi.object()
+export const updateQuizSchema = createQuizSchema.partial()
 
-export const updateQuizSchema = Joi.object()
+export type LoginRequest = z.infer<typeof loginSchema>
+export type RegisterRequest = z.infer<typeof registerSchema>
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>
+export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>
+export type DeactivateAccountRequest = z.infer<typeof deactivateAccountSchema>
+export type CreateQuestionRequest = z.infer<typeof createQuestionSchema>
+export type CreateQuizRequest = z.infer<typeof createQuizSchema>
+export type UpdateQuizRequest = z.infer<typeof updateQuizSchema>
