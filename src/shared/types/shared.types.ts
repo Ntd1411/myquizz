@@ -1,7 +1,8 @@
 import { type Request } from 'express'
 export interface AuthRequest extends Request {
-  user?: User
+  user?: User | null
   token?: string
+  validatedQuery?: any
 }
 
 export interface User {

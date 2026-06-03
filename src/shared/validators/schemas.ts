@@ -63,6 +63,23 @@ export const createQuizSchema = z.object({
   questions: z.array(createQuestionSchema).min(1, 'Quiz must have at least 1 question')
 })
 
+export const searchQuizzesSchema = z.object({
+  keyword: z.string().trim().max(200).optional(),
+  language: z.string().trim().max(50).optional(),
+  category: z.string().trim().max(50).optional(),
+  page: z.string().regex(/^\d+$/).transform(Number)
+    .pipe(z.number().int().min(1)).default(1),
+  limit: z.string().regex(/^\d+$/).transform(Number)
+    .pipe(z.number().int().min(1).max(20)).default(10)
+})
+
+export const listQuizzesSchema = z.object({
+  page: z.string().regex(/^\d+$/).transform(Number)
+    .pipe(z.number().int().min(1)).default(1),
+  limit: z.string().regex(/^\d+$/).transform(Number)
+    .pipe(z.number().int().min(1).max(20)).default(10)
+})
+
 export const updateQuizSchema = createQuizSchema.partial()
 
 export type LoginRequest = z.infer<typeof loginSchema>

@@ -10,6 +10,10 @@ export async function getUserService(userId: number): Promise<User> {
     throw new AppError(404, 'User not found')
   }
 
+  if (user.deleted_at) {
+    throw new AppError(410, 'Account is deactivated')
+  }
+
   return user
 }
 

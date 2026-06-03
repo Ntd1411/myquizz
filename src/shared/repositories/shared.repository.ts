@@ -24,7 +24,7 @@ export class SharedRepository {
 
   // Find user by id
   async findById(id: number): Promise<User | null> {
-    const result = await pool.query<User>('SELECT * FROM users WHERE id = $1', [id])
+    const result = await pool.query<User>('SELECT * FROM users WHERE id = $1 and deleted_at IS NULL', [id])
     return result.rows[0] || null
   }
 

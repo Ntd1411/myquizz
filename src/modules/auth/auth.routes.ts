@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { validate } from '../../shared/validators/validator.js'
+import { validateBody } from '../../shared/validators/validator.js'
 import {
   loginSchema,
   registerSchema
@@ -9,7 +9,7 @@ import { login, register, refreshToken, logout } from './auth.controller.js'
 
 export const authRouter = Router()
 
-authRouter.post('/login', validate(loginSchema), login)
-authRouter.post('/register', validate(registerSchema), register)
+authRouter.post('/login', validateBody(loginSchema), login)
+authRouter.post('/register', validateBody(registerSchema), register)
 authRouter.post('/refresh', refreshToken)
 authRouter.post('/logout', authMiddleware, logout)

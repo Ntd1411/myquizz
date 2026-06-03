@@ -5,7 +5,7 @@ create table questions (
   question_text varchar(255) not null,
   question_image varchar(255),
   answer_options jsonb,
-  correct_answer jsonb,
+  correct_answer jsonb not null,
   deleted_at timestamp with time zone default null,
   created_at timestamp with time zone default current_timestamp,
   updated_at timestamp with time zone default current_timestamp

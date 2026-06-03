@@ -8,7 +8,7 @@ import {
   updateProfile,
   uploadAvatar
 } from './user.controller.js'
-import { validate } from '../../shared/validators/validator.js'
+import { validateBody } from '../../shared/validators/validator.js'
 import {
   changePasswordSchema,
   deactivateAccountSchema,
@@ -22,20 +22,20 @@ userRouter.get('/me', authMiddleware, getMe)
 userRouter.patch(
   '/me',
   authMiddleware,
-  validate(updateProfileSchema),
+  validateBody(updateProfileSchema),
   updateProfile
 )
 userRouter.delete(
   '/me',
   authMiddleware,
-  validate(deactivateAccountSchema),
+  validateBody(deactivateAccountSchema),
   deactivateAccount
 )
 userRouter.get('/:userId', getUser)
 userRouter.patch(
   '/me/password',
   authMiddleware,
-  validate(changePasswordSchema),
+  validateBody(changePasswordSchema),
   changePassword
 )
 userRouter.patch(
