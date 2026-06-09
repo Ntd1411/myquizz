@@ -1,7 +1,7 @@
 create table player_sessions (
   id serial not null primary key,
   game_session_id int not null references game_sessions(id) on delete cascade,
-  player_id int not null references users(id) on delete cascade,
+  player_id int references users(id) on delete cascade,
   player_name varchar(255) not null,
   player_score int not null default 0,
   is_host boolean not null default false,

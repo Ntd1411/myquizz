@@ -1,5 +1,7 @@
 import express from 'express'
 import cors from 'cors'
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 import { env } from './infrastructure/config/envconfig.js'
 import { runMigrations } from './infrastructure/database/migrate.js'
 import { authRouter } from './modules/auth/auth.routes.js'
@@ -7,11 +9,20 @@ import { errorHandler } from './shared/middlewares/error.handler.js'
 import cookieParser from 'cookie-parser'
 import { userRouter } from './modules/user/user.routes.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
+import { gameRouter } from './modules/game/game.routes.js'
+import { GameSocket } from './modules/game/game.socket.js'
 
 const port = env.PORT
 await runMigrations()
 
 const app = express()
+const httpServer = createServer(app)
+const io = new Server(httpServer, {
+  cors: {
+    origin: [env.FRONTEND_URL, ...env.ALLOW_ORIGIN.split(',').map((o) => o.trim())],
+    credentials: true
+  }
+})
 
 app.use(
   cors({
@@ -40,9 +51,13 @@ app.get('/', (req, res) => {
 app.use('/auth', authRouter)
 app.use('/users', userRouter)
 app.use('/quizzes', quizRouter)
+app.use('/games', gameRouter)
+
+new GameSocket(io)
 
 app.use(errorHandler)
 
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`App listening on port ${port}`)
+  console.log('Socket.IO server ready')
 })

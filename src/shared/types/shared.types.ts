@@ -3,6 +3,7 @@ export interface AuthRequest extends Request {
   user?: User | null
   token?: string
   validatedQuery?: any
+  data?: any
 }
 
 export interface User {
