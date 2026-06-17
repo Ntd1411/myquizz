@@ -151,25 +151,6 @@ export class GameController {
     }
   }
 
-  leaveGame = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const playerSessionId = parseInt(req.params.player_session_id as string)
-
-      if (isNaN(playerSessionId)) {
-        res.status(400).json({ message: 'player_session_id is invalid' })
-        return
-      }
-
-      await this.gameService.leaveGame(playerSessionId)
-
-      res.status(200).json({
-        message: 'Left game session successfully'
-      })
-    } catch (error) {
-      next(error)
-    }
-  }
-
   getGameSession = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const sessionId = parseInt(req.params.session_id as string)

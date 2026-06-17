@@ -77,26 +77,6 @@ export class GameRepository {
     await this.pool.query(query, [status, sessionId])
   }
 
-  async incrementPlayerCount(sessionId: number): Promise<void> {
-    const query = `
-      UPDATE game_sessions 
-      SET total_players = total_players + 1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-    `
-
-    await this.pool.query(query, [sessionId])
-  }
-
-  async decrementPlayerCount(sessionId: number): Promise<void> {
-    const query = `
-      UPDATE game_sessions 
-      SET total_players = total_players - 1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-    `
-
-    await this.pool.query(query, [sessionId])
-  }
-
   async createPlayerSession(
     gameSessionId: number,
     playerName: string,

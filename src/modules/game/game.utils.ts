@@ -35,7 +35,9 @@ export function sanitizePlayerName(name: string): string {
   return name.trim().slice(0, 50)
 }
 
-export function calculateRank(leaderboard: Array<{ player_score: number }>): Array<{ rank: number }> {
+export function calculateRank<T extends { player_score: number }>(
+  leaderboard: T[]
+): Array<T & { rank: number }> {
   const sorted = [...leaderboard].sort((a, b) => b.player_score - a.player_score)
 
   return sorted.map((entry, index, arr) => {
@@ -48,8 +50,9 @@ export function calculateRank(leaderboard: Array<{ player_score: number }>): Arr
       return { ...entry, rank: index + 1 }
     }
 
+    const prevEntryWithRank = prevEntry as T & { rank: number }
     const rank = entry.player_score === prevEntry.player_score
-      ? (prevEntry as any).rank
+      ? prevEntryWithRank.rank
       : index + 1
 
     return { ...entry, rank }

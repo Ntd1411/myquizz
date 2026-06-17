@@ -31,6 +31,7 @@ export const deactivateAccountSchema = z.object({
 export const createQuestionSchema = z.object({
   question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
   question_text: z.string().min(5, 'Question must be at least 5 characters').max(200, 'Question must be at most 200 characters'),
+  time_limit: z.number().min(0, 'Time limit must be a positive number').default(30),
   question_image: z.url('Must be valid URL').optional(),
   answer_options: z.array(
     z.object({

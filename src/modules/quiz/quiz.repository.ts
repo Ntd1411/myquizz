@@ -28,13 +28,14 @@ export class QuizRepository {
     const insertedQuestions: Question[] = []
     for (const question of questions) {
       const result = await pool.query<Question>(
-        `INSERT INTO questions (quiz_id, question_type, question_text, 
+        `INSERT INTO questions (quiz_id, question_type, question_text, time_limit, 
         question_image, answer_options, correct_answer) 
-        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
         [
           quizId,
           question.question_type,
           question.question_text,
+          question.time_limit,
           question.question_image,
           JSON.stringify(question.answer_options),
           JSON.stringify(question.correct_answer)
@@ -148,13 +149,14 @@ export class QuizRepository {
       const newQuestions: Question[] = []
       for (const question of questions) {
         const result = await client.query<Question>(
-          `INSERT INTO questions (quiz_id, question_type, question_text, 
+          `INSERT INTO questions (quiz_id, question_type, question_text, time_limit, 
           question_image, answer_options, correct_answer) 
-          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
           [
             quizId,
             question.question_type,
             question.question_text,
+            question.time_limit,
             question.question_image,
             JSON.stringify(question.answer_options),
             JSON.stringify(question.correct_answer)
