@@ -48,10 +48,10 @@ app.get('/', (req, res) => {
   res.send('Hello, world')
 })
 
-app.use('/auth', authRouter)
-app.use('/users', userRouter)
-app.use('/quizzes', quizRouter)
-app.use('/games', gameRouter)
+app.use('/api/auth', authRouter)
+app.use('/api/users', userRouter)
+app.use('/api/quizzes', quizRouter)
+app.use('/api/games', gameRouter)
 
 new GameSocket(io)
 
