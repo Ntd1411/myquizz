@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { Card, Input, TextArea, Select, Button } from '@/components/UI'
-import { Plus, Trash, ArrowLeft } from '@phosphor-icons/react'
+import { Plus, Trash, ArrowLeft, WarningCircle } from '@phosphor-icons/react'
 import type { Quiz, Question } from '@/types'
 
 export default function CreateQuizPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [hasChanges, setHasChanges] = useState(false)
+  const [showExitWarning, setShowExitWarning] = useState(false)
 
   const [quizData, setQuizData] = useState<Omit<Quiz, 'id' | 'created_at' | 'updated_at' | 'created_by'>>({
     title: '',
@@ -18,7 +20,7 @@ export default function CreateQuizPage() {
     difficulty: 'medium',
     time_limit: 30,
     is_public: true,
-    questions: [],
+    questions: []
   })
 
   const [questions, setQuestions] = useState<Question[]>([
@@ -29,20 +31,42 @@ export default function CreateQuizPage() {
       correct_answer: '',
       points: 100,
       time_limit: 30,
-      order_index: 0,
-    },
+      order_index: 0
+    }
   ])
 
-  const updateQuizField = (field: string, value: any) => {
-    setQuizData((prev) => ({ ...prev, [field]: value }))
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasChanges])
+
+  const handleBack = () => {
+    if (hasChanges) {
+      setShowExitWarning(true)
+    } else {
+      navigate('/dashboard')
+    }
   }
 
-  const updateQuestion = (index: number, field: string, value: any) => {
+  const updateQuizField = (field: string, value: string | boolean) => {
+    setQuizData((prev) => ({ ...prev, [field]: value }))
+    setHasChanges(true)
+  }
+
+  const updateQuestion = (index: number, field: string, value: string | string[] | number) => {
     setQuestions((prev) => {
       const updated = [...prev]
       updated[index] = { ...updated[index], [field]: value }
       return updated
     })
+    setHasChanges(true)
   }
 
   const updateQuestionOption = (questionIndex: number, optionIndex: number, value: string) => {
@@ -53,6 +77,7 @@ export default function CreateQuizPage() {
       updated[questionIndex] = { ...updated[questionIndex], options }
       return updated
     })
+    setHasChanges(true)
   }
 
   const addQuestion = () => {
@@ -65,40 +90,90 @@ export default function CreateQuizPage() {
         correct_answer: '',
         points: 100,
         time_limit: 30,
-        order_index: prev.length,
-      },
+        order_index: prev.length
+      }
     ])
+    setHasChanges(true)
   }
 
   const removeQuestion = (index: number) => {
+    if (questions.length === 1) {
+      setError('Quiz phải có ít nhất một câu hỏi')
+      return
+    }
     setQuestions((prev) => prev.filter((_, i) => i !== index).map((q, i) => ({ ...q, order_index: i })))
+    setHasChanges(true)
   }
 
   const handleSubmit = async () => {
     setError('')
 
+    // Validate quiz title
     if (!quizData.title.trim()) {
-      setError('Quiz title is required')
+      setError('Tiêu đề quiz không được để trống')
       return
     }
 
+    if (quizData.title.length > 200) {
+      setError('Tiêu đề quiz không được vượt quá 200 ký tự')
+      return
+    }
+
+    // Validate questions exist
     if (questions.length === 0) {
-      setError('Add at least one question')
+      setError('Quiz phải có ít nhất một câu hỏi')
       return
     }
 
+    // Validate each question
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i]
+
       if (!q.question_text.trim()) {
-        setError(`Question ${i + 1} text is required`)
+        setError(`Câu hỏi ${i + 1}: Nội dung câu hỏi không được để trống`)
         return
       }
-      if (q.question_type === 'multiple_choice' && (!q.options || q.options.length < 2)) {
-        setError(`Question ${i + 1} needs at least 2 options`)
+
+      if (q.question_text.length > 500) {
+        setError(`Câu hỏi ${i + 1}: Nội dung không được vượt quá 500 ký tự`)
         return
       }
-      if (!q.correct_answer) {
-        setError(`Question ${i + 1} must have a correct answer`)
+
+      if (q.question_type === 'multiple_choice') {
+        if (!q.options || q.options.length < 2) {
+          setError(`Câu hỏi ${i + 1}: Phải có ít nhất 2 lựa chọn`)
+          return
+        }
+
+        const nonEmptyOptions = q.options.filter(opt => opt.trim())
+        if (nonEmptyOptions.length < 2) {
+          setError(`Câu hỏi ${i + 1}: Phải có ít nhất 2 lựa chọn có nội dung`)
+          return
+        }
+
+        if (q.options.some(opt => opt.length > 200)) {
+          setError(`Câu hỏi ${i + 1}: Mỗi lựa chọn không được vượt quá 200 ký tự`)
+          return
+        }
+      }
+
+      if (!q.correct_answer || (typeof q.correct_answer === 'string' && !q.correct_answer.trim())) {
+        setError(`Câu hỏi ${i + 1}: Vui lòng nhập đáp án đúng`)
+        return
+      }
+
+      if (q.question_type === 'multiple_choice' && typeof q.correct_answer === 'string' && !q.options?.includes(q.correct_answer)) {
+        setError(`Câu hỏi ${i + 1}: Đáp án đúng phải là một trong các lựa chọn`)
+        return
+      }
+
+      if (q.points <= 0) {
+        setError(`Câu hỏi ${i + 1}: Điểm phải lớn hơn 0`)
+        return
+      }
+
+      if (q.time_limit !== undefined && q.time_limit <= 0) {
+        setError(`Câu hỏi ${i + 1}: Thời gian phải lớn hơn 0`)
         return
       }
     }
@@ -107,9 +182,10 @@ export default function CreateQuizPage() {
 
     try {
       await api.createQuiz({ ...quizData, questions })
+      setHasChanges(false)
       navigate('/dashboard')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create quiz')
+      setError(err instanceof Error ? err.message : 'Không thể tạo quiz')
     } finally {
       setLoading(false)
     }
@@ -119,7 +195,7 @@ export default function CreateQuizPage() {
     <div className="min-h-[100dvh] pt-24 pb-16 px-6">
       <div className="max-w-4xl mx-auto">
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={handleBack}
           className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 mb-8 transition-colors"
         >
           <ArrowLeft size={20} />
@@ -165,7 +241,7 @@ export default function CreateQuizPage() {
                 options={[
                   { value: 'easy', label: 'Easy' },
                   { value: 'medium', label: 'Medium' },
-                  { value: 'hard', label: 'Hard' },
+                  { value: 'hard', label: 'Hard' }
                 ]}
               />
             </div>
@@ -223,7 +299,7 @@ export default function CreateQuizPage() {
                   onChange={(value) => updateQuestion(index, 'question_type', value)}
                   options={[
                     { value: 'multiple_choice', label: 'Multiple Choice' },
-                    { value: 'true_false', label: 'True/False' },
+                    { value: 'true_false', label: 'True/False' }
                   ]}
                 />
 
@@ -269,13 +345,48 @@ export default function CreateQuizPage() {
         </div>
 
         <div className="mt-8 flex gap-4">
-          <Button onClick={handleSubmit} disabled={loading} fullWidth>
+          <Button onClick={() => void handleSubmit()} disabled={loading} fullWidth>
             {loading ? 'Creating...' : 'Create Quiz'}
           </Button>
-          <Button onClick={() => navigate('/dashboard')} variant="secondary">
+          <Button onClick={handleBack} variant="secondary">
             Cancel
           </Button>
         </div>
+
+        {showExitWarning && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 max-w-md w-full">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="w-12 h-12 rounded-full bg-warning/10 flex items-center justify-center flex-shrink-0">
+                  <WarningCircle size={24} weight="fill" className="text-warning" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Bạn có thay đổi chưa lưu</h3>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Nếu rời khỏi trang này, các thay đổi của bạn sẽ bị mất. Bạn có chắc chắn muốn tiếp tục?
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowExitWarning(false)}
+                >
+                  Ở lại
+                </Button>
+                <button
+                  onClick={() => {
+                    setHasChanges(false)
+                    navigate('/dashboard')
+                  }}
+                  className="px-6 py-3 bg-error hover:bg-error/90 text-white font-medium rounded-lg transition-colors"
+                >
+                  Rời khỏi
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { Card, Input, Button, LoadingSpinner } from '@/components/UI'
-import { MagnifyingGlass, GameController } from '@phosphor-icons/react'
+import { MagnifyingGlass, GameController, WarningCircle } from '@phosphor-icons/react'
 import type { Quiz } from '@/types'
 import { motion, useReducedMotion } from 'motion/react'
 
@@ -16,6 +16,8 @@ export default function HomePage() {
   const [playerName, setPlayerName] = useState('')
   const [joiningGame, setJoiningGame] = useState(false)
   const [error, setError] = useState('')
+  const [searchError, setSearchError] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
 
   useEffect(() => {
     loadQuizzes()
@@ -23,39 +25,55 @@ export default function HomePage() {
 
   const loadQuizzes = async () => {
     setLoading(true)
+    setSearchError('')
     try {
       const response = await api.listQuizzes(undefined, 1, 12)
       setQuizzes(response.quizzes)
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Không thể tải danh sách quiz'
+      setSearchError(errorMessage)
       console.error('Failed to load quizzes:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSearch = async () => {
-    if (!searchKeyword.trim()) {
+  const handleSearch = useCallback(async (keyword: string) => {
+    if (!keyword.trim()) {
       loadQuizzes()
       return
     }
-    setLoading(true)
+    setIsSearching(true)
+    setSearchError('')
     try {
-      const response = await api.searchQuizzes({ keyword: searchKeyword, page: 1, limit: 12 })
+      const response = await api.searchQuizzes({ keyword, page: 1, limit: 12 })
       setQuizzes(response.quizzes)
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Tìm kiếm thất bại'
+      setSearchError(errorMessage)
       console.error('Search failed:', err)
     } finally {
-      setLoading(false)
+      setIsSearching(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!searchKeyword.trim()) {
+      return
+    }
+    const timeoutId = setTimeout(() => {
+      handleSearch(searchKeyword)
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [searchKeyword, handleSearch])
 
   const handleJoinGame = async () => {
     if (!sessionCode.trim()) {
-      setError('Please enter a session code')
+      setError('Vui lòng nhập mã phiên')
       return
     }
     if (!playerName.trim()) {
-      setError('Please enter your name')
+      setError('Vui lòng nhập tên của bạn')
       return
     }
     setError('')
@@ -64,7 +82,7 @@ export default function HomePage() {
       const playerSession = await api.joinGame(sessionCode, playerName)
       navigate(`/game/${playerSession.session_id}`, { state: { playerSession } })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join game')
+      setError(err instanceof Error ? err.message : 'Không thể tham gia game')
     } finally {
       setJoiningGame(false)
     }
@@ -142,28 +160,76 @@ export default function HomePage() {
               />
               <input
                 type="text"
-                placeholder="Search quizzes..."
+                placeholder="Tìm kiếm quiz..."
                 value={searchKeyword}
                 onChange={(e) => setSearchKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 className="input pl-12 w-full"
               />
+              {isSearching && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                  <LoadingSpinner size={16} />
+                </div>
+              )}
             </div>
-            <Button onClick={handleSearch} variant="secondary">
-              Search
-            </Button>
           </div>
         </div>
+
+        {searchError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
+          >
+            <WarningCircle size={20} weight="fill" className="text-error flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-error text-sm font-medium">{searchError}</p>
+            </div>
+            <button
+              onClick={() => {
+                setSearchError('')
+                loadQuizzes()
+              }}
+              className="text-error/60 hover:text-error text-sm font-medium"
+            >
+              Thử lại
+            </button>
+          </motion.div>
+        )}
 
         {loading ? (
           <div className="py-20">
             <LoadingSpinner size={40} />
           </div>
         ) : quizzes.length === 0 ? (
-          <div className="text-center py-20">
-            <GameController size={64} className="text-zinc-300 dark:text-zinc-700 mx-auto mb-4" />
-            <p className="text-lg text-zinc-600 dark:text-zinc-400">No quizzes found</p>
-          </div>
+          <motion.div
+            initial={reduce ? false : { opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-20"
+          >
+            <div className="w-24 h-24 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-6">
+              <GameController size={48} className="text-zinc-400 dark:text-zinc-600" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-3">
+              {searchKeyword ? 'Không tìm thấy quiz' : 'Chưa có quiz nào'}
+            </h2>
+            <p className="text-zinc-600 dark:text-zinc-400 mb-8 max-w-md mx-auto">
+              {searchKeyword
+                ? `Không tìm thấy quiz nào với từ khóa "${searchKeyword}"`
+                : 'Hiện chưa có quiz công khai nào. Hãy thử lại sau!'}
+            </p>
+            {searchKeyword && (
+              <Button
+                onClick={() => {
+                  setSearchKeyword('')
+                  loadQuizzes()
+                }}
+                variant="secondary"
+                className="mx-auto"
+              >
+                Xóa tìm kiếm
+              </Button>
+            )}
+          </motion.div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {quizzes.map((quiz, index) => (

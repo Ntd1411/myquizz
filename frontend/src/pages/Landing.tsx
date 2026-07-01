@@ -6,7 +6,7 @@ import {
   ChartLine,
   Lightning,
   DeviceMobile,
-  LockKey,
+  LockKey
 } from '@phosphor-icons/react'
 
 export default function LandingPage() {
@@ -16,33 +16,33 @@ export default function LandingPage() {
     {
       icon: Lightning,
       title: 'Real-time Play',
-      description: 'Live multiplayer quiz sessions with instant results and leaderboards',
+      description: 'Live multiplayer quiz sessions with instant results and leaderboards'
     },
     {
       icon: Users,
       title: 'Easy Collaboration',
-      description: 'Share quiz codes, invite players, and track engagement in real time',
+      description: 'Share quiz codes, invite players, and track engagement in real time'
     },
     {
       icon: ChartLine,
       title: 'Live Analytics',
-      description: 'Monitor player performance and quiz statistics as they happen',
+      description: 'Monitor player performance and quiz statistics as they happen'
     },
     {
       icon: DeviceMobile,
       title: 'Mobile Ready',
-      description: 'Play from any device with responsive design and touch controls',
+      description: 'Play from any device with responsive design and touch controls'
     },
     {
       icon: LockKey,
       title: 'Secure Sessions',
-      description: 'Private quiz sessions with unique codes and host controls',
+      description: 'Private quiz sessions with unique codes and host controls'
     },
     {
       icon: GameController,
       title: 'Engaging UI',
-      description: 'Modern interface designed for focus and competitive fun',
-    },
+      description: 'Modern interface designed for focus and competitive fun'
+    }
   ]
 
   return (
@@ -103,7 +103,7 @@ export default function LandingPage() {
                   transition={{
                     duration: 0.5,
                     delay: index * 0.1,
-                    ease: [0.16, 1, 0.3, 1],
+                    ease: [0.16, 1, 0.3, 1]
                   }}
                   className="card hover:shadow-lg transition-shadow"
                 >

@@ -56,7 +56,7 @@ class ApiClient {
     }
 
     const contentType = response.headers.get('content-type')
-    const hasJsonContent = contentType?.includes('application/json')
+    const isJson = contentType?.includes('application/json')
     const hasContent = response.status !== 204 && response.headers.get('content-length') !== '0'
 
     let data: any = null
@@ -64,7 +64,7 @@ class ApiClient {
       const text = await response.text()
       if (text) {
         try {
-          data = JSON.parse(text)
+          data = isJson ? JSON.parse(text) : text
         } catch (e) {
           console.error('Lỗi parse JSON:', text)
           if (!response.ok) {

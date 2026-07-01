@@ -10,3 +10,6 @@ dist-ssr
 coverage
 .vscode
 .idea
+.impeccable
+DESIGN.md
+PRODUCT.md
