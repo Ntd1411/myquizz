@@ -23,7 +23,14 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
     const result = await loginService(email, password, deviceName, ipAddress)
 
-    // Set HttpOnly cookie
+    // Set HttpOnly cookies
+    res.cookie('accessToken', result.accessToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
@@ -32,8 +39,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     })
 
     res.json({
-      user: result.user,
-      accessToken: result.accessToken
+      user: result.user
     })
   } catch (error) {
     next(error)
@@ -85,6 +91,13 @@ export async function refreshToken(
 
     const tokens = await refreshTokenService(refreshToken)
 
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
@@ -92,7 +105,7 @@ export async function refreshToken(
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
 
-    res.json({ accessToken: tokens.accessToken })
+    res.json({ message: 'Token refreshed successfully' })
   } catch (error) {
     next(error)
   }
@@ -115,6 +128,12 @@ export async function logout(
     }
 
     await logoutService(userId, accessToken, refreshToken)
+
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
 
     res.clearCookie('refreshToken', {
       httpOnly: true,

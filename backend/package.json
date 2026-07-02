@@ -4,9 +4,7 @@
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "tsx watch src/app.ts",
-    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "tsx watch src/app.ts",
     "start": "node dist/app.js",
     "build": "tsc && cd frontend && npm run build",
     "lint": "eslint .",
@@ -56,7 +54,6 @@
     "@types/pg": "^8.20.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
-    "concurrently": "^10.0.3",
     "eslint": "^10.4.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

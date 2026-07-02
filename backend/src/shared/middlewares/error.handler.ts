@@ -12,7 +12,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ) {
-  console.error("Error:", err);
+  console.error('Error:', err)
 
   // AppError instances
   if (err instanceof AppError) {

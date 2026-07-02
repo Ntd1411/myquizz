@@ -10,13 +10,12 @@ export async function authMiddleware(
   next: NextFunction
 ) {
   try {
-    const authHeader = req.headers.authorization
+    // Đọc token từ cookie thay vì Authorization header
+    const token = req.cookies.accessToken as string | undefined
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new AppError(401, 'Authorization header missing or malformed')
+    if (!token) {
+      throw new AppError(401, 'Access token missing')
     }
-
-    const token = authHeader.substring(7)
 
     // Check if token is blacklisted
     const isBlacklisted = await sharedRepository.isTokenBlacklisted(token)

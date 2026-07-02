@@ -9,13 +9,8 @@ export async function optionalAuthMiddleware(
   next: NextFunction
 ) {
   try {
-    const authHeader = req.headers.authorization
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return next()
-    }
-
-    const token = authHeader.substring(7)
+    // Đọc token từ cookie
+    const token = req.cookies.accessToken as string | undefined
 
     if (!token) {
       return next()
