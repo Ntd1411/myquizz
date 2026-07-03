@@ -48,13 +48,15 @@ app.get('/', (req, res) => {
   res.send('Hello, world')
 })
 
-app.use('/api/auth', authRouter)
-app.use('/api/users', userRouter)
-app.use('/api/quizzes', quizRouter)
-app.use('/api/games', gameRouter)
+const router = express.Router()
+router.use('/auth', authRouter)
+router.use('/users', userRouter)
+router.use('/quizzes', quizRouter)
+router.use('/games', gameRouter)
 
 new GameSocket(io)
 
+app.use('/api/v1', router)
 app.use(errorHandler)
 
 httpServer.listen(port, () => {
