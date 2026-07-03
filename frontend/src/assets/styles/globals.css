@@ -1,0 +1,273 @@
+@import './tokens.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: normal;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Typography Base */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display font-bold;
+    text-wrap: balance;
+  }
+
+  h1 {
+    @apply text-4xl lg:text-5xl;
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight);
+  }
+
+  h2 {
+    @apply text-3xl lg:text-4xl;
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight);
+  }
+
+  h3 {
+    @apply text-2xl lg:text-3xl;
+    letter-spacing: var(--tracking-normal);
+    line-height: var(--leading-snug);
+  }
+
+  h4 {
+    @apply text-xl lg:text-2xl;
+    line-height: var(--leading-snug);
+  }
+
+  h5 {
+    @apply text-lg lg:text-xl;
+    line-height: var(--leading-normal);
+  }
+
+  h6 {
+    @apply text-base lg:text-lg;
+    line-height: var(--leading-normal);
+  }
+
+  p {
+    text-wrap: pretty;
+    line-height: var(--leading-relaxed);
+    max-width: 70ch;
+  }
+
+  /* Focus Visible */
+  *:focus-visible {
+    outline: var(--focus-ring-width) solid oklch(var(--color-focus-ring));
+    outline-offset: var(--focus-ring-offset);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Remove default focus for mouse users */
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: oklch(var(--color-primary-subtle));
+    color: oklch(var(--color-ink));
+  }
+
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: oklch(var(--color-surface));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: oklch(var(--color-border-strong));
+    border-radius: var(--radius-full);
+    border: 2px solid oklch(var(--color-surface));
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(var(--color-ink-subtle));
+  }
+
+  /* Reduced Motion */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* High Contrast Mode Support */
+  @media (prefers-contrast: high) {
+    * {
+      border-width: 2px;
+    }
+
+    button,
+    a {
+      text-decoration: underline;
+    }
+  }
+}
+
+@layer components {
+  .container {
+    @apply mx-auto px-4 sm:px-6 lg:px-8;
+    max-width: 1280px;
+  }
+
+  /* Typography Utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Focus Ring Utility */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    --tw-ring-color: oklch(var(--color-focus-ring));
+    --tw-ring-offset-color: oklch(var(--color-focus-ring-offset));
+  }
+
+  /* Surface Elevation */
+  .surface-raised {
+    background-color: oklch(var(--color-surface));
+    box-shadow: var(--shadow-sm);
+  }
+
+  .surface-elevated {
+    background-color: oklch(var(--color-surface));
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Interactive States */
+  .interactive {
+    @apply transition-colors duration-150 ease-out;
+  }
+
+  .interactive:hover {
+    @apply opacity-90;
+  }
+
+  .interactive:active {
+    @apply opacity-100 scale-[0.98];
+  }
+
+  /* Screen Reader Only */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Skip Link */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[1000];
+    @apply px-4 py-2 rounded-md focus-ring;
+    background-color: oklch(var(--color-primary));
+    color: oklch(var(--color-on-primary));
+  }
+}
+
+@layer utilities {
+  /* Animation Utilities */
+  .animate-fade-in {
+    animation: fadeIn var(--transition-base) var(--ease-out);
+  }
+
+  .animate-slide-up {
+    animation: slideUp var(--transition-slow) var(--ease-out);
+  }
+
+  .animate-slide-down {
+    animation: slideDown var(--transition-slow) var(--ease-out);
+  }
+
+  .animate-scale-in {
+    animation: scaleIn var(--transition-base) var(--ease-out);
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(10px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      transform: translateY(-10px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Disable animations in reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-slide-up,
+    .animate-slide-down,
+    .animate-scale-in {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

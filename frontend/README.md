@@ -1,165 +1,162 @@
 # MyQuizz Frontend
 
-Modern real-time quiz platform frontend built with React, TypeScript, and Tailwind CSS v4.
+Nền tảng quiz gamified - Frontend application được xây dựng với React, Vite và TypeScript.
 
-## 🚀 Quick Start
+## Tech Stack
 
-### Installation
+- **React 18.3+** - UI framework
+- **Vite 5.x** - Build tool và dev server
+- **TypeScript 5.x** - Type safety
+- **React Router 6.x** - Routing
+- **TanStack Query 5.x** - Server state management
+- **Zustand 4.x** - Client state management
+- **Tailwind CSS 3.x** - Styling
+- **Framer Motion 10.x** - Animations
+- **React Hook Form 7.x** - Form handling
+- **Zod 3.x** - Schema validation
+- **Axios 1.6+** - HTTP client
+- **Socket.IO Client 4.7+** - Real-time communication
+
+## Prerequisites
+
+- Node.js >= 18.x
+- npm >= 9.x
+
+## Getting Started
+
+### 1. Cài đặt dependencies
 
 ```bash
-cd frontend
 npm install
 ```
 
-### Development
+### 2. Cấu hình environment variables
+
+Sao chép file `.env.example` thành `.env.development`:
+
+```bash
+cp .env.example .env.development
+```
+
+Chỉnh sửa các giá trị trong `.env.development` nếu cần:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000/api/v1
+VITE_SOCKET_URL=http://localhost:3000
+VITE_APP_NAME=MyQuizz Dev
+```
+
+### 3. Chạy development server
 
 ```bash
 npm run dev
 ```
 
-Frontend runs on `http://localhost:3000`
+Ứng dụng sẽ chạy tại `http://localhost:5173/`
 
-### Build for Production
+## Available Scripts
 
-```bash
-npm run build
-npm run preview
-```
+- `npm run dev` - Chạy development server với HMR
+- `npm run build` - Build production bundle
+- `npm run preview` - Preview production build
+- `npm run lint` - Chạy ESLint
+- `npm run format` - Format code với Prettier
+- `npm run type-check` - Kiểm tra TypeScript type errors
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 frontend/
+├── public/              # Static assets
 ├── src/
-│   ├── components/         # Reusable UI components
-│   │   ├── Navigation.tsx  # App navigation
-│   │   └── UI.tsx         # Button, Input, Card, etc.
-│   ├── pages/             # Route pages
-│   │   ├── Landing.tsx    # Public landing page
-│   │   ├── Login.tsx      # Login page
-│   │   ├── Register.tsx   # Registration
-│   │   ├── Home.tsx       # Browse/join quizzes
-│   │   ├── Dashboard.tsx  # Creator dashboard
-│   │   ├── CreateQuiz.tsx # Quiz creation
-│   │   ├── GamePlayer.tsx # Player interface
-│   │   └── GameHost.tsx   # Host interface
-│   ├── lib/              # Core utilities
-│   │   ├── api.ts        # API client
-│   │   ├── socket.ts     # Socket.io client
-│   │   └── store.ts      # Zustand stores
-│   ├── types/            # TypeScript types
-│   ├── styles/           # Global styles
-│   ├── App.tsx           # Routes
-│   └── main.tsx          # Entry point
-├── index.html
-├── vite.config.ts
-└── package.json
+│   ├── app/            # App setup (routes, providers)
+│   ├── assets/         # Images, styles, fonts
+│   ├── components/     # Shared components
+│   │   ├── ui/        # Design system components
+│   │   ├── layout/    # Layout components (Navbar, Footer)
+│   │   └── shared/    # Other shared components
+│   ├── features/       # Feature modules (auth, quiz, game, etc.)
+│   ├── hooks/          # Custom React hooks
+│   ├── layouts/        # Page layouts
+│   ├── lib/            # Third-party library configs
+│   ├── pages/          # Route pages
+│   ├── stores/         # Zustand stores
+│   ├── types/          # TypeScript types
+│   └── utils/          # Utility functions
+├── .env.example        # Environment variables template
+├── .eslintrc.js        # ESLint configuration
+├── .prettierrc         # Prettier configuration
+├── index.html          # HTML entry point
+├── package.json        # Dependencies
+├── postcss.config.js   # PostCSS configuration
+├── tailwind.config.ts  # Tailwind CSS configuration
+├── tsconfig.json       # TypeScript configuration
+└── vite.config.ts      # Vite configuration
 ```
 
-## 🛠 Tech Stack
+## Design System
 
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **Tailwind CSS v4** - Styling
-- **Motion** (Framer Motion) - Animations
-- **Socket.io-client** - Real-time features
-- **Zustand** - State management
-- **React Router v6** - Routing
-- **Phosphor Icons** - Icon library
+Project sử dụng design tokens được định nghĩa trong `src/assets/styles/tokens.css` với OKLCH color space để đảm bảo consistent theming và accessibility.
 
-## ✨ Features
+### Theme
 
-### Authentication
-- Login/Register with validation
-- JWT token management
-- Protected routes
-- Auto token refresh
+- Light mode (default)
+- Dark mode
+- System preference
 
-### Quiz Management
-- Create quizzes with multiple questions
-- Multiple choice & true/false questions
-- Set time limits and points
-- Edit and delete quizzes
-- Public/private settings
+Toggle theme với Zustand store: `useThemeStore`
 
-### Real-time Game System
-- Host creates game with unique code
-- Players join with session code
-- Live player tracking
-- Synchronized questions
-- Real-time scoring
-- Live leaderboards
-- Final results
+## Code Style
 
-### UI/UX
-- Fully responsive (mobile-first)
-- Dark mode support
-- Smooth animations
-- Loading states
-- Error handling
-- Accessible forms
+- ESLint cho code quality
+- Prettier cho code formatting
+- Path aliases: `@/` maps to `src/`
 
-## 🎨 Design System
+## Development Guidelines
 
-### Colors
-- Primary: #2563eb (Blue)
-- Success: #10b981 (Green)
-- Error: #ef4444 (Red)
-- Warning: #f59e0b (Orange)
+1. Tuân theo folder structure đã định nghĩa
+2. Sử dụng TypeScript cho tất cả code
+3. Components dùng named exports
+4. Hooks prefix với `use`
+5. Types/Interfaces suffix với type mô tả
+6. Utilities trong `utils/` folder
+7. Feature-specific code trong `features/` folder
 
-### Typography
-- Font: Geist (sans-serif)
-- Mono: Geist Mono
+## Build
 
-### Components
-- Card: Elevated surface
-- Button: Primary/Secondary/Ghost variants
-- Input: Form inputs with labels
-- Select: Dropdown menus
-- LoadingSpinner: Animated spinner
+Build production bundle:
 
-## 🔌 API Integration
-
-Backend proxy configured in `vite.config.ts`:
-- `/api/*` → `http://localhost:8000/api/*`
-- `/socket.io` → `http://localhost:8000/socket.io`
-
-## 📱 Routes
-
-### Public
-- `/` - Landing page
-- `/login` - Sign in
-- `/register` - Create account
-
-### Protected
-- `/home` - Browse quizzes
-- `/dashboard` - Manage quizzes
-- `/dashboard/create` - Create quiz
-- `/game/host/:sessionId` - Host game
-
-### Game
-- `/game/:sessionId` - Join and play
-
-## 🔧 Development
-
-### Linting
 ```bash
-npm run lint
+npm run build
 ```
 
-### Type Checking
+Output sẽ được tạo trong folder `dist/`
+
+Preview production build:
+
 ```bash
-npx tsc --noEmit
+npm run preview
 ```
 
-## 🌐 Browser Support
+## Milestone 1: Foundation - Completed
 
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers
+- ✓ Vite + React + TypeScript project initialized
+- ✓ Core dependencies installed
+- ✓ Folder structure setup
+- ✓ Design tokens và theme system
+- ✓ ESLint và Prettier configured
+- ✓ Path aliases configured (@/)
+- ✓ Basic routing setup
+- ✓ Layout shell (Navbar, RootLayout, AppLayout)
+- ✓ Build verification passed
+- ✓ Dev server running successfully
 
-## 📝 License
+## Next Steps
 
-MIT
+- Milestone 2: Design System - Implement UI components
+- Milestone 3: Core Components - Build shared components
+- Milestone 4+: Feature implementation theo roadmap
+
+## License
+
+Private project
