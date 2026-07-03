@@ -170,6 +170,7 @@ export async function searchQuizzesService(
 
     const { data, total } = await quizRepository.searchQuizzes(
       offset,
+      query.limit,
       query.keyword,
       query.language,
       query.category

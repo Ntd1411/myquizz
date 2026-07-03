@@ -197,6 +197,7 @@ export class QuizRepository {
 
   async searchQuizzes(
     offset: number,
+    limit: number,
     keyword?: string,
     language?: string,
     category?: string
@@ -223,11 +224,8 @@ export class QuizRepository {
       paramIndex++
     }
 
-    if (fields.length === 0) {
-      return { data: [], total: 0 }
-    }
-
-    const whereClause = `deleted_at IS NULL AND ${fields.join(' AND ')}`
+    const whereClause = fields.length > 0 ?
+      `deleted_at IS NULL AND ${fields.join(' AND ')}` : 'deleted_at IS NULL'
 
     // Get total count first
     const countResult = await pool.query<{ count: number }>(
@@ -239,13 +237,14 @@ export class QuizRepository {
     const total = Number(countResult.rows[0]?.count) || 0
 
     // Get paginated data
+    values.push(limit)
     values.push(offset)
     const result = await pool.query<Quiz>(
       `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
       quiz_image, quiz_category, is_public, created_at, updated_at
       FROM quizzes
       WHERE ${whereClause}
-      LIMIT 10 OFFSET $${paramIndex}`,
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       values
     )
 
