@@ -12,7 +12,7 @@ const ComponentsPage = lazy(() => import('@/pages/Components.page').then(m => ({
 const Login = lazy(() => import('@/pages/auth/Login.page'))
 const Register = lazy(() => import('@/pages/auth/Register.page'))
 const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword.page'))
-const AppPage = lazy(() => import('@/pages/App.page'))
+const DashboardPage = lazy(() => import('@/pages/Dashboard.page'))
 
 // Loading fallback component
 const PageLoader = () => (
@@ -60,7 +60,7 @@ const router = createBrowserRouter([
             path: 'app',
             element: (
               <Suspense fallback={<PageLoader />}>
-                <AppPage />
+                <DashboardPage />
               </Suspense>
             ),
           },
