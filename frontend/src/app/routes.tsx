@@ -13,6 +13,8 @@ const Login = lazy(() => import('@/pages/auth/Login.page'))
 const Register = lazy(() => import('@/pages/auth/Register.page'))
 const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword.page'))
 const DashboardPage = lazy(() => import('@/pages/Dashboard.page'))
+const ExplorePage = lazy(() => import('@/pages/Explore.page').then(m => ({ default: m.ExplorePage })))
+const QuizDetailPage = lazy(() => import('@/pages/QuizDetail.page').then(m => ({ default: m.QuizDetailPage })))
 
 // Loading fallback component
 const PageLoader = () => (
@@ -37,8 +39,20 @@ const router = createBrowserRouter([
             element: <Landing />,
           },
           {
-            path: 'browse',
-            element: <div className="p-8">Browse page placeholder</div>,
+            path: 'explore',
+            element: (
+              <Suspense fallback={<PageLoader />}>
+                <ExplorePage />
+              </Suspense>
+            ),
+          },
+          {
+            path: 'quiz/:quizId',
+            element: (
+              <Suspense fallback={<PageLoader />}>
+                <QuizDetailPage />
+              </Suspense>
+            ),
           },
           {
             path: 'design-system',
