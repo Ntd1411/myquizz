@@ -58,7 +58,7 @@ export class GameSocket {
       socket.emit('game:joined', {
         message: 'Joined room successfully',
         room: roomName,
-        session_id: joinGameResponse.session_id,
+        session_id: joinGameResponse.game_info.session_id,
         player_session_id: joinGameResponse.player_session_id,
         is_host: joinGameResponse.is_host,
         players: [] // Will be populated by player:joined events

@@ -29,7 +29,6 @@ export function QuestionEditor({
   onSave,
   onCancel
 }: QuestionEditorProps) {
-  const [initialQuestion] = useState(question)
   const [localQuestion, setLocalQuestion] = useState(question)
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({})
 

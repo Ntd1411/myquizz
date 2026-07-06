@@ -2,6 +2,8 @@ import apiClient from '@/lib/api-client'
 import type { Quiz, PaginatedQuizResponse, SearchQuizParams } from '@/types/quiz.types'
 import { createQuizSchema, updateQuizSchema, searchQuizzesSchema, type CreateQuizInput, type UpdateQuizInput } from '@/validators/quiz.validator'
 
+export type { Quiz, PaginatedQuizResponse, SearchQuizParams } from '@/types/quiz.types'
+
 // Quiz Service
 export const quizService = {
   async searchQuizzes(params: SearchQuizParams): Promise<PaginatedQuizResponse> {

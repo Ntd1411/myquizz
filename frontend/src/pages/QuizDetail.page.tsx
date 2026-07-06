@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Play, Clock, Globe, Users, BookOpen, AlertCircle } from 'lucide-react'
 import { quizService, type Quiz } from '@/services/quiz.service'
+import type { Question } from '@/types/quiz.types'
 import { cn } from '@/utils/cn'
 
 export function QuizDetailPage() {
@@ -226,7 +227,7 @@ export function QuizDetailPage() {
             </h2>
 
             <div className="space-y-4">
-              {quiz.questions.slice(0, 5).map((question, index) => (
+              {quiz.questions.slice(0, 5).map((question: Question, index: number) => (
                 <div
                   key={question.id}
                   className="p-4 bg-surface border border-border rounded-base"
@@ -240,9 +241,8 @@ export function QuizDetailPage() {
                         {question.question_text}
                       </p>
                       <div className="mt-2 flex items-center gap-4 text-xs text-ink-muted">
-                        <span>{question.question_type === 'single' ? 'Một đáp án' : question.question_type === 'multiple' ? 'Nhiều đáp án' : 'Đúng/Sai'}</span>
-                        <span>{question.question_time_limit}s</span>
-                        <span>{question.question_points} điểm</span>
+                        <span>{question.question_type === 'multiple_choice' ? 'Một đáp án' : question.question_type === 'multiple_select' ? 'Nhiều đáp án' : 'Văn bản'}</span>
+                        <span>{question.time_limit}s</span>
                       </div>
                     </div>
                   </div>
