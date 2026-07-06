@@ -5,7 +5,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, AlertCircle, Eye, EyeOff, ChevronLeft } from 'lucide-react'
 import { Button, Input, Card } from '@/components/ui'
-import { authService, loginSchema, type LoginInput } from '@/services/auth.service'
+import { authService } from '@/services/auth.service'
+import { loginSchema, type LoginInput } from '@/validators/auth.validator'
 import { useAuthStore } from '@/stores/auth.store'
 
 export default function Login() {
@@ -31,12 +32,20 @@ export default function Login() {
       const response = await authService.login(data)
       setUser(response.user)
       
-      navigate('/app')
-    } catch (error) {
-      if (error instanceof Error) {
+      navigate('/', { replace: true })
+    } catch (error: any) {
+      console.error('Login error:', error)
+      
+      if (error.response?.data?.message) {
+        setErrorMessage(error.response.data.message)
+      } else if (error.response?.status === 401) {
+        setErrorMessage('Email hoặc mật khẩu không chính xác')
+      } else if (error.response?.status === 400) {
+        setErrorMessage('Thông tin đăng nhập không hợp lệ')
+      } else if (error.message) {
         setErrorMessage(error.message)
       } else {
-        setErrorMessage('Đăng nhập thất bại. Vui lòng thử lại.')
+        setErrorMessage('Đăng nhập thất bại. Vui lòng thử lại sau')
       }
     } finally {
       setIsLoading(false)
@@ -50,7 +59,7 @@ export default function Login() {
       </a>
       
       <Link
-        to="/"
+        to="/welcome"
         className="fixed top-6 left-6 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -65,7 +74,7 @@ export default function Login() {
         id="main-content"
       >
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block">
+          <Link to="/welcome" className="inline-block">
             <h1 className="text-3xl font-display font-bold text-primary mb-2">
               MyQuizz
             </h1>
@@ -124,15 +133,7 @@ export default function Login() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                />
-                <span className="text-sm text-ink">Ghi nhớ đăng nhập</span>
-              </label>
-
+            <div className="flex items-center justify-end">
               <Link
                 to="/forgot-password"
                 className="text-sm text-primary hover:text-primary-hover transition-colors"

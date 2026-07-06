@@ -5,7 +5,8 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, AlertCircle, CheckCircle, ArrowLeft, ChevronLeft } from 'lucide-react'
 import { Button, Input, Card } from '@/components/ui'
-import { authService, forgotPasswordSchema, type ForgotPasswordInput } from '@/services/auth.service'
+import { authService } from '@/services/auth.service'
+import { forgotPasswordSchema, type ForgotPasswordInput } from '@/validators/auth.validator'
 
 export default function ForgotPassword() {
   const [isLoading, setIsLoading] = useState(false)
@@ -48,7 +49,7 @@ export default function ForgotPassword() {
       </a>
       
       <Link
-        to="/"
+        to="/welcome"
         className="fixed top-6 left-6 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -63,7 +64,7 @@ export default function ForgotPassword() {
         id="main-content"
       >
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block">
+          <Link to="/welcome" className="inline-block">
             <h1 className="text-3xl font-display font-bold text-primary mb-2">
               MyQuizz
             </h1>

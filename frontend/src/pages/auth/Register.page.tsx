@@ -5,7 +5,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, User, Phone, AlertCircle, Eye, EyeOff, CheckCircle, ChevronLeft } from 'lucide-react'
 import { Button, Input, Card } from '@/components/ui'
-import { authService, registerSchema, type RegisterInput } from '@/services/auth.service'
+import { authService } from '@/services/auth.service'
+import { registerSchema, type RegisterInput } from '@/validators/auth.validator'
 import { useAuthStore } from '@/stores/auth.store'
 
 export default function Register() {
@@ -49,12 +50,20 @@ export default function Register() {
       const response = await authService.register(finalData)
       setUser(response.user)
       
-      navigate('/app')
-    } catch (error) {
-      if (error instanceof Error) {
+      navigate('/', { replace: true })
+    } catch (error: any) {
+      console.error('Register error:', error)
+      
+      if (error.response?.data?.message) {
+        setErrorMessage(error.response.data.message)
+      } else if (error.response?.status === 409) {
+        setErrorMessage('Email này đã được đăng ký. Vui lòng sử dụng email khác')
+      } else if (error.response?.status === 400) {
+        setErrorMessage('Thông tin đăng ký không hợp lệ. Vui lòng kiểm tra lại')
+      } else if (error.message) {
         setErrorMessage(error.message)
       } else {
-        setErrorMessage('Đăng ký thất bại. Vui lòng thử lại.')
+        setErrorMessage('Đăng ký thất bại. Vui lòng thử lại sau')
       }
     } finally {
       setIsLoading(false)
@@ -68,7 +77,7 @@ export default function Register() {
       </a>
       
       <Link
-        to="/"
+        to="/welcome"
         className="fixed top-6 left-6 inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -83,7 +92,7 @@ export default function Register() {
         id="main-content"
       >
         <div className="text-center mb-8">
-          <Link to="/" className="inline-block">
+          <Link to="/welcome" className="inline-block">
             <h1 className="text-3xl font-display font-bold text-primary mb-2">
               MyQuizz
             </h1>

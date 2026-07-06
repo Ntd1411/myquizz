@@ -31,8 +31,17 @@ apiClient.interceptors.response.use(
         // Retry request gốc - browser sẽ tự động gửi accessToken mới
         return apiClient(originalRequest)
       } catch (refreshError) {
-        // Refresh thất bại, redirect về login
-        window.location.href = '/login'
+        // Refresh thất bại - chỉ redirect nếu đang ở trang protected
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname
+          const publicPaths = ['/welcome', '/login', '/register', '/forgot-password', '/explore', '/game/join']
+          const isPublicPath = publicPaths.some(path => currentPath.startsWith(path))
+          
+          // Chỉ redirect nếu không phải trang public
+          if (!isPublicPath) {
+            window.location.href = '/welcome'
+          }
+        }
         return Promise.reject(refreshError)
       }
     }

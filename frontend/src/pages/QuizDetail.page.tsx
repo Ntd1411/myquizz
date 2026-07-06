@@ -37,8 +37,8 @@ export function QuizDetailPage() {
   }, [quizId])
 
   const handlePlayQuiz = () => {
-    // TODO: Navigate to game page
-    console.log('Play quiz:', quizId)
+    // Navigate to join room page to start a game
+    navigate('/game/join')
   }
 
   if (isLoading) {

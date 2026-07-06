@@ -52,3 +52,22 @@ Thumbs.db
 
 # Optional: Keep docs folder
 docs
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Auth state
+.auth/
+
+# Screenshots và videos
+screenshots/
+videos/
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+.DS_Store

@@ -178,9 +178,11 @@ export default function Landing() {
                 ))}
               </ul>
 
-              <Button size="lg" iconRight={<ArrowRight className="h-5 w-5" />}>
-                Tham gia game
-              </Button>
+              <Link to="/game/join">
+                <Button size="lg" iconRight={<ArrowRight className="h-5 w-5" />}>
+                  Tham gia game
+                </Button>
+              </Link>
             </motion.div>
 
             <motion.div
@@ -262,9 +264,11 @@ export default function Landing() {
                 ))}
               </ul>
 
-              <Button size="lg" variant="secondary" iconRight={<ArrowRight className="h-5 w-5" />}>
-                Tạo quiz đầu tiên
-              </Button>
+              <Link to="/quiz/create">
+                <Button size="lg" variant="secondary" iconRight={<ArrowRight className="h-5 w-5" />}>
+                  Tạo quiz đầu tiên
+                </Button>
+              </Link>
             </motion.div>
           </div>
         </div>
@@ -287,7 +291,7 @@ export default function Landing() {
               Tham gia hàng nghìn người đang học tập và cạnh tranh trên MyQuizz
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/app">
+              <Link to="/register">
                 <Button 
                   size="lg" 
                   className="bg-white text-primary hover:bg-surface"
@@ -296,7 +300,7 @@ export default function Landing() {
                   Bắt đầu miễn phí
                 </Button>
               </Link>
-              <Link to="/app">
+              <Link to="/login">
                 <Button 
                   size="lg" 
                   variant="outline"
@@ -326,9 +330,9 @@ export default function Landing() {
             <div>
               <h4 className="font-semibold mb-4">Sản phẩm</h4>
               <ul className="space-y-2 text-sm text-ink-muted">
-                <li><Link to="/app" className="hover:text-ink">Tạo Quiz</Link></li>
-                <li><Link to="/app" className="hover:text-ink">Chơi Game</Link></li>
-                <li><Link to="/app" className="hover:text-ink">Leaderboard</Link></li>
+                <li><Link to="/quiz/create" className="hover:text-ink">Tạo Quiz</Link></li>
+                <li><Link to="/game/join" className="hover:text-ink">Chơi Game</Link></li>
+                <li><Link to="/explore" className="hover:text-ink">Khám phá Quiz</Link></li>
               </ul>
             </div>
             

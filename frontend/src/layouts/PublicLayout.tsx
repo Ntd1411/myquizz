@@ -1,17 +1,16 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { cn } from '@/utils/cn'
 
-export default function AppLayout() {
+export default function PublicLayout() {
   const location = useLocation()
 
   const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/'
+    if (path === '/welcome') return location.pathname === '/welcome'
     return location.pathname.startsWith(path)
   }
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Skip Link */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[1000] focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-base focus:shadow-lg"
@@ -21,15 +20,15 @@ export default function AppLayout() {
 
       <header className="border-b border-border bg-surface sticky top-0 z-sticky">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="font-display text-xl font-bold text-primary hover:text-primary-hover transition-colors">
+          <Link to="/welcome" className="font-display text-xl font-bold text-primary hover:text-primary-hover transition-colors">
             MyQuizz
           </Link>
           <nav className="flex items-center gap-6" aria-label="Điều hướng chính">
             <Link
-              to="/"
+              to="/welcome"
               className={cn(
                 'text-sm font-medium transition-colors',
-                isActive('/') && !isActive('/explore') && !isActive('/game')
+                isActive('/welcome')
                   ? 'text-ink'
                   : 'text-ink-muted hover:text-ink'
               )}
@@ -51,7 +50,7 @@ export default function AppLayout() {
               to="/game/join"
               className={cn(
                 'text-sm font-medium transition-colors',
-                isActive('/game')
+                isActive('/game/join')
                   ? 'text-ink'
                   : 'text-ink-muted hover:text-ink'
               )}
@@ -61,10 +60,10 @@ export default function AppLayout() {
             <Link
               to="/login"
               className={cn(
-                'text-sm font-medium transition-colors',
-                isActive('/login')
-                  ? 'text-ink'
-                  : 'text-ink-muted hover:text-ink'
+                'px-4 py-2 rounded-base font-medium',
+                'bg-primary text-white',
+                'hover:bg-primary-hover',
+                'transition-all duration-base'
               )}
             >
               Đăng nhập

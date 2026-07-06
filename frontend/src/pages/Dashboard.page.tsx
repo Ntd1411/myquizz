@@ -73,7 +73,7 @@ function QuickActions() {
       icon: Compass,
       label: 'Khám phá',
       description: 'Tìm quiz từ cộng đồng',
-      href: '/browse',
+      href: '/explore',
       variant: 'secondary' as const,
       color: 'accent',
     },
@@ -81,7 +81,7 @@ function QuickActions() {
       icon: LogIn,
       label: 'Tham gia phòng',
       description: 'Nhập mã để vào game',
-      href: '/join',
+      href: '/game/join',
       variant: 'secondary' as const,
       color: 'success',
     },
@@ -351,7 +351,7 @@ function FirstTimeExperience() {
             </Button>
           </Link>
           
-          <Link to="/browse">
+          <Link to="/explore">
             <Button size="lg" variant="outline" iconLeft={<Compass className="h-5 w-5" />}>
               Khám phá quiz
             </Button>
@@ -364,7 +364,7 @@ function FirstTimeExperience() {
           </h3>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-            <div className="flex items-start gap-3">
+            <Link to="/game/join" className="flex items-start gap-3 p-3 rounded-lg hover:bg-surface-hover transition-colors">
               <div className="w-8 h-8 rounded-lg bg-success-subtle flex items-center justify-center flex-shrink-0">
                 <LogIn className="h-4 w-4 text-success" />
               </div>
@@ -376,9 +376,9 @@ function FirstTimeExperience() {
                   Nhập mã để vào game ngay
                 </p>
               </div>
-            </div>
+            </Link>
             
-            <div className="flex items-start gap-3">
+            <Link to="/explore" className="flex items-start gap-3 p-3 rounded-lg hover:bg-surface-hover transition-colors">
               <div className="w-8 h-8 rounded-lg bg-info-subtle flex items-center justify-center flex-shrink-0">
                 <Trophy className="h-4 w-4 text-info" />
               </div>
@@ -390,7 +390,7 @@ function FirstTimeExperience() {
                   Cạnh tranh và cải thiện kỹ năng
                 </p>
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </Card>
