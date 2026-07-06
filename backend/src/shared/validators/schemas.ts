@@ -30,23 +30,23 @@ export const deactivateAccountSchema = z.object({
 
 export const createQuestionSchema = z.object({
   question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
-  question_text: z.string().min(5, 'Question must be at least 5 characters').max(200, 'Question must be at most 200 characters'),
+  question_text: z.string().min(1, 'Question must be at least 1 character').max(200, 'Question must be at most 200 characters'),
   time_limit: z.number().min(0, 'Time limit must be a positive number').default(30),
   question_image: z.url('Must be valid URL').optional(),
   answer_options: z.array(
     z.object({
-      option_text: z.string().min(2, 'Option must be at least 2 characters').max(100, 'Option must be at most 100 characters')
+      option_text: z.string().min(1, 'Option must be at least 1 character').max(100, 'Option must be at most 100 characters')
     })
   ).min(2, 'Question must have at least 2 options').optional(),
   correct_answer: z.union([
     z.object({
-      option_text: z.string().min(2, 'Correct answer must be at least 2 characters').max(100, 'Correct answer must be at most 100 characters'),
+      option_text: z.string().min(1, 'Correct answer must be at least 1 character').max(100, 'Correct answer must be at most 100 characters'),
       hint: z.string().max(200, 'Hint must be at most 200 characters').optional(),
       explanation: z.string().max(500, 'Explanation must be at most 500 characters').optional()
     }),
     z.array(
       z.object({
-        option_text: z.string().min(2, 'Correct answer must be at least 2 characters').max(100, 'Correct answer must be at most 100 characters'),
+        option_text: z.string().min(1, 'Correct answer must be at least 1 character').max(100, 'Correct answer must be at most 100 characters'),
         hint: z.string().max(200, 'Hint must be at most 200 characters').optional(),
         explanation: z.string().max(500, 'Explanation must be at most 500 characters').optional()
       })

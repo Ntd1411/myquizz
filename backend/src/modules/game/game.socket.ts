@@ -57,7 +57,11 @@ export class GameSocket {
 
       socket.emit('game:joined', {
         message: 'Joined room successfully',
-        room: roomName
+        room: roomName,
+        session_id: joinGameResponse.session_id,
+        player_session_id: joinGameResponse.player_session_id,
+        is_host: joinGameResponse.is_host,
+        players: [] // Will be populated by player:joined events
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'An error occurred'
