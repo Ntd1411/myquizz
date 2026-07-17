@@ -26,4 +26,9 @@ export async function testConnection() {
     process.exit(1)
   }
 }
+
+export async function closePool() {
+  await pool.end()
+}
+
 await testConnection()

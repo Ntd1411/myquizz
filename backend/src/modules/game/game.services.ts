@@ -1,9 +1,9 @@
 import { type Question } from '../quiz/quiz.type.js'
 import type { Pool } from 'pg'
 import { GameRepository } from './game.repository.js'
-import { QuizRepository } from '../quiz/quiz.repository.js'
+import { quizRepository } from '../quiz/quiz.repository.js'
 import type {
-  GameResponse,
+  CreateGameResponse,
   JoinGameResponse,
   LeaderboardEntry,
   QuestionData,
@@ -23,16 +23,14 @@ import type { User } from '../../shared/types/shared.types.js'
 
 export class GameService {
   private gameRepository: GameRepository
-  private quizRepository: QuizRepository
 
   constructor(pool: Pool) {
     this.gameRepository = new GameRepository(pool)
-    this.quizRepository = new QuizRepository()
   }
 
-  async createGame(user: User, data: CreateGameRequest): Promise<GameResponse> {
+  async createGame(user: User, data: CreateGameRequest): Promise<CreateGameResponse> {
     // Get quiz by ID
-    const quiz = await this.quizRepository.getQuizById(data.quiz_id)
+    const quiz = await quizRepository.getQuizById(data.quiz_id)
 
     // Check quiz exist
     if (!quiz) {
@@ -74,14 +72,6 @@ export class GameService {
       quiz.questions?.length || 0
     )
 
-    // Create host player session
-    await this.gameRepository.createPlayerSession(
-      sessionId,
-      user.fullname,
-      user.id,
-      true
-    )
-
     return {
       session_id: sessionId,
       session_code: sessionCode,
@@ -112,24 +102,34 @@ export class GameService {
       )
     }
 
-    // Create player session
-    const playerName = sanitizePlayerName(data.player_name)
-
-    if (!playerName) {
-      throw new AppError(400, 'Invalid player name')
+    // Nếu đã đăng nhập thì dùng fullname, không thì dùng player_name
+    let playerName: string
+    if (data.player_id) {
+      // Authenticated user - lấy fullname từ database hoặc data
+      playerName = data.player_name || 'User'
+    } else {
+      // Guest - phải có player_name
+      playerName = sanitizePlayerName(data.player_name)
+      if (!playerName) {
+        throw new AppError(400, 'Invalid player name')
+      }
     }
 
+    // Check if player is the host
+    const isHost = data.player_id === gameSession.session_host
+
+    // Tạo player session mới (không check duplicate nữa vì host không gọi join-room)
     const playerSessionId = await this.gameRepository.createPlayerSession(
       gameSession.id,
       playerName,
       data.player_id || null,
-      false
+      isHost
     )
 
     return {
       player_session_id: playerSessionId,
       player_name: playerName,
-      is_host: false,
+      is_host: isHost,
       game_info: {
         session_id: gameSession.id,
         session_name: gameSession.session_name,
@@ -200,82 +200,131 @@ export class GameService {
 
   async submitAnswer(
     playerSessionId: number,
-    data: { question_id: number; answer_id: number; time_taken: number }
+    data: {
+      question_id: number;
+      answer_id: number | undefined;
+      answer_text: string | undefined;
+      answer_ids: number[] | undefined;
+      time_taken: number;
+    }
   ): Promise<AnswerResult> {
-    const playerSession = await this.gameRepository.getPlayerSession(playerSessionId)
+    const playerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
 
     if (!playerSession) {
       throw new AppError(404, 'Player session not found')
     }
 
-    const gameSession = await this.gameRepository.getGameSessionById(playerSession.game_session_id)
+    const gameSession = await this.gameRepository.getGameSessionById(
+      playerSession.game_session_id
+    )
 
     if (!gameSession) {
       throw new AppError(404, 'Game session not found')
     }
 
-    const snapshotData = await this.gameRepository.getQuizSnapshotById(gameSession.quiz_snapshot_id)
+    const snapshotData = await this.gameRepository.getQuizSnapshotById(
+      gameSession.quiz_snapshot_id
+    )
 
     if (!snapshotData || !snapshotData.questions) {
       throw new AppError(500, 'Question data not found')
     }
 
-    const question = snapshotData.questions.find((q: Question) => q.id === data.question_id)
+    const question = snapshotData.questions.find(
+      (q: Question) => q.id === data.question_id
+    )
 
     if (!question) {
       throw new AppError(404, 'Question not found')
     }
 
     let isCorrect = false
+    let answerId = data.answer_id || -1
 
-    if (Array.isArray(question.correct_answer)) {
-      const correctAnswers = question.correct_answer.map((ans: { option_text: string }) => ans.option_text)
+    // Handle short_answer and long_answer types
+    if (
+      question.question_type === 'short_answer' ||
+      question.question_type === 'long_answer'
+    ) {
+      const answerText = data.answer_text?.trim().toLowerCase() || ''
+      const correctAnswerText =
+        (question.correct_answer as { option_text: string })?.option_text?.trim().toLowerCase() || ''
 
-      const answerOptions = question.answer_options || []
-      const selectedAnswer = answerOptions[data.answer_id]
-
-      if (selectedAnswer) {
-        isCorrect = correctAnswers.includes(selectedAnswer.option_text)
+      if (!answerText) {
+        isCorrect = false
+      } else {
+        isCorrect = answerText === correctAnswerText
       }
+      answerId = isCorrect ? 0 : -1
     } else {
-      const correctAnswerText = question.correct_answer.option_text
+      if (!question.answer_options || question.answer_options.length === 0) {
+        throw new AppError(500, 'Question has no answer options')
+      }
 
-      const answerOptions = question.answer_options || []
-      const selectedAnswer = answerOptions[data.answer_id]
+      // If answer_id is -1, player didn't answer (time ran out)
+      if (data.answer_id === -1) {
+        isCorrect = false
+      } else if (Array.isArray(question.correct_answer)) {
+        // Handle multiple_choice type
+        const correctAnswers = question.correct_answer.map(
+          (ans: { option_text: string }) => ans.option_text
+        )
 
-      if (selectedAnswer) {
-        isCorrect = selectedAnswer.option_text === correctAnswerText
+        const answerOptions = question.answer_options
+        const selectedAnswer = answerOptions[data.answer_id]
+
+        if (selectedAnswer) {
+          isCorrect = correctAnswers.includes(selectedAnswer.option_text)
+        }
+      } else {
+        // Handle multiple_choice type
+        const correctAnswerText = (question.correct_answer as { option_text: string })?.option_text
+
+        const answerOptions = question.answer_options
+        const selectedAnswer = answerOptions[data.answer_id]
+
+        if (selectedAnswer) {
+          isCorrect = selectedAnswer.option_text === correctAnswerText
+        }
       }
     }
 
     const timeLimit = question.time_limit || 30
     const timeTaken = Math.min(data.time_taken, timeLimit * 1000)
-    const scoreEarned = isCorrect ? calculateScore(isCorrect, timeTaken, timeLimit) : 0
+    const scoreEarned = isCorrect
+      ? calculateScore(isCorrect, timeTaken, timeLimit)
+      : 0
 
     const answeredQuestion = {
       question_id: data.question_id,
-      answer_id: data.answer_id,
+      answer_id: answerId,
       is_correct: isCorrect,
       time_taken: timeTaken,
       score_earned: scoreEarned,
       answered_at: new Date()
     }
 
-    await this.gameRepository.updatePlayerAnswer(playerSessionId, answeredQuestion)
+    await this.gameRepository.updatePlayerAnswer(
+      playerSessionId,
+      answeredQuestion
+    )
 
-    const updatedPlayerSession = await this.gameRepository.getPlayerSession(playerSessionId)
+    const updatedPlayerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
 
     return {
       is_correct: isCorrect,
       score_earned: scoreEarned,
-      correct_answer_id: data.answer_id,
+      correct_answer_id: answerId,
       time_taken: timeTaken,
       total_score: updatedPlayerSession?.player_score || 0
     }
   }
 
   async getLeaderboard(sessionId: number): Promise<LeaderboardEntry[]> {
-    const players = await this.gameRepository.getPlayersByGameSession(sessionId)
+    const players =
+      await this.gameRepository.getPlayersByGameSession(sessionId)
 
     const leaderboard = players.map((player) => ({
       player_id: player.id,
@@ -317,7 +366,11 @@ export class GameService {
     }
   }
 
-  async kickPlayer(userId: number, sessionId: number, playerSessionId: number): Promise<PlayerSession> {
+  async kickPlayer(
+    userId: number,
+    sessionId: number,
+    playerSessionId: number
+  ): Promise<PlayerSession> {
     const gameSession = await this.gameRepository.getGameSessionById(sessionId)
 
     if (!gameSession) {
@@ -328,7 +381,8 @@ export class GameService {
       throw new Error('Only the host can kick players')
     }
 
-    const playerSession = await this.gameRepository.getPlayerSession(playerSessionId)
+    const playerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
 
     if (!playerSession) {
       throw new Error('Player not found')
@@ -369,7 +423,7 @@ export class GameService {
 
     let currentQuestion = null
     if (gameSession.session_status === 'active') {
-      const answeredCount = playerSession.answered_questions.length
+      const answeredCount = playerSession.answered_questions?.length || 0
       currentQuestion = await this.getQuestionForGame(
         gameSession.id,
         answeredCount
@@ -381,7 +435,7 @@ export class GameService {
       player_name: playerSession.player_name,
       player_score: playerSession.player_score,
       is_host: playerSession.is_host,
-      answered_count: playerSession.answered_questions.length,
+      answered_count: playerSession.answered_questions?.length || 0,
       correct_count: playerSession.correct_answers_count,
       game_info: {
         session_id: gameSession.id,
@@ -398,17 +452,27 @@ export class GameService {
   async submitAnswerAndGetNext(
     playerSessionId: number,
     userId: number | undefined,
-    data: { question_id: number; answer_id: number; time_taken: number },
+    data: {
+      question_id: number;
+      answer_id: number | undefined;
+      answer_text: string | undefined;
+      answer_ids: number[] | undefined;
+      time_taken: number;
+    },
     sessionId: number
   ) {
-    const playerSession = await this.gameRepository.getPlayerSession(playerSessionId)
+    const playerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
 
     if (!playerSession) {
       throw new AppError(404, 'Player not found')
     }
 
     if (userId && playerSession.player_id !== userId) {
-      throw new AppError(403, 'You do not have permission to answer for this player')
+      throw new AppError(
+        403,
+        'You do not have permission to answer for this player'
+      )
     }
 
     const result = await this.submitAnswer(playerSessionId, data)
@@ -419,20 +483,35 @@ export class GameService {
       throw new AppError(404, 'Session not found')
     }
 
-    const currentQuestionIndex = playerSession.answered_questions.length
+    // Get updated player session after submitting answer
+    const updatedPlayerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
+
+    if (!updatedPlayerSession) {
+      throw new AppError(404, 'Player session not found')
+    }
+
+    const currentQuestionIndex =
+      updatedPlayerSession.answered_questions?.length || 0
     const totalQuestions = gameSession.total_questions
 
     let nextQuestion = null
     let isCompleted = false
 
     if (currentQuestionIndex < totalQuestions) {
-      nextQuestion = await this.getQuestionForGame(sessionId, currentQuestionIndex)
+      nextQuestion = await this.getQuestionForGame(
+        sessionId,
+        currentQuestionIndex
+      )
     } else {
       isCompleted = true
     }
 
-    const allPlayers = await this.gameRepository.getPlayersByGameSession(sessionId)
-    const completedCount = allPlayers.filter(p => p.answered_questions.length >= totalQuestions).length
+    const allPlayers =
+      await this.gameRepository.getPlayersByGameSession(sessionId)
+    const completedCount = allPlayers.filter(
+      (p) => (p.answered_questions?.length || 0) >= totalQuestions
+    ).length
 
     const allCompleted = completedCount === allPlayers.length
     let leaderboard = null
@@ -462,14 +541,18 @@ export class GameService {
     userId: number | undefined,
     sessionId: number
   ) {
-    const playerSession = await this.gameRepository.getPlayerSession(playerSessionId)
+    const playerSession =
+      await this.gameRepository.getPlayerSession(playerSessionId)
 
     if (!playerSession) {
       throw new AppError(404, 'Player not found')
     }
 
     if (userId && playerSession.player_id !== userId) {
-      throw new AppError(403, 'You do not have permission to access this player data')
+      throw new AppError(
+        403,
+        'You do not have permission to access this player data'
+      )
     }
 
     const gameSession = await this.gameRepository.getGameSessionById(sessionId)
@@ -478,7 +561,7 @@ export class GameService {
       throw new AppError(404, 'Session not found')
     }
 
-    const currentQuestionIndex = playerSession.answered_questions.length
+    const currentQuestionIndex = playerSession.answered_questions?.length || 0
     const totalQuestions = gameSession.total_questions
 
     if (currentQuestionIndex >= totalQuestions) {
@@ -490,7 +573,10 @@ export class GameService {
       }
     }
 
-    const currentQuestion = await this.getQuestionForGame(sessionId, currentQuestionIndex)
+    const currentQuestion = await this.getQuestionForGame(
+      sessionId,
+      currentQuestionIndex
+    )
 
     return {
       isCompleted: false,
@@ -498,5 +584,21 @@ export class GameService {
       currentQuestionIndex,
       totalQuestions
     }
+  }
+
+  async getPlayerSessionById(
+    playerSessionId: number
+  ): Promise<PlayerSession | null> {
+    return await this.gameRepository.getPlayerSession(playerSessionId)
+  }
+
+  async getGameSessionById(sessionId: number) {
+    return await this.gameRepository.getGameSessionById(sessionId)
+  }
+
+  async getPlayersByGameSession(
+    gameSessionId: number
+  ): Promise<PlayerSession[]> {
+    return await this.gameRepository.getPlayersByGameSession(gameSessionId)
   }
 }

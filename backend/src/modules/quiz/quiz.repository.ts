@@ -1,11 +1,11 @@
 import { pool } from '../../infrastructure/database/connection.js'
-import type { UpdateQuizRequest } from '../../shared/validators/schemas.js'
+import type { CreateQuestionRequest, CreateQuizRequest, UpdateQuizRequest } from './quiz.schemas.js'
 import type { Question, Quiz } from './quiz.type.js'
 
 export class QuizRepository {
   async insertQuiz(
     userId: number,
-    quizData: Omit<Quiz, 'id' | 'quiz_owner' | 'created_at' | 'updated_at' | 'deleted_at' | 'questions'>
+    quizData: Omit<CreateQuizRequest, 'questions'>
   ): Promise<Quiz | null> {
     const result = await pool.query<Quiz>(
       `INSERT INTO quizzes (quiz_owner, quiz_name, quiz_description, 
@@ -24,9 +24,16 @@ export class QuizRepository {
     return result.rows[0] || null
   }
 
-  async insertQuestions(quizId: number, questions: Question[]): Promise<Question[]> {
+  async insertQuestions(quizId: number, questions: CreateQuestionRequest[]): Promise<Question[]> {
     const insertedQuestions: Question[] = []
     for (const question of questions) {
+      let answer_id: number = 0
+      let answerOptions: { id: number; option_text: string }[] | undefined = undefined
+      if (question.answer_options) {
+        answerOptions = question.answer_options.map((option) => {
+          return { id: answer_id++, option_text: option }
+        })
+      }
       const result = await pool.query<Question>(
         `INSERT INTO questions (quiz_id, question_type, question_text, time_limit, 
         question_image, answer_options, correct_answer) 
@@ -37,7 +44,7 @@ export class QuizRepository {
           question.question_text,
           question.time_limit,
           question.question_image,
-          JSON.stringify(question.answer_options),
+          JSON.stringify(answerOptions),
           JSON.stringify(question.correct_answer)
         ]
       )

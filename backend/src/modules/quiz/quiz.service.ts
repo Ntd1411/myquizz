@@ -1,10 +1,11 @@
 import type { PaginatedResponse, Quiz } from './quiz.type.js'
 import { quizRepository } from './quiz.repository.js'
 import { AppError } from '../../shared/errors/AppError.js'
+import type { CreateQuizRequest } from './quiz.schemas.js'
 
 export async function createQuizService(
   userId: number,
-  quiz: Quiz
+  quiz: CreateQuizRequest
 ): Promise<Quiz> {
   // Validate questions
   const { questions, ...quizData } = quiz

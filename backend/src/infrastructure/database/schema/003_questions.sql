@@ -4,6 +4,7 @@ create table questions (
   question_type varchar(50) not null check (question_type in ('multiple_choice', 'multiple_select', 'short_answer', 'long_answer')),
   question_text varchar(255) not null,
   question_image varchar(255),
+  time_limit int not null default 30,
   answer_options jsonb,
   correct_answer jsonb not null,
   deleted_at timestamp with time zone default null,

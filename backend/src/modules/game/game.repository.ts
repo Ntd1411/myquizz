@@ -187,13 +187,26 @@ export class GameRepository {
     await this.pool.query(query, [playerSessionId])
   }
 
+  async findPlayerSessionByUserAndGame(
+    gameSessionId: number,
+    playerId: number
+  ): Promise<PlayerSession | null> {
+    const query = `
+      SELECT * FROM player_sessions 
+      WHERE game_session_id = $1 AND player_id = $2 AND deleted_at IS NULL
+      LIMIT 1
+    `
+    const result = await this.pool.query<PlayerSession>(query, [gameSessionId, playerId])
+    return result.rows[0] || null
+  }
+
   async getGameSessionWithQuizInfo(sessionId: number) {
     const query = `
       SELECT 
         gs.*,
         qs.quiz_id,
-        q.title as quiz_title,
-        q.description as quiz_description
+        q.quiz_name,
+        q.quiz_description
       FROM game_sessions gs
       JOIN quiz_snapshots qs ON gs.quiz_snapshot_id = qs.id
       JOIN quizzes q ON qs.quiz_id = q.id
@@ -210,7 +223,7 @@ export class GameRepository {
       WHERE id = $1
     `
 
-    const result = await this.pool.query<Quiz>(query, [snapshotId])
-    return result.rows[0] || null
+    const result = await this.pool.query<{ snapshot_data: Quiz }>(query, [snapshotId])
+    return result.rows[0]?.snapshot_data || null
   }
 }

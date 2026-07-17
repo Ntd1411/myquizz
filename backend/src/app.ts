@@ -11,6 +11,8 @@ import { userRouter } from './modules/user/user.routes.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
 import { gameRouter } from './modules/game/game.routes.js'
 import { GameSocket } from './modules/game/game.socket.js'
+import swaggerUi from 'swagger-ui-express'
+import { swaggerSpec } from './swagger/swagger.config.js'
 
 const port = env.PORT
 await runMigrations()
@@ -47,6 +49,11 @@ app.use(cookieParser())
 app.get('/', (req, res) => {
   res.send('Hello, world')
 })
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'MyQuizz API Documentation'
+}))
 
 const router = express.Router()
 router.use('/auth', authRouter)

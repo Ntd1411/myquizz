@@ -44,7 +44,7 @@ export async function registerService(
     throw new AppError(500, 'Failed to create user')
   }
 
-  const { password: _, ...userData } = user
+  const { password: _pw, deleted_at: _deletedAt, ...userData } = user
 
   return userData
 }
@@ -87,7 +87,7 @@ export async function loginService(
     new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue))
   )
 
-  const { password: _, ...userData } = user
+  const { password: _pw, deleted_at: _deletedAt, ...userData } = user
 
   return { user: userData, ...tokens }
 }

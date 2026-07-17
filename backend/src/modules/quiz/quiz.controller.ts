@@ -2,6 +2,7 @@ import type { Response, NextFunction } from 'express'
 import type { AuthRequest } from '../../shared/types/shared.types.js'
 import type { Quiz } from './quiz.type.js'
 import * as quizService from './quiz.service.js'
+import type { CreateQuizRequest } from './quiz.schemas.js'
 
 export async function createQuiz(
   req: AuthRequest,
@@ -11,7 +12,7 @@ export async function createQuiz(
   try {
     const userId = req.user?.id as number
 
-    const quiz = req.body as Quiz
+    const quiz = req.body as CreateQuizRequest
 
     const createdQuiz = await quizService.createQuizService(userId, quiz)
 

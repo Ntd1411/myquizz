@@ -16,7 +16,7 @@ export function getMe(
   next: NextFunction
 ) {
   try {
-    const { password: _, ...userWithoutPassword } = req.user as User
+    const { password: _pw, deleted_at: _da, ...userWithoutPassword } = req.user as User
 
     res.json(userWithoutPassword)
   } catch (error) {

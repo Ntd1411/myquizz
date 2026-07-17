@@ -65,7 +65,7 @@ export interface SubmitAnswerRequest {
   time_taken: number;
 }
 
-export interface GameResponse {
+export interface CreateGameResponse {
   session_id: number;
   session_code: string;
   session_name: string;
