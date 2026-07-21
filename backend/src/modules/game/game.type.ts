@@ -77,7 +77,6 @@ export interface CreateGameResponse {
 export interface JoinGameResponse {
   player_session_id: number;
   player_name: string;
-  is_host: boolean;
   game_info: {
     session_id: number;
     session_name: string;

@@ -1,11 +1,11 @@
 import { Router } from 'express'
-import { GameController } from './game.controller.js'
+import * as gameController from './game.controller.js'
 import { authMiddleware } from '../auth/auth.middleware.js'
 import { validateBody } from '../../shared/validators/validator.js'
 import { createGameSchema } from './game.schemas.js'
+import { optionalAuthMiddleware } from '../../shared/middlewares/optional.auth.js'
 
 export const gameRouter: Router = Router()
-const gameController = new GameController()
 
 /**
  * @swagger
@@ -76,6 +76,8 @@ const gameController = new GameController()
  *         description: Không tìm thấy quiz
  */
 gameRouter.post('/', authMiddleware, validateBody(createGameSchema), gameController.createGame)
+
+gameRouter.post('/join/:session_code', optionalAuthMiddleware, gameController.joinGame)
 
 /**
  * @swagger

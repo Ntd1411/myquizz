@@ -1,17 +1,15 @@
 import type { Server } from 'socket.io'
-import { GameService } from './game.services.js'
-import { pool } from '../../infrastructure/database/connection.js'
+import * as gameService from './game.services.js'
 import { optionalSocketAuthMiddleware } from './socket.middleware.js'
-import type { AuthSocket, PlayerSession } from './game.type.js'
-import type { JoinGameRequest } from './game.schemas.js'
+import type { AuthSocket } from './game.type.js'
 
 export class GameSocket {
   private io: Server
-  private gameService: GameService
+  private gameService: typeof gameService
 
   constructor(io: Server) {
     this.io = io
-    this.gameService = new GameService(pool)
+    this.gameService = gameService
     this.initialize()
   }
 
@@ -24,7 +22,6 @@ export class GameSocket {
       console.log(`Socket connected: ${socket.id}${socket.user ? ` - User: ${socket.user.fullname}` : ' - Guest'}`)
 
       socket.on('game:join-room', this.handleJoinRoom(socket))
-      socket.on('game:join-room-only', this.handleJoinRoomOnly(socket))
       socket.on('game:start', this.handleStartGame(socket))
       socket.on('answer:submit-and-next', this.handleSubmitAnswerAndNext(socket))
       socket.on('question:get-current', this.handleGetCurrentQuestion(socket))
@@ -36,75 +33,46 @@ export class GameSocket {
     })
   }
 
-  private handleJoinRoomOnly = (socket: AuthSocket) => async (data: {
+  private handleJoinRoom = (socket: AuthSocket) => async (data: {
     sessionCode: string
     playerSessionId: number
+    isHost: boolean
   }) => {
     try {
-      const roomName = `game:${data.sessionCode}`
-      await socket.join(roomName)
-
-      // Store player_session_id in socket data
-      if (!socket.data) {
-        socket.data = {}
-      }
-      (socket.data as { player_session_id?: number }).player_session_id = data.playerSessionId
-
-      console.log(`Host joined room ${roomName} with player_session_id: ${data.playerSessionId}`)
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An error occurred'
-      socket.emit('error', { message })
-    }
-  }
-
-  private handleJoinRoom = (socket: AuthSocket) => async (data: { sessionCode: string; data: JoinGameRequest }) => {
-    try {
-      const joinGameResponse = await this.gameService.joinGame(data.sessionCode, data.data)
-
-      // Check if authenticated user is trying to join with a different player_id
-      if (socket.user && data.data.player_id && data.data.player_id !== socket.user.id) {
-        socket.emit('error', { message: 'You do not have permission to join with this player_id' })
+      // Authenticated user must be the host if isHost is true
+      if (data.isHost && !socket.user?.id) {
+        socket.emit('error', { message: 'Host must be authenticated' })
         return
       }
 
+      // Verify that the player session belongs to the authenticated user if isHost is true
+      if (data.isHost && socket.user?.id) {
+        const playerSession = await this.gameService.getPlayerSessionById(data.playerSessionId)
+        if (!playerSession || playerSession.player_id !== socket.user.id) {
+          socket.emit('error', { message: 'Invalid host credentials' })
+          return
+        }
+      }
+
       const roomName = `game:${data.sessionCode}`
       await socket.join(roomName)
 
-      // Store player_session_id in socket data for later use (e.g., kick player)
+      // Store player_session_id và isHost into socket data
       if (!socket.data) {
         socket.data = {}
       }
-      (socket.data as { player_session_id?: number }).player_session_id = joinGameResponse.player_session_id
 
-      // Get current players in room
-      const players: PlayerSession[] = await this.gameService.getPlayersByGameSession(
-        joinGameResponse.game_info.session_id
-      )
-      const playersList = players.map((p: PlayerSession) => ({
-        player_id: p.id,
-        player_name: p.player_name,
-        is_host: p.is_host,
-        player_score: p.player_score
-      }))
+      const socketData = socket.data as { player_session_id?: number; isHost?: boolean }
+      socketData.player_session_id = data.playerSessionId
+      socketData.isHost = data.isHost
 
-      // Emit to current player với full players list
-      socket.emit('game:joined', {
+      console.log(`${data.isHost ? 'Host' : 'Player'} joined room ${roomName} with player_session_id: ${data.playerSessionId}`)
+
+      socket.emit('room:joined', {
         message: 'Joined room successfully',
         room: roomName,
-        session_id: joinGameResponse.game_info.session_id,
-        player_session_id: joinGameResponse.player_session_id,
-        is_host: joinGameResponse.is_host,
-        players: playersList
-      })
-
-      // Broadcast to others (excluding current player) that someone joined
-      socket.to(roomName).emit('player:joined', {
-        player: {
-          player_id: joinGameResponse.player_session_id,
-          player_name: joinGameResponse.player_name,
-          is_host: joinGameResponse.is_host,
-          player_score: 0
-        }
+        playerSessionId: data.playerSessionId,
+        isHost: data.isHost
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'An error occurred'

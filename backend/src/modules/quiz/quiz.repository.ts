@@ -1,3 +1,4 @@
+import CacheService from '../../infrastructure/cache/cache.service.js'
 import { pool } from '../../infrastructure/database/connection.js'
 import type { CreateQuestionRequest, CreateQuizRequest, UpdateQuizRequest } from './quiz.schemas.js'
 import type { Question, Quiz } from './quiz.type.js'
@@ -80,30 +81,36 @@ export class QuizRepository {
   }
 
   async getQuizById(quizId: number): Promise<Quiz | null> {
-    const quiz = await pool.query<Quiz>(
-      `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
+    return CacheService.getOrSet(
+      `quiz:${quizId}`,
+      async () => {
+        const quiz = await pool.query<Quiz>(
+          `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
       quiz_image, quiz_category, is_public, created_at, updated_at
       FROM quizzes
       WHERE id = $1 AND deleted_at IS NULL`,
-      [quizId]
-    )
+          [quizId]
+        )
 
-    if (!quiz.rows[0]) {
-      return null
-    }
+        if (!quiz.rows[0]) {
+          return null
+        }
 
-    const questions = await pool.query<Question>(
-      `SELECT id, quiz_id, question_type, question_text, question_image, 
+        const questions = await pool.query<Question>(
+          `SELECT id, quiz_id, question_type, question_text, question_image, 
       answer_options, correct_answer, created_at, updated_at
       FROM questions
       WHERE quiz_id = $1 AND deleted_at IS NULL`,
-      [quizId]
+          [quizId]
+        )
+
+        const quizData = quiz.rows[0]
+        quizData.questions = questions.rows
+
+        return quizData
+      },
+      3600
     )
-
-    const quizData = quiz.rows[0]
-    quizData.questions = questions.rows
-
-    return quizData
   }
 
   async updateQuizMetadata(
