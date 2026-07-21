@@ -13,9 +13,19 @@ import { gameRouter } from './modules/game/game.routes.js'
 import { GameSocket } from './modules/game/game.socket.js'
 import swaggerUi from 'swagger-ui-express'
 import { swaggerSpec } from './swagger/swagger.config.js'
+import { redisClient } from './infrastructure/cache/redis.client.js'
 
 const port = env.PORT
 await runMigrations()
+
+// Kiểm tra kết nối Redis
+try {
+  await redisClient.ping()
+  console.log('Redis connected successfully')
+} catch (error) {
+  console.error('Redis connection failed:', error)
+  process.exit(1)
+}
 
 const app = express()
 const httpServer = createServer(app)
