@@ -26,7 +26,8 @@ const envSchema = z.object({
   SPACES_SECRET_KEY: z.string(),
   SPACES_BUCKET: z.string(),
   SPACES_REGION: z.string(),
-  SPACES_ENDPOINT: z.string()
+  SPACES_ENDPOINT: z.string(),
+  SPACES_PUBLIC_URL: z.string()
 })
 
 const envParsed = envSchema.safeParse(process.env)

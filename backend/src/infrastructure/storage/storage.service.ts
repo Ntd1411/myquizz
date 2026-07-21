@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand
 } from '@aws-sdk/client-s3'
-import { digitalOceanConfig } from '../config/storage.js'
+import { storageConfig } from '../config/storage.js'
 import { v4 as uuidv4 } from 'uuid'
 import type {} from 'multer'
 import { AppError } from '../../shared/errors/AppError.js'
@@ -15,11 +15,11 @@ export class DigitalOceanStorageService implements IStorageService {
 
   constructor() {
     this.client = new S3Client({
-      endpoint: digitalOceanConfig.endpoint,
-      region: digitalOceanConfig.region,
-      credentials: digitalOceanConfig.credentials
+      endpoint: storageConfig.endpoint,
+      region: storageConfig.region,
+      credentials: storageConfig.credentials
     })
-    this.bucketName = digitalOceanConfig.bucket
+    this.bucketName = storageConfig.bucket
   }
 
   async upload(file: Express.Multer.File, path: string): Promise<string> {
@@ -54,7 +54,8 @@ export class DigitalOceanStorageService implements IStorageService {
   }
 
   private getPublicUrl(key: string): string {
-    return `${digitalOceanConfig.endpoint}/${this.bucketName}/${key}`
+    const publicUrl = storageConfig.publicUrl || `${storageConfig.endpoint}/${this.bucketName}`
+    return `${publicUrl}/${key}`
   }
 
   private extractKeyFromUrl(fileUrl: string): string | undefined {
