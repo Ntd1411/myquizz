@@ -1,14 +1,23 @@
 FROM node:20-alpine AS builder
 WORKDIR /myquizz
-COPY package*.json ./
-RUN npm ci
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 FROM node:20-alpine
 WORKDIR /myquizz
-COPY package*.json ./
-RUN npm ci --production
+
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
+
 COPY --from=builder /myquizz/dist ./dist
 COPY --from=builder /myquizz/src/infrastructure/database ./dist/infrastructure/database
+
 CMD [ "node", "./dist/app.js" ]
