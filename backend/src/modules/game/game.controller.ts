@@ -98,96 +98,96 @@ export async function getQuestion(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-export async function getLeaderboard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const sessionId = parseInt(req.params.session_id as string)
+// export async function getLeaderboard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+//   try {
+//     const sessionId = parseInt(req.params.session_id as string)
 
-    if (isNaN(sessionId)) {
-      res.status(400).json({ message: 'session_id is invalid' })
-      return
-    }
+//     if (isNaN(sessionId)) {
+//       res.status(400).json({ message: 'session_id is invalid' })
+//       return
+//     }
 
-    const result = await gameService.getLeaderboard(sessionId)
+//     const result = await gameService.getLeaderboard(sessionId)
 
-    res.status(200).json({
-      data: result
-    })
-  } catch (error) {
-    next(error)
-  }
-}
+//     res.status(200).json({
+//       data: result
+//     })
+//   } catch (error) {
+//     next(error)
+//   }
+// }
 
-export async function finishGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const userId = req.user?.id
-    const sessionId = parseInt(req.params.session_id as string)
+// export async function finishGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+//   try {
+//     const userId = req.user?.id
+//     const sessionId = parseInt(req.params.session_id as string)
 
-    if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' })
-      return
-    }
+//     if (!userId) {
+//       res.status(401).json({ message: 'Unauthorized' })
+//       return
+//     }
 
-    if (isNaN(sessionId)) {
-      res.status(400).json({ message: 'session_id is invalid' })
-      return
-    }
+//     if (isNaN(sessionId)) {
+//       res.status(400).json({ message: 'session_id is invalid' })
+//       return
+//     }
 
-    const result = await gameService.finishGame(sessionId, userId)
+//     const result = await gameService.finishGame(sessionId, userId)
 
-    res.status(200).json({
-      message: 'Game finished successfully',
-      data: result
-    })
-  } catch (error) {
-    next(error)
-  }
-}
+//     res.status(200).json({
+//       message: 'Game finished successfully',
+//       data: result
+//     })
+//   } catch (error) {
+//     next(error)
+//   }
+// }
 
-export async function getGameSession(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const sessionId = parseInt(req.params.session_id as string)
+// export async function getGameSession(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+//   try {
+//     const sessionId = parseInt(req.params.session_id as string)
 
-    if (isNaN(sessionId)) {
-      res.status(400).json({ message: 'session_id is invalid' })
-      return
-    }
+//     if (isNaN(sessionId)) {
+//       res.status(400).json({ message: 'session_id is invalid' })
+//       return
+//     }
 
-    const result = await gameService.getGameSession(sessionId)
+//     const result = await gameService.getGameSession(sessionId)
 
-    if (!result) {
-      res.status(404).json({ message: 'Game session not found' })
-      return
-    }
+//     if (!result) {
+//       res.status(404).json({ message: 'Game session not found' })
+//       return
+//     }
 
-    res.status(200).json({
-      data: result
-    })
-  } catch (error) {
-    next(error)
-  }
-}
+//     res.status(200).json({
+//       data: result
+//     })
+//   } catch (error) {
+//     next(error)
+//   }
+// }
 
-export async function reconnect(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const playerSessionId = parseInt(req.params.player_session_id as string)
+// export async function reconnect(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+//   try {
+//     const playerSessionId = parseInt(req.params.player_session_id as string)
 
-    if (isNaN(playerSessionId)) {
-      res.status(400).json({ message: 'player_session_id is invalid' })
-      return
-    }
+//     if (isNaN(playerSessionId)) {
+//       res.status(400).json({ message: 'player_session_id is invalid' })
+//       return
+//     }
 
-    const result = await gameService.reconnect(playerSessionId)
+//     const result = await gameService.reconnect(playerSessionId)
 
-    if (!result) {
-      res.status(404).json({ message: 'Player session not found or game ended' })
-      return
-    }
+//     if (!result) {
+//       res.status(404).json({ message: 'Player session not found or game ended' })
+//       return
+//     }
 
-    res.status(200).json({
-      message: 'Reconnected successfully',
-      data: result
-    })
-  } catch (error) {
-    next(error)
-  }
-}
+//     res.status(200).json({
+//       message: 'Reconnected successfully',
+//       data: result
+//     })
+//   } catch (error) {
+//     next(error)
+//   }
+// }

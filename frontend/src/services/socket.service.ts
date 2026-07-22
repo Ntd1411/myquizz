@@ -12,13 +12,14 @@ export interface Player {
 
 export interface Question {
   question_id: number
-  text: string
-  type: string
+  question_text: string
+  question_type: string
   time_limit: number
   answers: {
-    id: number
-    text: string
+    answer_text: string
   }[]
+  current_question: number
+  total_questions: number
 }
 
 export interface AnswerResult {
@@ -124,15 +125,20 @@ class SocketService {
     })
   }
 
-  startGame(sessionId: number) {
+  startGame(sessionId: number, playerSessionId?: number) {
     if (!this.socket) throw new Error('Socket not connected')
-    this.socket.emit('game:start', { session_id: sessionId })
+    this.socket.emit('game:start', { 
+      session_id: sessionId,
+      player_session_id: playerSessionId 
+    })
   }
 
   submitAnswer(data: {
     player_session_id: number
     question_id: number
-    answer_id: number
+    answer_id?: number
+    answer_text?: string
+    answer_ids?: number[]
     time_taken: number
     session_id: number
   }) {
@@ -148,9 +154,26 @@ class SocketService {
     })
   }
 
-  kickPlayer(sessionId: number, playerSessionId: number) {
+  kickPlayer(sessionId: number, playerSessionId: number, hostPlayerSessionId?: number) {
     if (!this.socket) throw new Error('Socket not connected')
     this.socket.emit('player:kick', {
+      session_id: sessionId,
+      player_session_id: playerSessionId,
+      host_player_session_id: hostPlayerSessionId
+    })
+  }
+
+  nextQuestion(sessionId: number, playerSessionId: number) {
+    if (!this.socket) throw new Error('Socket not connected')
+    this.socket.emit('game:next-question', {
+      session_id: sessionId,
+      player_session_id: playerSessionId
+    })
+  }
+
+  endGame(sessionId: number, playerSessionId: number) {
+    if (!this.socket) throw new Error('Socket not connected')
+    this.socket.emit('game:end', {
       session_id: sessionId,
       player_session_id: playerSessionId
     })
@@ -206,6 +229,28 @@ class SocketService {
 
   onPlayerKickedSelf(callback: (data: { message: string }) => void) {
     this.socket?.on('player:kicked-self', callback)
+  }
+
+  onPlayerAnswered(callback: (data: { 
+    player_session_id: number
+    score: number
+    is_correct: boolean
+  }) => void) {
+    this.socket?.on('player:answered', callback)
+  }
+
+  onQuestionUpdate(callback: (data: { 
+    question: any
+    question_number: number
+  }) => void) {
+    this.socket?.on('question:update', callback)
+  }
+
+  onGameEnded(callback: (data: { 
+    message: string
+    results: any
+  }) => void) {
+    this.socket?.on('game:ended', callback)
   }
 
   onError(callback: (data: { message: string }) => void) {

@@ -1,16 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Play, Clock, Globe, Users, BookOpen, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Play, Clock, Globe, Users, BookOpen, AlertCircle, Loader2 } from 'lucide-react'
 import { quizService, type Quiz } from '@/services/quiz.service'
+import { gameService } from '@/services/game.service'
+import { socketService } from '@/services/socket.service'
+import { useAuthStore } from '@/stores/auth.store'
 import type { Question } from '@/types/quiz.types'
 import { cn } from '@/utils/cn'
 
 export function QuizDetailPage() {
   const { quizId } = useParams<{ quizId: string }>()
   const navigate = useNavigate()
+  const { user, isAuthenticated } = useAuthStore()
   const [quiz, setQuiz] = useState<Quiz | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isCreatingGame, setIsCreatingGame] = useState(false)
+  const [createGameError, setCreateGameError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!quizId) return
@@ -40,6 +46,84 @@ export function QuizDetailPage() {
   const handlePlayQuiz = () => {
     // Navigate to join room page to start a game
     navigate('/game/join')
+  }
+
+  const handleCreateGame = async () => {
+    if (!quiz || !quizId || !isAuthenticated) {
+      setCreateGameError('Bạn cần đăng nhập để tạo phòng chơi')
+      return
+    }
+
+    if (quiz.questions.length === 0) {
+      setCreateGameError('Quiz phải có ít nhất 1 câu hỏi')
+      return
+    }
+
+    setIsCreatingGame(true)
+    setCreateGameError(null)
+
+    try {
+      // Tạo game session qua API
+      const gameResponse = await gameService.createGame({
+        quiz_id: parseInt(quizId),
+        session_name: `${quiz.quiz_name} - ${new Date().toLocaleDateString('vi-VN')}`
+      })
+
+      // Connect socket nếu chưa connect
+      let socket = socketService.getSocket()
+      if (!socket || !socket.connected) {
+        socket = socketService.connect()
+        // Đợi socket connect
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Socket connection timeout'))
+          }, 5000)
+
+          if (socket?.connected) {
+            clearTimeout(timeout)
+            resolve()
+          } else {
+            socket?.once('connect', () => {
+              clearTimeout(timeout)
+              resolve()
+            })
+            socket?.once('connect_error', () => {
+              clearTimeout(timeout)
+              reject(new Error('Socket connection failed'))
+            })
+          }
+        })
+      }
+
+      // Navigate trực tiếp đến waiting room với thông tin từ API
+      // KHÔNG gọi joinRoom vì backend đã tạo player_session cho host rồi
+      navigate(`/game/waiting/${gameResponse.session_code}`, {
+        state: {
+          playerName: user?.fullname || 'Host',
+          roomCode: gameResponse.session_code,
+          sessionId: gameResponse.session_id,
+          playerSessionId: gameResponse.host_player_session_id,
+          isHost: true,
+          isCreator: true // Flag để biết đây là người tạo game
+        }
+      })
+
+    } catch (err: any) {
+      console.error('Error creating game:', err)
+      
+      if (err.message?.includes('timeout') || err.message?.includes('Timeout')) {
+        setCreateGameError('Không thể kết nối với server. Vui lòng thử lại.')
+      } else if (err.message?.includes('Socket connection')) {
+        setCreateGameError('Lỗi kết nối socket. Vui lòng kiểm tra kết nối mạng.')
+      } else if (err.response?.status === 404) {
+        setCreateGameError('Quiz không tồn tại')
+      } else if (err.response?.status === 403) {
+        setCreateGameError('Bạn không có quyền tạo game với quiz này')
+      } else {
+        setCreateGameError(err.response?.data?.message || 'Không thể tạo phòng chơi. Vui lòng thử lại.')
+      }
+      setIsCreatingGame(false)
+    }
   }
 
   if (isLoading) {
@@ -201,21 +285,77 @@ export function QuizDetailPage() {
           </div>
         )}
 
-        {/* Play Button */}
+        {/* Action Buttons */}
         <div className="mb-12">
-          <button
-            onClick={handlePlayQuiz}
-            className={cn(
-              'flex items-center gap-3 px-8 py-4 bg-primary text-white font-semibold rounded-base text-lg',
-              'transition-all duration-base',
-              'hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-lg',
-              'focus:outline-none focus:ring-4 focus:ring-primary/30',
-              'active:translate-y-0'
+          {/* Error Message */}
+          {createGameError && (
+            <div 
+              className="mb-4 flex items-start gap-3 p-4 bg-danger-subtle border border-danger-border rounded-base"
+              role="alert"
+            >
+              <AlertCircle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-sm text-danger">{createGameError}</p>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Primary Action - Tạo phòng chơi */}
+            {isAuthenticated && (
+              <button
+                onClick={handleCreateGame}
+                disabled={isCreatingGame || questionCount === 0}
+                className={cn(
+                  'flex items-center justify-center gap-3 px-8 py-4 bg-primary text-white font-semibold rounded-base text-lg',
+                  'transition-all duration-base',
+                  'hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-lg',
+                  'focus:outline-none focus:ring-4 focus:ring-primary/30',
+                  'active:translate-y-0',
+                  'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none'
+                )}
+                aria-label={isCreatingGame ? 'Đang tạo phòng chơi' : 'Tạo phòng chơi'}
+              >
+                {isCreatingGame ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" aria-hidden="true" />
+                    <span>Đang tạo phòng...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-6 h-6" aria-hidden="true" />
+                    <span>Tạo phòng chơi</span>
+                  </>
+                )}
+              </button>
             )}
-          >
-            <Play className="w-6 h-6" aria-hidden="true" />
-            <span>Chơi quiz này</span>
-          </button>
+
+            {/* Secondary Action - Join với mã */}
+            <button
+              onClick={handlePlayQuiz}
+              className={cn(
+                'flex items-center justify-center gap-3 px-8 py-4 bg-surface text-ink font-semibold rounded-base text-lg border-2 border-border',
+                'transition-all duration-base',
+                'hover:bg-surface-hover hover:border-primary/50',
+                'focus:outline-none focus:ring-4 focus:ring-primary/30',
+                isAuthenticated ? '' : 'flex-1'
+              )}
+            >
+              <Users className="w-6 h-6" aria-hidden="true" />
+              <span>Tham gia với mã</span>
+            </button>
+          </div>
+
+          {/* Help Text */}
+          {questionCount === 0 && isAuthenticated && (
+            <p className="mt-3 text-sm text-ink-muted">
+              Quiz cần có ít nhất 1 câu hỏi để tạo phòng chơi
+            </p>
+          )}
+          
+          {!isAuthenticated && (
+            <p className="mt-3 text-sm text-ink-muted">
+              <Link to="/auth/login" className="text-primary hover:underline">Đăng nhập</Link> để tạo phòng chơi của riêng bạn
+            </p>
+          )}
         </div>
 
         {/* Questions Preview */}

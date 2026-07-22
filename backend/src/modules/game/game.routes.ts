@@ -136,7 +136,7 @@ gameRouter.post('/join/:session_code', optionalAuthMiddleware, gameController.jo
  *       404:
  *         description: Không tìm thấy player session hoặc game đã kết thúc
  */
-gameRouter.get('/player/:player_session_id/reconnect', gameController.reconnect)
+// gameRouter.get('/player/:player_session_id/reconnect', gameController.reconnect)
 
 /**
  * @swagger
@@ -177,7 +177,7 @@ gameRouter.get('/player/:player_session_id/reconnect', gameController.reconnect)
  *       404:
  *         description: Không tìm thấy game session
  */
-gameRouter.get('/:session_id/leaderboard', gameController.getLeaderboard)
+// gameRouter.get('/:session_id/leaderboard', gameController.getLeaderboard)
 
 /**
  * @swagger
@@ -253,4 +253,4 @@ gameRouter.get('/:session_id/leaderboard', gameController.getLeaderboard)
  *       404:
  *         description: Không tìm thấy game session
  */
-gameRouter.get('/:session_id', gameController.getGameSession)
+// gameRouter.get('/:session_id', gameController.getGameSession)

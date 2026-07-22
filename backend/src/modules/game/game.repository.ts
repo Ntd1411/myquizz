@@ -30,14 +30,14 @@ export async function createGameSession(
   sessionCode: string,
   sessionHost: number,
   totalQuestions: number
-): Promise<number> {
+): Promise<GameSession | undefined> {
   const query = `
       INSERT INTO game_sessions (
         quiz_snapshot_id, session_name, session_code, 
         session_host, total_questions, session_status
       )
       VALUES ($1, $2, $3, $4, $5, 'waiting')
-      RETURNING id
+      RETURNING *
     `
 
   const result = await pool.query<GameSession>(query, [
@@ -48,7 +48,7 @@ export async function createGameSession(
     totalQuestions
   ])
 
-  return result.rows[0]?.id ? result.rows[0]?.id : 0
+  return result.rows[0]
 }
 
 export async function getGameSessionByCode(
@@ -92,13 +92,13 @@ export async function createPlayerSession(
   gameSessionId: number,
   playerName: string,
   playerId: number | null
-): Promise<number> {
+): Promise<PlayerSession | undefined> {
   const query = `
       INSERT INTO player_sessions (
         game_session_id, player_name, player_id
       )
       VALUES ($1, $2, $3)
-      RETURNING id
+      RETURNING *
     `
 
   const result = await pool.query<PlayerSession>(query, [
@@ -107,7 +107,7 @@ export async function createPlayerSession(
     playerId
   ])
 
-  return result.rows[0]?.id ? result.rows[0]?.id : 0
+  return result.rows[0]
 }
 
 export async function getPlayerSession(
@@ -254,4 +254,27 @@ export async function getQuizSnapshotById(
 
   const result = await pool.query<{ snapshot_data: Quiz }>(query, [snapshotId])
   return result.rows[0]?.snapshot_data || null
+}
+
+export async function getAllActiveSessions(): Promise<GameSession[]> {
+  const query = `
+      SELECT * FROM game_sessions
+      WHERE session_status IN ('waiting', 'active')
+      ORDER BY created_at DESC
+    `
+
+  const result = await pool.query<GameSession>(query)
+  return result.rows
+}
+
+export async function getFinishedGamesBefore(cutoffDate: Date): Promise<GameSession[]> {
+  const query = `
+      SELECT * FROM game_sessions
+      WHERE session_status = 'finished' 
+      AND updated_at < $1
+      ORDER BY updated_at ASC
+    `
+
+  const result = await pool.query<GameSession>(query, [cutoffDate])
+  return result.rows
 }

@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Hash, Loader2, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 import { socketService } from '@/services/socket.service'
+import { useAuthStore } from '@/stores/auth.store'
 import { cn } from '@/utils/cn'
 
 export function JoinRoomPage() {
   const navigate = useNavigate()
+  const { user, isAuthenticated } = useAuthStore()
   const [roomCode, setRoomCode] = useState('')
   const [playerName, setPlayerName] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
@@ -30,14 +32,21 @@ export function JoinRoomPage() {
     // Listen for successful join
     socketService.onGameJoined((data) => {
       console.log('Joined room:', data)
+      
+      // Dùng fullname nếu đã login, nếu không thì dùng playerName đã nhập
+      const finalPlayerName = isAuthenticated && user?.fullname 
+        ? user.fullname 
+        : playerName
+
       // Navigate to waiting room with room code and session info
       navigate(`/game/waiting/${roomCode}`, {
         state: {
-          playerName,
+          playerName: finalPlayerName,
           roomCode,
           sessionId: data.session_id,
           playerSessionId: data.player_session_id,
-          isHost: data.is_host
+          isHost: data.is_host,
+          players: data.players || []
         }
       })
     })
@@ -63,7 +72,12 @@ export function JoinRoomPage() {
       return
     }
 
-    if (!playerName.trim()) {
+    // Nếu chưa đăng nhập thì bắt buộc nhập tên
+    const finalPlayerName = isAuthenticated && user?.fullname 
+      ? user.fullname 
+      : playerName.trim()
+
+    if (!finalPlayerName) {
       setError('Vui lòng nhập tên của bạn')
       return
     }
@@ -76,7 +90,9 @@ export function JoinRoomPage() {
     setIsConnecting(true)
 
     try {
-      socketService.joinRoom(roomCode.trim().toUpperCase(), playerName.trim())
+      // Nếu đã đăng nhập thì gửi kèm user_id
+      const userId = isAuthenticated && user?.user_id ? parseInt(user.user_id) : undefined
+      socketService.joinRoom(roomCode.trim().toUpperCase(), finalPlayerName, userId)
       // Navigation will happen in onGameJoined listener
     } catch (err) {
       console.error('Join room error:', err)
@@ -156,31 +172,41 @@ export function JoinRoomPage() {
               <p className="mt-2 text-xs text-ink-muted">Mã phòng gồm 6 ký tự</p>
             </div>
 
-            {/* Player Name Input */}
-            <div>
-              <label htmlFor="playerName" className="block text-sm font-medium text-ink mb-2">
-                Tên của bạn
-              </label>
-              <input
-                id="playerName"
-                type="text"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="Nhập tên hiển thị"
-                maxLength={50}
-                className={cn(
-                  'w-full px-4 py-3 bg-bg border rounded-base',
-                  'text-base',
-                  'transition-all duration-base',
-                  'placeholder:text-ink-muted',
-                  error && !playerName.trim()
-                    ? 'border-danger focus:border-danger focus:ring-4 focus:ring-danger/10'
-                    : 'border-border hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/10',
-                  'focus:outline-none'
-                )}
-                disabled={isConnecting}
-              />
-            </div>
+            {/* Player Name Input - Chỉ hiển thị nếu chưa đăng nhập */}
+            {!isAuthenticated && (
+              <div>
+                <label htmlFor="playerName" className="block text-sm font-medium text-ink mb-2">
+                  Tên của bạn
+                </label>
+                <input
+                  id="playerName"
+                  type="text"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Nhập tên hiển thị"
+                  maxLength={50}
+                  className={cn(
+                    'w-full px-4 py-3 bg-bg border rounded-base',
+                    'text-base',
+                    'transition-all duration-base',
+                    'placeholder:text-ink-muted',
+                    error && !playerName.trim()
+                      ? 'border-danger focus:border-danger focus:ring-4 focus:ring-danger/10'
+                      : 'border-border hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/10',
+                    'focus:outline-none'
+                  )}
+                  disabled={isConnecting}
+                />
+              </div>
+            )}
+
+            {/* Hiển thị tên nếu đã đăng nhập */}
+            {isAuthenticated && user?.fullname && (
+              <div className="p-4 bg-primary-subtle border border-primary-border rounded-base">
+                <p className="text-sm text-ink-muted mb-1">Tham gia với tên</p>
+                <p className="text-lg font-medium text-ink">{user.fullname}</p>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

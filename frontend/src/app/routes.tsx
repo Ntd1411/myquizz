@@ -22,6 +22,7 @@ const QuizDetailPage = lazy(() => import('@/pages/QuizDetail.page').then(m => ({
 const JoinRoomPage = lazy(() => import('@/pages/JoinRoom.page').then(m => ({ default: m.JoinRoomPage })))
 const WaitingRoomPage = lazy(() => import('@/pages/WaitingRoom.page').then(m => ({ default: m.WaitingRoomPage })))
 const QuizPlayPage = lazy(() => import('@/pages/QuizPlay.page').then(m => ({ default: m.QuizPlayPage })))
+const GameMonitorPage = lazy(() => import('@/pages/GameMonitor.page').then(m => ({ default: m.GameMonitorPage })))
 const ResultPage = lazy(() => import('@/pages/Result.page').then(m => ({ default: m.ResultPage })))
 const QuizBuilderPage = lazy(() => import('@/pages/QuizBuilder.page').then(m => ({ default: m.QuizBuilderPage })))
 
@@ -178,6 +179,16 @@ const router = createBrowserRouter([
               <ErrorBoundary>
                 <Suspense fallback={<PageLoader />}>
                   <QuizPlayPage />
+                </Suspense>
+              </ErrorBoundary>
+            ),
+          },
+          {
+            path: 'game/monitor/:roomCode',
+            element: (
+              <ErrorBoundary>
+                <Suspense fallback={<PageLoader />}>
+                  <GameMonitorPage />
                 </Suspense>
               </ErrorBoundary>
             ),

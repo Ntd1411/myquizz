@@ -27,6 +27,8 @@ export interface GameSession {
   total_players: number;
   total_questions: number;
   session_status: GameStatus;
+  started_at: Date | null;
+  finished_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -41,11 +43,11 @@ export interface PlayerSession {
   id: number;
   game_session_id: number;
   player_id?: number;
+  player_guest_id?: number;
   player_name: string;
   player_score: number;
-  is_host: boolean;
   answered_questions: AnsweredQuestion[];
-  correct_answers_count: number;
+  current_question_index: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -65,25 +67,10 @@ export interface SubmitAnswerRequest {
   time_taken: number;
 }
 
-export interface CreateGameResponse {
-  session_id: number;
-  session_code: string;
-  session_name: string;
-  quiz_title: string;
-  total_questions: number;
-  status: GameStatus;
-}
-
 export interface JoinGameResponse {
   player_session_id: number;
   player_name: string;
-  game_info: {
-    session_id: number;
-    session_name: string;
-    total_questions: number;
-    total_players: number;
-    status: GameStatus;
-  };
+  game_info: GameSession;
 }
 
 export interface LeaderboardEntry {

@@ -1,17 +1,9 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
-import { cn } from '@/utils/cn'
+import { Outlet } from 'react-router-dom'
+import { Header } from '@/components/layout/Header'
 
 export default function AppLayout() {
-  const location = useLocation()
-
-  const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/'
-    return location.pathname.startsWith(path)
-  }
-
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Skip Link */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[1000] focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-base focus:shadow-lg"
@@ -19,69 +11,18 @@ export default function AppLayout() {
         Chuyển đến nội dung chính
       </a>
 
-      <header className="border-b border-border bg-surface sticky top-0 z-sticky">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="font-display text-xl font-bold text-primary hover:text-primary-hover transition-colors">
-            MyQuizz
-          </Link>
-          <nav className="flex items-center gap-6" aria-label="Điều hướng chính">
-            <Link
-              to="/"
-              className={cn(
-                'text-sm font-medium transition-colors',
-                isActive('/') && !isActive('/explore') && !isActive('/game')
-                  ? 'text-ink'
-                  : 'text-ink-muted hover:text-ink'
-              )}
-            >
-              Trang chủ
-            </Link>
-            <Link
-              to="/explore"
-              className={cn(
-                'text-sm font-medium transition-colors',
-                isActive('/explore')
-                  ? 'text-ink'
-                  : 'text-ink-muted hover:text-ink'
-              )}
-            >
-              Khám phá
-            </Link>
-            <Link
-              to="/game/join"
-              className={cn(
-                'text-sm font-medium transition-colors',
-                isActive('/game')
-                  ? 'text-ink'
-                  : 'text-ink-muted hover:text-ink'
-              )}
-            >
-              Chơi Game
-            </Link>
-            <Link
-              to="/login"
-              className={cn(
-                'text-sm font-medium transition-colors',
-                isActive('/login')
-                  ? 'text-ink'
-                  : 'text-ink-muted hover:text-ink'
-              )}
-            >
-              Đăng nhập
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <Header variant="default" />
 
       <main id="main-content" className="flex-1">
         <Outlet />
       </main>
 
       <footer className="border-t border-border bg-surface py-8">
-        <div className="container mx-auto px-4 text-center text-ink-muted text-sm">
-          © 2026 MyQuizz. All rights reserved.
+        <div className="container mx-auto px-4 text-center text-sm text-ink-muted">
+          <p>2026 MyQuizz. Tất cả quyền được bảo lưu.</p>
         </div>
       </footer>
     </div>
   )
 }
+

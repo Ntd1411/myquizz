@@ -10,7 +10,7 @@ import cookieParser from 'cookie-parser'
 import { userRouter } from './modules/user/user.routes.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
 import { gameRouter } from './modules/game/game.routes.js'
-import { GameSocket } from './modules/game/game.socket.js'
+// import { GameSocket } from './modules/game/game.socket.js'
 import swaggerUi from 'swagger-ui-express'
 import { swaggerSpec } from './swagger/swagger.config.js'
 import { redisClient } from './infrastructure/cache/redis.client.js'
@@ -71,7 +71,7 @@ router.use('/users', userRouter)
 router.use('/quizzes', quizRouter)
 router.use('/games', gameRouter)
 
-new GameSocket(io)
+// new GameSocket(io)
 
 app.use('/api/v1', router)
 app.use(errorHandler)

@@ -10,7 +10,11 @@ export class CacheService {
   /**
    * Lưu giá trị vào cache
    */
-  static async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+  static async set(
+    key: string,
+    value: unknown,
+    ttlSeconds?: number
+  ): Promise<void> {
     const stringValue = JSON.stringify(value)
     const ttl = ttlSeconds || this.DEFAULT_TTL
 
@@ -121,11 +125,56 @@ export class CacheService {
   }
 
   /**
-   * Lưu hash object
+   * Lưu một field vào hash
    */
-  static async setHash(key: string, field: string, value: unknown): Promise<void> {
+  static async setHash(
+    key: string,
+    field: string,
+    value: unknown
+  ): Promise<void> {
     const stringValue = JSON.stringify(value)
     await this.client.hset(key, field, stringValue)
+  }
+
+  /**
+   * Lưu nhiều fields vào hash cùng lúc
+   */
+  static async setHashMultiple(
+    key: string,
+    data: Record<string, unknown>,
+    ttlSeconds?: number
+  ): Promise<void> {
+    const flatData: Record<string, string> = {}
+
+    for (const [field, value] of Object.entries(data)) {
+      flatData[field] =
+        typeof value === 'string' ? value : JSON.stringify(value)
+    }
+
+    await this.client.hset(key, flatData)
+
+    if (ttlSeconds) {
+      await this.client.expire(key, ttlSeconds)
+    }
+  }
+
+  /**
+   * Tăng giá trị số trong hash
+   */
+  static async incrementHash(
+    key: string,
+    field: string,
+    amount: number = 1
+  ): Promise<number> {
+    return await this.client.hincrby(key, field, amount)
+  }
+
+  /**
+   * Kiểm tra field có tồn tại trong hash không
+   */
+  static async hashFieldExists(key: string, field: string): Promise<boolean> {
+    const result = await this.client.hexists(key, field)
+    return result === 1
   }
 
   /**
@@ -160,8 +209,87 @@ export class CacheService {
   /**
    * Xóa field khỏi hash
    */
-  static async deleteHashField(key: string, ...fields: string[]): Promise<void> {
+  static async deleteHashField(
+    key: string,
+    ...fields: string[]
+  ): Promise<void> {
     await this.client.hdel(key, ...fields)
+  }
+
+  /**
+   * Thêm vào sorted set
+   */
+  static async addToSortedSet(
+    key: string,
+    score: number,
+    member: string
+  ): Promise<void> {
+    await this.client.zadd(key, score, member)
+  }
+
+  /**
+   * Tăng score trong sorted set
+   */
+  static async incrementSortedSet(
+    key: string,
+    member: string,
+    increment: number
+  ): Promise<string> {
+    return await this.client.zincrby(key, increment, member)
+  }
+
+  /**
+   * Lấy top N members từ sorted set (điểm cao nhất)
+   */
+  static async getTopFromSortedSet(
+    key: string,
+    start: number = 0,
+    stop: number = -1,
+    withScores: boolean = false
+  ): Promise<string[]> {
+    if (withScores) {
+      return await this.client.zrevrange(key, start, stop, 'WITHSCORES')
+    }
+    return await this.client.zrevrange(key, start, stop)
+  }
+
+  /**
+   * Lấy rank của member trong sorted set (0-based, cao nhất = 0)
+   */
+  static async getRankInSortedSet(
+    key: string,
+    member: string
+  ): Promise<number | null> {
+    const rank = await this.client.zrevrank(key, member)
+    return rank
+  }
+
+  /**
+   * Lấy score của member trong sorted set
+   */
+  static async getScoreInSortedSet(
+    key: string,
+    member: string
+  ): Promise<number | null> {
+    const score = await this.client.zscore(key, member)
+    return score !== null ? parseFloat(score) : null
+  }
+
+  /**
+   * Xóa member khỏi sorted set
+   */
+  static async removeFromSortedSet(
+    key: string,
+    ...members: string[]
+  ): Promise<void> {
+    await this.client.zrem(key, ...members)
+  }
+
+  /**
+   * Đếm số lượng members trong sorted set
+   */
+  static async countSortedSet(key: string): Promise<number> {
+    return await this.client.zcard(key)
   }
 
   /**

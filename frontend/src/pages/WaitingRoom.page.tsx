@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { Users, Crown, Loader2, Play, AlertCircle, Wifi, WifiOff, UserX } from 'lucide-react'
 import { socketService, type Player } from '@/services/socket.service'
@@ -12,26 +12,92 @@ export function WaitingRoomPage() {
   const [isStarting, setIsStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSocketConnected, setIsSocketConnected] = useState(false)
+  const [actualSessionId, setActualSessionId] = useState<number | null>(null)
+  const [actualPlayerSessionId, setActualPlayerSessionId] = useState<number | null>(null)
 
   const playerName = location.state?.playerName || 'Unknown'
   const isHost = location.state?.isHost || false
   const sessionId = location.state?.sessionId || null
   const playerSessionId = location.state?.playerSessionId || null
+  const isCreator = location.state?.isCreator || false // Flag để biết đây là host tạo game
+  const initialPlayers = location.state?.players || [] // Players từ game:joined event
+  
+  // Memoize initial player (chỉ host creator mới dùng)
+  const initialPlayer = useMemo(() => {
+    if (isCreator && playerSessionId && playerName) {
+      return {
+        player_id: playerSessionId,
+        player_name: playerName,
+        is_host: true,
+        player_score: 0
+      }
+    }
+    return null
+  }, [isCreator, playerSessionId, playerName])
+
+  // Initialize players once on mount
+  useEffect(() => {
+    if (initialPlayer) {
+      setPlayers([initialPlayer])
+    } else if (initialPlayers && initialPlayers.length > 0) {
+      setPlayers(initialPlayers)
+    }
+  }, []) // Chỉ chạy 1 lần khi mount
 
   useEffect(() => {
-    const socket = socketService.getSocket()
-    if (!socket || !socket.connected) {
-      setError('Mất kết nối. Đang thử kết nối lại...')
+    // Kiểm tra nếu thiếu dữ liệu quan trọng (do reload page)
+    if (!roomCode || !playerName) {
+      setError('Phiên làm việc đã hết hạn. Vui lòng tham gia lại.')
+      setTimeout(() => {
+        navigate('/game/join')
+      }, 2000)
       return
     }
 
-    setIsSocketConnected(true)
+    const socket = socketService.getSocket()
+    if (!socket || !socket.connected) {
+      setError('Mất kết nối. Đang thử kết nối lại...')
+      // Try to reconnect
+      socketService.connect()
+    }
+
+    setIsSocketConnected(socket?.connected || false)
+
+    // Nếu là host creator, chỉ cần join socket room (không gọi game:join-room vì đã có player_session)
+    if (isCreator && roomCode && playerSessionId && socket?.connected) {
+      console.log('Host joining socket room:', roomCode)
+      socket.emit('game:join-room-only', {
+        sessionCode: roomCode,
+        playerSessionId: playerSessionId
+      })
+    }
+
+    // Lắng nghe game:joined (backup case nếu chưa có players)
+    socketService.onGameJoined((data) => {
+      console.log('Game joined event:', data)
+      setActualSessionId(data.session_id)
+      setActualPlayerSessionId(data.player_session_id)
+      
+      // Chỉ set players nếu chưa có
+      setPlayers((prev) => {
+        if (prev.length === 0 && data.players && data.players.length > 0) {
+          return data.players
+        }
+        return prev
+      })
+    })
 
     // Listen for players joining
     socketService.onPlayerJoined((data) => {
+      console.log('Player joined event:', data)
       setPlayers((prev) => {
+        // Kiểm tra duplicate
         const exists = prev.find(p => p.player_id === data.player.player_id)
-        if (exists) return prev
+        if (exists) {
+          console.log('Player already exists, skipping')
+          return prev
+        }
+        console.log('Adding new player to list')
         return [...prev, data.player]
       })
     })
@@ -39,15 +105,28 @@ export function WaitingRoomPage() {
     // Listen for game start
     socketService.onGameStarted((data) => {
       console.log('Game started:', data)
-      navigate(`/game/play/${roomCode}`, {
-        state: {
-          playerName,
-          roomCode,
-          sessionId,
-          playerSessionId,
-          firstQuestion: data.question
-        }
-      })
+      
+      // Host vào trang monitor, players khác vào trang play
+      if (isHost) {
+        navigate(`/game/monitor/${roomCode}`, {
+          state: {
+            playerName,
+            roomCode,
+            sessionId,
+            playerSessionId
+          }
+        })
+      } else {
+        navigate(`/game/play/${roomCode}`, {
+          state: {
+            playerName,
+            roomCode,
+            sessionId,
+            playerSessionId,
+            firstQuestion: data.question
+          }
+        })
+      }
     })
 
     // Listen for player kicked
@@ -74,21 +153,34 @@ export function WaitingRoomPage() {
       setIsSocketConnected(connected)
       if (!connected) {
         setError('Mất kết nối. Đang thử kết nối lại...')
+      } else {
+        setError(null)
+        // KHÔNG tự động rejoin vì sẽ tạo player mới
+        // User cần refresh hoặc join lại manually
       }
     })
 
     return () => {
       socketService.off('player:joined')
       socketService.off('game:started')
+      socketService.off('game:joined')
       socketService.off('player:kicked')
       socketService.off('player:kicked-self')
       socketService.off('error')
     }
-  }, [navigate, roomCode, playerName, sessionId])
+  }, [navigate, roomCode, playerName, sessionId, isCreator, playerSessionId])
 
   const handleStartGame = () => {
-    if (!sessionId) {
+    const finalSessionId = actualSessionId || sessionId
+    const finalPlayerSessionId = actualPlayerSessionId || playerSessionId
+    
+    if (!finalSessionId) {
       setError('Không tìm thấy session ID')
+      return
+    }
+
+    if (!finalPlayerSessionId) {
+      setError('Không tìm thấy player session ID. Vui lòng thử lại.')
       return
     }
 
@@ -96,7 +188,7 @@ export function WaitingRoomPage() {
     setError(null)
 
     try {
-      socketService.startGame(sessionId)
+      socketService.startGame(finalSessionId, finalPlayerSessionId)
     } catch (err) {
       console.error('Start game error:', err)
       setError('Không thể bắt đầu game. Vui lòng thử lại.')
@@ -105,11 +197,18 @@ export function WaitingRoomPage() {
   }
 
   const handleKickPlayer = (playerId: number) => {
-    if (!sessionId) return
+    const finalSessionId = actualSessionId || sessionId
+    const finalPlayerSessionId = actualPlayerSessionId || playerSessionId
+    
+    if (!finalSessionId || !finalPlayerSessionId) {
+      setError('Không tìm thấy session ID hoặc player session ID')
+      return
+    }
     
     try {
+      console.log('Kicking player:', { finalSessionId, playerId, finalPlayerSessionId })
       // playerId here is actually player_session_id from backend
-      socketService.kickPlayer(sessionId, playerId)
+      socketService.kickPlayer(finalSessionId, playerId, finalPlayerSessionId)
     } catch (err) {
       console.error('Kick player error:', err)
       setError('Không thể kick người chơi')

@@ -10,10 +10,11 @@ export function QuizPlayPage() {
   const location = useLocation()
 
   const [question, setQuestion] = useState<Question | null>(location.state?.firstQuestion || null)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [totalQuestions, setTotalQuestions] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(location.state?.firstQuestion?.current_question || 1)
+  const [totalQuestions, setTotalQuestions] = useState(location.state?.firstQuestion?.total_questions || 0)
   const [timeLeft, setTimeLeft] = useState(0)
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]) // For multiple choice
+  const [shortAnswerText, setShortAnswerText] = useState('') // For short answer
   const [answerResult, setAnswerResult] = useState<AnswerResult | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +32,8 @@ export function QuizPlayPage() {
     if (question) {
       setTimeLeft(question.time_limit)
       questionStartTime.current = Date.now()
-      setSelectedAnswer(null)
+      setSelectedAnswers([])
+      setShortAnswerText('')
       setAnswerResult(null)
       setIsSubmitting(false)
     }
@@ -50,8 +52,22 @@ export function QuizPlayPage() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           // Auto submit when time runs out
-          if (selectedAnswer !== null && !isSubmitting) {
-            handleSubmitAnswer(selectedAnswer)
+          if (!isSubmitting && !answerResult && question) {
+            if (question.question_type === 'short_answer' || question.question_type === 'long_answer') {
+              // Submit short/long answer text
+              if (shortAnswerText.trim()) {
+                handleSubmitAnswer(undefined, shortAnswerText)
+              } else {
+                handleSubmitAnswer(-1) // No answer
+              }
+            } else if (question.question_type === 'multiple_choice') {
+              // Submit selected answers
+              if (selectedAnswers.length > 0) {
+                handleSubmitAnswer(undefined, undefined, selectedAnswers)
+              } else {
+                handleSubmitAnswer(-1) // No answer
+              }
+            }
           }
           return 0
         }
@@ -64,7 +80,7 @@ export function QuizPlayPage() {
         clearInterval(timerRef.current)
       }
     }
-  }, [timeLeft, answerResult, isCompleted, selectedAnswer, isSubmitting])
+  }, [timeLeft, answerResult, isCompleted, isSubmitting, question, shortAnswerText, selectedAnswers])
 
   // Socket listeners
   useEffect(() => {
@@ -77,8 +93,8 @@ export function QuizPlayPage() {
     // Listen for next question
     socketService.onNextQuestion((data) => {
       setQuestion(data.question)
-      setCurrentIndex(data.current_index)
-      setTotalQuestions(data.total_questions)
+      setCurrentIndex(data.question.current_question)
+      setTotalQuestions(data.question.total_questions)
     })
 
     // Listen for completion
@@ -110,7 +126,7 @@ export function QuizPlayPage() {
     }
   }, [navigate, roomCode, playerName, sessionId])
 
-  const handleSubmitAnswer = (answerId: number) => {
+  const handleSubmitAnswer = (answerId?: number, answerText?: string, answerIds?: number[]) => {
     if (isSubmitting || answerResult || !question) return
 
     const timeTaken = Math.floor((Date.now() - questionStartTime.current) / 1000)
@@ -122,6 +138,8 @@ export function QuizPlayPage() {
         player_session_id: playerSessionId,
         question_id: question.question_id,
         answer_id: answerId,
+        answer_text: answerText,
+        answer_ids: answerIds,
         time_taken: timeTaken,
         session_id: sessionId
       })
@@ -133,10 +151,26 @@ export function QuizPlayPage() {
   }
 
   const handleAnswerClick = (answerId: number) => {
-    if (answerResult || isSubmitting || timeLeft <= 0) return
+    if (answerResult || isSubmitting || timeLeft <= 0 || !question) return
     
-    setSelectedAnswer(answerId)
-    handleSubmitAnswer(answerId)
+    if (question.question_type === 'multiple_choice') {
+      // Multiple choice: toggle selection
+      if (selectedAnswers.includes(answerId)) {
+        setSelectedAnswers(selectedAnswers.filter(id => id !== answerId))
+      } else {
+        setSelectedAnswers([...selectedAnswers, answerId])
+      }
+    }
+  }
+
+  const handleSubmitMultipleChoice = () => {
+    if (selectedAnswers.length === 0) return
+    handleSubmitAnswer(undefined, undefined, selectedAnswers)
+  }
+
+  const handleSubmitShortAnswer = () => {
+    if (!shortAnswerText.trim()) return
+    handleSubmitAnswer(undefined, shortAnswerText)
   }
 
   if (!question) {
@@ -224,64 +258,124 @@ export function QuizPlayPage() {
         {/* Question */}
         <div className="bg-surface border border-border rounded-lg p-8 mb-8 text-center">
           <h2 className="text-2xl font-semibold text-ink leading-snug">
-            {question.text}
+            {question.question_text}
           </h2>
         </div>
 
         {/* Answers */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {question.answers.map((answer, index) => {
-            const isSelected = selectedAnswer === answer.id
-            const isCorrect = answerResult?.correct_answer_id === answer.id
-            const isWrong = isSelected && answerResult && !answerResult.is_correct
-            const showResult = answerResult !== null
-
-            return (
+        {question.question_type === 'short_answer' ? (
+          /* Short Answer Input */
+          <div className="max-w-2xl mx-auto">
+            <textarea
+              value={shortAnswerText}
+              onChange={(e) => setShortAnswerText(e.target.value)}
+              disabled={answerResult !== null || isSubmitting || timeLeft <= 0}
+              placeholder="Nhập câu trả lời của bạn..."
+              className={cn(
+                'w-full p-4 border-2 rounded-lg resize-none',
+                'focus:outline-none focus:ring-4 focus:ring-primary/20',
+                'transition-all duration-base',
+                answerResult === null && 'border-border bg-surface hover:border-primary',
+                answerResult !== null && (answerResult.is_correct ? 'border-success bg-success-subtle' : 'border-danger bg-danger-subtle'),
+                (isSubmitting || timeLeft <= 0) && 'cursor-not-allowed opacity-60'
+              )}
+              rows={4}
+            />
+            
+            {!answerResult && (
               <button
-                key={answer.id}
-                onClick={() => handleAnswerClick(answer.id)}
-                disabled={showResult || isSubmitting || timeLeft <= 0}
+                onClick={handleSubmitShortAnswer}
+                disabled={!shortAnswerText.trim() || isSubmitting || timeLeft <= 0}
                 className={cn(
-                  'relative p-6 rounded-lg border-2 text-left',
+                  'mt-4 w-full px-6 py-3 rounded-lg font-semibold',
                   'transition-all duration-base',
-                  'focus:outline-none focus:ring-4',
-                  !showResult && !isSubmitting && timeLeft > 0 && cn(
-                    'hover:border-primary hover:bg-surface-hover hover:-translate-y-1 hover:shadow-lg',
-                    isSelected ? 'border-primary bg-primary-subtle' : 'border-border bg-surface'
-                  ),
-                  showResult && isCorrect && 'border-success bg-success-subtle',
-                  showResult && isWrong && 'border-danger bg-danger-subtle',
-                  showResult && !isCorrect && !isSelected && 'border-border bg-surface opacity-60',
-                  (isSubmitting || timeLeft <= 0) && 'cursor-not-allowed opacity-60'
+                  'focus:outline-none focus:ring-4 focus:ring-primary/20',
+                  !shortAnswerText.trim() || isSubmitting || timeLeft <= 0
+                    ? 'bg-ink/10 text-ink-muted cursor-not-allowed'
+                    : 'bg-primary text-white hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-lg'
                 )}
               >
-                {/* Answer Letter */}
-                <div className={cn(
-                  'absolute -top-3 -left-3 w-8 h-8 rounded-full flex items-center justify-center',
-                  'font-semibold text-sm border-2',
-                  !showResult && (isSelected ? 'bg-primary text-white border-primary' : 'bg-surface text-ink-muted border-border'),
-                  showResult && isCorrect && 'bg-success text-white border-success',
-                  showResult && isWrong && 'bg-danger text-white border-danger'
-                )}>
-                  {String.fromCharCode(65 + index)}
-                </div>
-
-                {/* Answer Text */}
-                <p className="text-lg text-ink font-medium pl-4">
-                  {answer.text}
-                </p>
-
-                {/* Result Icons */}
-                {showResult && isCorrect && (
-                  <CheckCircle2 className="absolute top-4 right-4 w-6 h-6 text-success" aria-label="Đúng" />
-                )}
-                {showResult && isWrong && (
-                  <XCircle className="absolute top-4 right-4 w-6 h-6 text-danger" aria-label="Sai" />
-                )}
+                {isSubmitting ? 'Đang gửi...' : 'Gửi câu trả lời'}
               </button>
-            )
-          })}
-        </div>
+            )}
+          </div>
+        ) : (
+          /* Multiple Choice Answers */
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {question.answers.map((answer, index) => {
+                const isSelected = selectedAnswers.includes(index)
+                const isCorrect = answerResult?.correct_answer_id === index
+                const isWrong = isSelected && answerResult && !answerResult.is_correct
+                const showResult = answerResult !== null
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleAnswerClick(index)}
+                    disabled={showResult || isSubmitting || timeLeft <= 0}
+                    className={cn(
+                      'relative p-6 rounded-lg border-2 text-left',
+                      'transition-all duration-base',
+                      'focus:outline-none focus:ring-4',
+                      !showResult && !isSubmitting && timeLeft > 0 && cn(
+                        'hover:border-primary hover:bg-surface-hover hover:-translate-y-1 hover:shadow-lg',
+                        isSelected ? 'border-primary bg-primary-subtle' : 'border-border bg-surface'
+                      ),
+                      showResult && isCorrect && 'border-success bg-success-subtle',
+                      showResult && isWrong && 'border-danger bg-danger-subtle',
+                      showResult && !isCorrect && !isSelected && 'border-border bg-surface opacity-60',
+                      (isSubmitting || timeLeft <= 0) && 'cursor-not-allowed opacity-60'
+                    )}
+                  >
+                    {/* Checkbox for multiple selection */}
+                    <div className={cn(
+                      'absolute -top-3 -left-3 w-8 h-8 rounded-md flex items-center justify-center',
+                      'font-semibold text-sm border-2',
+                      !showResult && (isSelected ? 'bg-primary text-white border-primary' : 'bg-surface text-ink-muted border-border'),
+                      showResult && isCorrect && 'bg-success text-white border-success',
+                      showResult && isWrong && 'bg-danger text-white border-danger'
+                    )}>
+                      {isSelected && !showResult && '✓'}
+                      {String.fromCharCode(65 + index)}
+                    </div>
+
+                    {/* Answer Text */}
+                    <p className="text-lg text-ink font-medium pl-4">
+                      {answer.answer_text}
+                    </p>
+
+                    {/* Result Icons */}
+                    {showResult && isCorrect && (
+                      <CheckCircle2 className="absolute top-4 right-4 w-6 h-6 text-success" aria-label="Đúng" />
+                    )}
+                    {showResult && isWrong && (
+                      <XCircle className="absolute top-4 right-4 w-6 h-6 text-danger" aria-label="Sai" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            
+            {/* Submit Button for Multiple Choice */}
+            {!answerResult && (
+              <button
+                onClick={handleSubmitMultipleChoice}
+                disabled={selectedAnswers.length === 0 || isSubmitting || timeLeft <= 0}
+                className={cn(
+                  'w-full px-6 py-3 rounded-lg font-semibold',
+                  'transition-all duration-base',
+                  'focus:outline-none focus:ring-4 focus:ring-primary/20',
+                  selectedAnswers.length === 0 || isSubmitting || timeLeft <= 0
+                    ? 'bg-ink/10 text-ink-muted cursor-not-allowed'
+                    : 'bg-primary text-white hover:bg-primary-hover hover:-translate-y-0.5 hover:shadow-lg'
+                )}
+              >
+                {isSubmitting ? 'Đang gửi...' : `Gửi câu trả lời (${selectedAnswers.length} đáp án)`}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Result Feedback */}
         {answerResult && (

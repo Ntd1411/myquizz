@@ -7,7 +7,8 @@ export const createGameSchema = z.object({
 
 export const joinGameSchema = z.object({
   player_name: z.string().min(2).max(50),
-  player_id: z.number().positive().optional()
+  player_id: z.number().positive().optional(),
+  player_guest_id: z.number().positive().optional()
 })
 
 export const submitAnswerSchema = z.object({
