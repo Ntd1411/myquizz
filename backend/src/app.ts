@@ -29,7 +29,7 @@ try {
 
 const app = express()
 const httpServer = createServer(app)
-const io = new Server(httpServer, {
+const _io = new Server(httpServer, {
   cors: {
     origin: [env.FRONTEND_URL, ...env.ALLOW_ORIGIN.split(',').map((o) => o.trim())],
     credentials: true
@@ -60,12 +60,11 @@ app.get('/', (req, res) => {
   res.send('Hello, world')
 })
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+const router = express.Router()
+router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'MyQuizz API Documentation'
 }))
-
-const router = express.Router()
 router.use('/auth', authRouter)
 router.use('/users', userRouter)
 router.use('/quizzes', quizRouter)
