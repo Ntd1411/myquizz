@@ -1,4 +1,4 @@
-import type { GameConfig } from '../game.config.schema.js'
+import type { GameConfig } from '../game.schemas.js'
 
 export interface AnswerContext {
   isCorrect: boolean

@@ -106,7 +106,7 @@ export const getLeaderboard = async (gameId: number, limit = 100) =>
 
     const rows = await redis.hmget(key.players(gameId), ...ids)
     return ids.map((id, i) => {
-      const p = rows[i] ? (JSON.parse(rows[i] as string) as PlayerSessionRow) : null
+      const p = rows[i] ? (JSON.parse(rows[i]) as PlayerSessionRow) : null
       return {
         rank: i + 1,
         id: Number(id),
@@ -159,7 +159,7 @@ export const getAnswerStats = async (gameId: number, qIndex: number) =>
       correct: answers.filter((a) => a.isCorrect).length,
       distribution
     }
-  }, { total: 0, correct: 0, distribution: {} as Record<string, number> })
+  }, { total: 0, correct: 0, distribution: {} })
 
 // cleanup: call after game:ended, after flush Postgres
 export const clearGame = async (session: GameSessionRow) =>

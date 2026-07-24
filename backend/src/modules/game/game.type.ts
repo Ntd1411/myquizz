@@ -39,6 +39,21 @@ export interface AuthSocket extends Socket {
 
 export type LobbyPlayer = Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_score' | 'status'>
 
+export interface LeaderboardRow {
+  id: number
+  player_name: string
+  player_score: number
+  correct_answers_count: number
+  streak: number
+  status: string
+}
+
+export interface QuestionStatRow {
+  question_id: number
+  answer_count: number
+  correct_count: number
+}
+
 export interface CachedAnswer {
   answer: unknown
   isCorrect: boolean

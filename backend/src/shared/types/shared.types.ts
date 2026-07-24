@@ -1,9 +1,10 @@
 import { type Request } from 'express'
+
 export interface AuthRequest extends Request {
   user?: User | null
   token?: string
-  validatedQuery?: any
-  data?: any
+  validatedQuery?: unknown
+  data?: unknown
 }
 
 export interface User {
@@ -19,6 +20,7 @@ export interface User {
   created_at: string
   updated_at: string
 }
+
 export interface RefreshSession {
   id: number
   user_id: number

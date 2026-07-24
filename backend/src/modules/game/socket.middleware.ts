@@ -6,6 +6,14 @@ import * as repo from './game.repository.js'
 const SOCKET_SECRET = process.env['SOCKET_JWT_SECRET'] as string
 const SOCKET_TOKEN_TTL = '6h'
 
+export interface CustomSocketData {
+  player?: unknown
+  gameId?: number
+  code?: string
+  role?: 'player' | 'host'
+  playerSessionId?: number | null
+}
+
 export interface SocketTokenPayload {
   psid: number | null
   gsid: number
@@ -25,7 +33,7 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
     const token = socket.handshake.auth?.['token'] as string | undefined
     if (!token) return next(new Error('UNAUTHORIZED: missing socket token'))
 
-    const payload = verifySocketToken(token)   // invalid signature / expired
+    const payload = verifySocketToken(token) // invalid signature / expired
 
     // token not expired not means game is still alive -> check state real (cache first, DB after)
     const session = (await cache.getSession(payload.gsid))
@@ -33,19 +41,22 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
     if (!session || ['finished', 'cancelled'].includes(session.session_status))
       return next(new Error('GONE: game is not active'))
 
+    const socketData = socket.data as CustomSocketData
+
     if (payload.role === 'player') {
-      const player = (await cache.getPlayer(payload.gsid, payload.psid!))
-        ?? (await repo.getPlayerSession(payload.psid!))
+      if (payload.psid === null) return next(new Error('UNAUTHORIZED: missing playerSessionId'))
+      const player = (await cache.getPlayer(payload.gsid, payload.psid))
+        ?? (await repo.getPlayerSession(payload.psid))
       // kicked = remove from cache + db -> old token auto expired
       if (!player || player.game_session_id !== payload.gsid)
         return next(new Error('GONE: player not in room'))
-      socket.data.player = player
+      socketData.player = player
     }
 
-    socket.data.gameId = payload.gsid
-    socket.data.code = payload.code
-    socket.data.role = payload.role
-    socket.data.playerSessionId = payload.psid
+    socketData.gameId = payload.gsid
+    socketData.code = payload.code
+    socketData.role = payload.role
+    socketData.playerSessionId = payload.psid
     next()
   } catch {
     next(new Error('UNAUTHORIZED: socket token is not valid'))

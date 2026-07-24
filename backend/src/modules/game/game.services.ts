@@ -60,7 +60,7 @@ export const getLobby = async (code: string) => {
   // danh sách người chơi: Redis trước, Postgres sau
   const players: LobbyPlayer[] =
     (await cache.getPlayers(session.id)) ?? (await repo.listPlayers(session.id))
-  return { session, players, config: session.config as GameConfig }
+  return { session, players, config: session.config }
 }
 
 // PATCH /games/:id/config — only host, only when in lobby
@@ -73,7 +73,7 @@ export const updateGameConfig = async (
   if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
 
   const handler = getModeHandler(session.game_mode)
-  const config = gameConfigSchema.parse(mergeConfig(session.config as GameConfig, patch))
+  const config = gameConfigSchema.parse(mergeConfig(session.config, patch))
   handler.validateConfig(config)
   const updated = await repo.updateSessionConfig(gameId, config)
   await cache.setSession(updated) // write-through: ghi DB xong đồng bộ cache ngay
@@ -84,7 +84,7 @@ export const updateGameConfig = async (
 export const joinGame = async (code: string, input: JoinGameInput) => {
   const session = await loadSessionByCode(code)
   if (!session) throw new AppError(404, 'Room not found')
-  const config = session.config as GameConfig
+  const config = session.config
 
   if (session.session_status !== 'lobby' && !config.lobby.allowLateJoin)
     throw new AppError(409, 'Game already started, no late join allowed')

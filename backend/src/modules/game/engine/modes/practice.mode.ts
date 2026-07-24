@@ -1,4 +1,4 @@
-import { gameConfigSchema } from '../../game.config.schema.js'
+import { gameConfigSchema } from '../../game.schemas.js'
 import type { GameModeHandler } from '../mode.type.js'
 
 export const practiceMode: GameModeHandler = {

@@ -49,7 +49,6 @@ export const createGameSchema = z.object({
   config: gameConfigSchema.partial().optional()
 })
 
-
 // join game (user or guest)
 export const joinGameSchema = z.object({
   player_name: z.string().min(1).max(50),

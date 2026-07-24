@@ -1,5 +1,4 @@
-// engine/modes/survival.mode.ts
-import { gameConfigSchema } from '../../game.config.schema.js'
+import { gameConfigSchema } from '../../game.schemas.js'
 import { computeScore } from '../scoring.js'
 import type { GameModeHandler } from '../mode.type.js'
 import { AppError } from '../../../../shared/errors/AppError.js'
