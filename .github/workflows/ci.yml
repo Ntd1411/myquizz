@@ -59,6 +59,11 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+    
     steps:
       - uses: actions/checkout@v3
 
@@ -70,21 +75,20 @@ jobs:
       - name: Add VPS to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H 13.212.26.62 >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy to VPS
         run: |
-          ssh ubuntu@13.212.26.62 << 'ENDSSH'
-            cd /var/www/myquizz
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd ${{ env.VPS_DEPLOY_PATH }}
             git pull origin main
             docker compose down
             docker compose up -d --build
-            docker compose logs -f --tail=100
           ENDSSH
 
       - name: Check deployment status
         run: |
-          ssh ubuntu@13.212.26.62 << 'ENDSSH'
-            cd /var/www/myquizz
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd ${{ env.VPS_DEPLOY_PATH }}
             docker compose ps
           ENDSSH
