@@ -18,7 +18,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export const generateSessionCode = (len = 6): string =>
   Array.from({ length: len }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('')
 
-// xếp hạng theo điểm giảm dần
+// Calculate rank by player score descending
 export const calculateRank = <T extends { player_score: number }>(
   players: T[]
 ): Array<T & { rank: number }> =>

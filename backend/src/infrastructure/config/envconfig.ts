@@ -9,6 +9,8 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string(),
   JWT_REFRESH_SECRET: z.string(),
   JWT_REFRESH_EXPIRES_IN: z.string(),
+  SOCKET_JWT_SECRET: z.string(),
+  SOCKET_TOKEN_TTL: z.string(),
   ALLOW_ORIGIN: z.string(),
   FRONTEND_URL: z.url(),
   DB_USER: z.string(),

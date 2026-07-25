@@ -8,7 +8,7 @@ import type { CreateGameInput, JoinGameInput } from './game.schemas.js'
 import type { LobbyPlayer } from './game.type.js'
 import { signSocketToken } from './socket.middleware.js'
 
-// ---------- Đọc session: Redis trước, Postgres sau (tự warm lại cache khi miss) ----------
+// Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
 const loadSessionByCode = async (code: string) => {
   const gameId = await cache.getGameIdByCode(code)
   if (gameId) {
@@ -56,8 +56,7 @@ export const createGame = async (input: CreateGameInput, hostId: number) => {
 // GET /games/:code
 export const getLobby = async (code: string) => {
   const session = await loadSessionByCode(code)
-  if (!session) throw new AppError(404, 'Không tìm thấy phòng')
-  // danh sách người chơi: Redis trước, Postgres sau
+  if (!session) throw new AppError(404, 'Room not found')
   const players: LobbyPlayer[] =
     (await cache.getPlayers(session.id)) ?? (await repo.listPlayers(session.id))
   return { session, players, config: session.config }
@@ -68,7 +67,7 @@ export const updateGameConfig = async (
   gameId: number, hostId: number, patch: Partial<GameConfig>
 ) => {
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Không tìm thấy phòng')
+  if (!session) throw new AppError(404, 'Room not found')
   if (session.session_host !== hostId) throw new AppError(403, 'Only host can update config')
   if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
 
@@ -76,7 +75,7 @@ export const updateGameConfig = async (
   const config = gameConfigSchema.parse(mergeConfig(session.config, patch))
   handler.validateConfig(config)
   const updated = await repo.updateSessionConfig(gameId, config)
-  await cache.setSession(updated) // write-through: ghi DB xong đồng bộ cache ngay
+  await cache.setSession(updated)
   return updated
 }
 
@@ -91,7 +90,6 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
   if (!input.player_id && !config.lobby.allowGuests)
     throw new AppError(403, 'Room does not allow guests')
 
-  // đếm slot từ Redis (rẻ), miss thì hỏi Postgres
   const currentPlayers = (await cache.countPlayers(session.id)) ?? (await repo.countPlayers(session.id))
   if ((currentPlayers ?? 0) >= config.lobby.maxPlayers)
     throw new AppError(409, 'Room is full')
@@ -103,7 +101,7 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
     player_name: input.player_name,
     lives: config.flow.lives ?? null // initialize lives if mode uses
   })
-  await cache.updatePlayer(session.id, player) // vào HASH người chơi + ZSET leaderboard (score 0)
+  await cache.updatePlayer(session.id, player)
 
   const socketToken = signSocketToken({
     psid: player.id,
@@ -114,7 +112,7 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
   return { player, socketToken }
 }
 
-// POST /games/:id/host-token — host lấy token socket (và lấy lại sau khi F5)
+// POST /games/:id/host-token — host get token socket
 export const issueHostToken = async (gameId: number, hostId: number) => {
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found')
@@ -130,13 +128,13 @@ export const issueHostToken = async (gameId: number, hostId: number) => {
   }
 }
 
-// GET /games/:id/leaderboard — Redis ZSET khi đang chơi, fallback Postgres
+// GET /games/:id/leaderboard — Redis ZSET when playing, fallback Postgres
 export const getLeaderboard = async (gameId: number) =>
   (await cache.getLeaderboard(gameId)) ?? repo.getLeaderboard(gameId)
 
 // GET /games/:id/results
 export const getResults = async (gameId: number) => {
-  // meta lấy qua cache được, nhưng số liệu tổng kết luôn đọc Postgres (nguồn sự thật)
+  // Get session meta from cache, but always read final stats from Postgres
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found')
   return {

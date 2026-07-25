@@ -3,10 +3,7 @@ import { generateSessionCode } from './game.utils.js'
 import type { GameConfig } from './game.schemas.js'
 import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow } from './game.type.js'
 
-const isUniqueViolation = (e: unknown) =>
-  typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505'
-
-// ---------- Quiz snapshot: chốt đề tại thời điểm tạo trận ----------
+// Quiz snapshot: snapshot the quiz at the time of game creation
 export const createQuizSnapshot = async (quizId: number) => {
   const { rows } = await pool.query<{ id: number; total_questions: number }>(
     `INSERT INTO quiz_snapshots (quiz_id, snapshot_data, total_questions)
@@ -24,8 +21,19 @@ export const createQuizSnapshot = async (quizId: number) => {
      RETURNING id, total_questions`,
     [quizId]
   )
-  if (!rows[0]) throw new Error('Quiz không tồn tại khi tạo snapshot')
+  if (!rows[0]) throw new Error('Failed to create quiz snapshot')
   return rows[0]
+}
+
+// Check session code exists
+export const checkSessionCodeExists = async (code: string) => {
+  const { rows } = await pool.query<{ exists: boolean }>(`
+    SELECT EXISTS (SELECT 1 FROM game_sessions
+      WHERE session_code = $1
+      AND deleted_at IS NULL
+      AND session_status IN ('lobby', 'active', 'paused'))
+  `, [code])
+  return rows[0]?.exists ?? false
 }
 
 // ---------- Game session ----------
@@ -37,24 +45,22 @@ export const createGameSession = async (data: {
   config: GameConfig
   total_questions: number
 }): Promise<GameSessionRow> => {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const { rows } = await pool.query<GameSessionRow>(
-        `INSERT INTO game_sessions
+  let sessionCode = generateSessionCode()
+  while (await checkSessionCodeExists(sessionCode)) {
+    sessionCode = generateSessionCode()
+  }
+
+  const { rows } = await pool.query<GameSessionRow>(
+    `INSERT INTO game_sessions
            (quiz_snapshot_id, session_name, session_code, session_host,
             game_mode, config, total_questions)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [data.quiz_snapshot_id, data.session_name, generateSessionCode(), data.session_host,
-          data.game_mode, JSON.stringify(data.config), data.total_questions]
-      )
-      if (rows[0]) return rows[0]
-    } catch (e) {
-      if (isUniqueViolation(e) && attempt < 4) continue // trùng session_code -> thử mã khác
-      throw e
-    }
-  }
-  throw new Error('Không sinh được session_code duy nhất')
+    [data.quiz_snapshot_id, data.session_name, sessionCode, data.session_host,
+      data.game_mode, JSON.stringify(data.config), data.total_questions]
+  )
+  if (!rows[0]) throw new Error('Failed to create game session')
+  return rows[0]
 }
 
 export const getSessionByCode = async (code: string) => {
@@ -79,7 +85,7 @@ export const updateSessionConfig = async (id: number, config: GameConfig): Promi
       WHERE id = $1 RETURNING *`,
     [id, JSON.stringify(config)]
   )
-  if (!rows[0]) throw new Error('Không tìm thấy phòng để cập nhật config')
+  if (!rows[0]) throw new Error('Failed to update game session config')
   return rows[0]
 }
 
@@ -130,7 +136,7 @@ export const createPlayerSession = async (data: {
       'UPDATE game_sessions SET total_players = total_players + 1 WHERE id = $1',
       [data.game_session_id]
     )
-    if (!rows[0]) throw new Error('Không thể tạo player session')
+    if (!rows[0]) throw new Error('Failed to create player session')
     return rows[0]
   })
 
@@ -146,7 +152,7 @@ export const getLeaderboard = async (gameSessionId: number) => {
   return rows.map((r, i) => ({ rank: i + 1, ...r }))
 }
 
-// phân tích từng câu: bủng answered_questions của mọi player
+// Get stats of each question: number of answers and correct answers
 export const getQuestionStats = async (gameSessionId: number) => {
   const { rows } = await pool.query<QuestionStatRow>(
     `SELECT

@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express'
 import type { AuthRequest } from '../../shared/types/shared.types.js'
-import { createGameSchema, joinGameSchema, updateConfigSchema, type GameConfig } from './game.schemas.js'
+import { createGameSchema, joinGameSchema, updateConfigSchema, type GameConfig, type JoinGameInput } from './game.schemas.js'
 import * as gameService from './game.services.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
@@ -53,7 +53,15 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
       res.status(400).json({ error: 'Missing code' })
       return
     }
-    const input = joinGameSchema.parse(req.body)
+    let input: JoinGameInput
+    if (req.user) {
+      input = joinGameSchema.parse({ player_name: req.user.fullname, player_id: req.user.id })
+    } else {
+      input = joinGameSchema
+        .omit({ player_id: true })
+        .required({ player_guest_id: true })
+        .parse(req.body)
+    }
     res.status(201).json({ data: await gameService.joinGame(code, input) })
   } catch (e) {
     next(e)

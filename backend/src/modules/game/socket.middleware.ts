@@ -2,9 +2,8 @@ import jwt from 'jsonwebtoken'
 import type { Socket } from 'socket.io'
 import * as cache from './game.cache.js'
 import * as repo from './game.repository.js'
-
-const SOCKET_SECRET = process.env['SOCKET_JWT_SECRET'] as string
-const SOCKET_TOKEN_TTL = '6h'
+import { env } from '../../infrastructure/config/envconfig.js'
+import ms from 'ms'
 
 export interface CustomSocketData {
   player?: unknown
@@ -22,10 +21,10 @@ export interface SocketTokenPayload {
 }
 
 export const signSocketToken = (payload: SocketTokenPayload) =>
-  jwt.sign(payload, SOCKET_SECRET, { expiresIn: SOCKET_TOKEN_TTL })
+  jwt.sign(payload, env.SOCKET_JWT_SECRET, { expiresIn: ms(env.SOCKET_TOKEN_TTL as ms.StringValue) })
 
 export const verifySocketToken = (token: string) =>
-  jwt.verify(token, SOCKET_SECRET) as SocketTokenPayload
+  jwt.verify(token, env.SOCKET_JWT_SECRET) as SocketTokenPayload
 
 // middleware: run one time at handshake, results stored in socket.data
 export const socketAuth = async (socket: Socket, next: (err?: Error) => void) => {

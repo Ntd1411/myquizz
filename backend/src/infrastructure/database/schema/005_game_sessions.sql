@@ -2,7 +2,7 @@ CREATE TABLE game_sessions (
   id serial NOT NULL PRIMARY KEY,
   quiz_snapshot_id int NOT NULL REFERENCES quiz_snapshots(id) ON DELETE CASCADE,
   session_name varchar(255) NOT NULL,
-  session_code varchar(10) NOT NULL UNIQUE,
+  session_code varchar(10) NOT NULL,
   session_host int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   total_players int NOT NULL DEFAULT 0,
   total_questions int NOT NULL DEFAULT 0,
