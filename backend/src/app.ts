@@ -64,6 +64,7 @@ app.get('/', (req, res) => {
 })
 
 const router = express.Router()
+// router.use('/', (req, res) => res.send({ success: 'ok' }))
 router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'MyQuizz API Documentation'

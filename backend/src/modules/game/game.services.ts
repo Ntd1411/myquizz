@@ -89,6 +89,8 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
     throw new AppError(409, 'Game already started, no late join allowed')
   if (!input.player_id && !config.lobby.allowGuests)
     throw new AppError(403, 'Room does not allow guests')
+  if (input.player_id === session.session_host)
+    throw new AppError(403, 'Host can not join game')
 
   const currentPlayers = (await cache.countPlayers(session.id)) ?? (await repo.countPlayers(session.id))
   if ((currentPlayers ?? 0) >= config.lobby.maxPlayers)

@@ -2,6 +2,7 @@ import { pool, withTransaction } from '../../infrastructure/database/connection.
 import { generateSessionCode } from './game.utils.js'
 import type { GameConfig } from './game.schemas.js'
 import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow } from './game.type.js'
+import { AppError } from '../../shared/errors/AppError.js'
 
 // Quiz snapshot: snapshot the quiz at the time of game creation
 export const createQuizSnapshot = async (quizId: number) => {
@@ -21,7 +22,7 @@ export const createQuizSnapshot = async (quizId: number) => {
      RETURNING id, total_questions`,
     [quizId]
   )
-  if (!rows[0]) throw new Error('Failed to create quiz snapshot')
+  if (!rows[0]) throw new AppError(404, `Quiz #${quizId} not found`)
   return rows[0]
 }
 

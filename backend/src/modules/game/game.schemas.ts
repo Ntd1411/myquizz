@@ -34,10 +34,10 @@ const flowSchema = z.object({
 
 export const gameConfigSchema = z.object({
   version: z.literal(1).default(1),
-  scoring: scoringSchema,
-  timing: timingSchema,
-  lobby: lobbySchema,
-  flow: flowSchema
+  scoring: scoringSchema.default(() => scoringSchema.parse({})),
+  timing: timingSchema.default(() => timingSchema.parse({})),
+  lobby: lobbySchema.default(() => lobbySchema.parse({})),
+  flow: flowSchema.default(() => flowSchema.parse({}))
 })
 
 export type GameConfig = z.infer<typeof gameConfigSchema>
