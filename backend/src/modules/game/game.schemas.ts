@@ -8,7 +8,8 @@ const scoringSchema = z.object({
     bonusPerStep: z.number().default(100),
     max: z.number().default(500)
   }).default({ enabled: false, bonusPerStep: 100, max: 500 }),
-  negativeMarking: z.boolean().default(false)
+  negativeMarking: z.boolean().default(false),
+  latePenaltyRatio: z.number().min(0).max(1).default(0.9)
 })
 
 const timingSchema = z.object({
@@ -32,8 +33,8 @@ const flowSchema = z.object({
   showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).default('between_questions'),
   lives: z.number().nullable().default(null),
   allowAnswerLate: z.boolean().default(true),
-  shuffeQuestions: z.boolean().default(false),
-  shuffeOptions: z.boolean().default(false),
+  shuffleQuestions: z.boolean().default(false),
+  shuffleOptions: z.boolean().default(false),
   showHint: z.boolean().default(false),
   reviewMode: z.boolean().default(false)
 })

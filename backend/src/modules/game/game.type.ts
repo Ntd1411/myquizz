@@ -69,6 +69,8 @@ export interface SnapshotQuestion {
   question_type: 'multiple_choice' | 'multiple_select' | 'short_answer' | 'long_answer'
   question_text: string
   question_image: string | null
+  question_hint?: string | null
+  explanation?: string | null
   time_limit: number
   answer_options: Array<{ id: number; option_text: string }> | null
   correct_answer: number[] | string // option id array, or text; server only, never sent to a client
@@ -80,6 +82,7 @@ export interface AnsweredQuestion {
   question_index: number
   answer: unknown
   is_correct: boolean
+  is_late: boolean
   time_taken: number
   score_earned: number
   answered_at: string

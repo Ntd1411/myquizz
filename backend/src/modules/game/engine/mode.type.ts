@@ -3,7 +3,10 @@ import type { GameConfig } from '../game.schemas.js'
 export interface AnswerContext {
   isCorrect: boolean
   timeTaken: number
+  // 0 means the question had no deadline at all -> no speed bonus
   timeLimit: number
+  // true when the answer arrived after the deadline and flow.allowAnswerLate accepted it
+  isLate: boolean
   player: { streak: number; lives: number | null }
 }
 
