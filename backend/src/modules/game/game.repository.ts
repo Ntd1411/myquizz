@@ -1,7 +1,7 @@
 import { pool, withTransaction } from '../../infrastructure/database/connection.js'
 import { generateSessionCode } from './game.utils.js'
 import type { GameConfig } from './game.schemas.js'
-import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow } from './game.type.js'
+import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow, AnsweredQuestion, SnapshotQuestion } from './game.type.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
 // Quiz snapshot: snapshot the quiz at the time of game creation
@@ -108,6 +108,28 @@ export const getPlayerSession = async (id: number) => {
   return rows[0] ?? null
 }
 
+export const getPlayerSessionBySessionAndPlayer = async (sessionId: number, playerId: number) => {
+  const { rows } = await pool.query<PlayerSessionRow>(
+    `SELECT * FROM player_sessions
+     WHERE game_session_id = $1
+     AND player_id = $2
+     AND deleted_at IS NULL`,
+    [sessionId, playerId]
+  )
+  return rows[0] ?? null
+}
+
+export const getPlayerSessionBySessionAndGuest = async (sessionId: number, playerGuestId: string) => {
+  const { rows } = await pool.query<PlayerSessionRow>(
+    `SELECT * FROM player_sessions
+     WHERE game_session_id = $1
+     AND player_guest_id = $2
+     AND deleted_at IS NULL`,
+    [sessionId, playerGuestId]
+  )
+  return rows[0] ?? null
+}
+
 export const listPlayers = async (gameSessionId: number) => {
   const { rows } = await pool.query<Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_score' | 'status'>>(
     `SELECT id, player_name, player_score, status
@@ -168,4 +190,73 @@ export const getQuestionStats = async (gameSessionId: number) => {
     [gameSessionId]
   )
   return rows
+}
+
+// Snapshot questions: source of truth for the questions of a running match
+export const getSnapshotQuestions = async (gameSessionId: number): Promise<SnapshotQuestion[]> => {
+  const sql =
+    'SELECT coalesce(qs.snapshot_data->\'questions\', \'[]\'::jsonb) AS questions ' +
+    'FROM game_sessions gs JOIN quiz_snapshots qs ON qs.id = gs.quiz_snapshot_id ' +
+    'WHERE gs.id = $1 AND gs.deleted_at IS NULL'
+  const { rows } = await pool.query<{ questions: SnapshotQuestion[] }>(sql, [gameSessionId])
+  return rows[0]?.questions ?? []
+}
+
+// Full player rows (listPlayers only returns the lobby projection)
+export const listPlayerSessions = async (gameSessionId: number): Promise<PlayerSessionRow[]> => {
+  const sql =
+    'SELECT * FROM player_sessions WHERE game_session_id = $1 AND deleted_at IS NULL ORDER BY created_at ASC'
+  const { rows } = await pool.query<PlayerSessionRow>(sql, [gameSessionId])
+  return rows
+}
+
+// Session state: phase / status / index / timestamps
+export type SessionStatePatch = Partial<
+  Pick<GameSessionRow, 'session_status' | 'current_phase' | 'phase_ends_at' | 'current_question_index'>
+> & { started_at?: string | null; finished_at?: string | null }
+
+const SESSION_STATE_COLUMNS = [
+  'session_status', 'current_phase', 'phase_ends_at',
+  'current_question_index', 'started_at', 'finished_at'
+] as const
+
+export const updateSessionState = async (
+  id: number, patch: SessionStatePatch
+): Promise<GameSessionRow> => {
+  const sets: string[] = []
+  const values: unknown[] = [id]
+  for (const column of SESSION_STATE_COLUMNS) {
+    const value = patch[column]
+    if (value === undefined) continue
+    values.push(value)
+    sets.push(`${column} = $${values.length}`) // whitelisted column names only
+  }
+  if (sets.length === 0) {
+    const current = await getSessionById(id)
+    if (!current) throw new AppError(404, 'Room not found')
+    return current
+  }
+  const sql =
+    'UPDATE game_sessions SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1 RETURNING *'
+  const { rows } = await pool.query<GameSessionRow>(sql, values)
+  if (!rows[0]) throw new AppError(404, 'Room not found')
+  return rows[0]
+}
+
+// Flush the hot player state from Redis into Postgres
+export const flushPlayers = async (players: PlayerSessionRow[]): Promise<void> => {
+  if (players.length === 0) return
+  const sql =
+    'UPDATE player_sessions SET player_score = $2, correct_answers_count = $3, streak = $4, ' +
+    'lives = $5, current_question_index = $6, status = $7, answered_questions = $8, updated_at = now() ' +
+    'WHERE id = $1'
+  await withTransaction(async (tx) => {
+    for (const p of players) {
+      const answered: AnsweredQuestion[] = p.answered_questions ?? []
+      await tx.query(sql, [
+        p.id, p.player_score, p.correct_answers_count, p.streak,
+        p.lives, p.current_question_index, p.status, JSON.stringify(answered)
+      ])
+    }
+  })
 }

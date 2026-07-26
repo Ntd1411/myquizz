@@ -13,7 +13,8 @@ export const key = {
   players: (gameId: number) => `game:${gameId}:players`,
   leaderboard: (gameId: number) => `game:${gameId}:leaderboard`,
   answers: (gameId: number, qIndex: number) => `game:${gameId}:answers:${qIndex}`,
-  codeToId: (code: string) => `game:code:${code.toUpperCase()}`
+  codeToId: (code: string) => `game:code:${code.toUpperCase()}`,
+  clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`
 }
 
 // safe function
@@ -172,5 +173,28 @@ export const clearGame = async (session: GameSessionRow) =>
     for (let i = 0; i < session.total_questions; i++) {
       pipeline.del(key.answers(session.id, i))
     }
+    for (const p of (await getPlayers(session.id)) ?? [])
+      pipeline.del(key.clock(session.id, p.id))
     await pipeline.exec()
   }, undefined)
+
+// Per player timing for self-paced modes (solo / practice / marathon)
+export interface PlayerClock {
+  questionIndex: number
+  startedAt: string
+  endsAt: string | null // null = no per question limit (practice)
+  timeLimit: number
+  matchEndsAt: string | null // marathon: whole match deadline
+}
+
+export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) =>
+  safe(async () => {
+    await redis.set(key.clock(gameId, playerId), JSON.stringify(clock), 'EX', TTL.session)
+    return clock
+  }, clock)
+
+export const getPlayerClock = async (gameId: number, playerId: number) =>
+  safe(async () => {
+    const raw = await redis.get(key.clock(gameId, playerId))
+    return raw ? (JSON.parse(raw) as PlayerClock) : null
+  }, null)

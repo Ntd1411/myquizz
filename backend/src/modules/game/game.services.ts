@@ -5,7 +5,7 @@ import * as repo from './game.repository.js'
 import * as cache from './game.cache.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { CreateGameInput, JoinGameInput } from './game.schemas.js'
-import type { LobbyPlayer } from './game.type.js'
+import type { LobbyPlayer, PlayerSessionRow } from './game.type.js'
 import { signSocketToken } from './socket.middleware.js'
 
 // Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
@@ -96,13 +96,22 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
   if ((currentPlayers ?? 0) >= config.lobby.maxPlayers)
     throw new AppError(409, 'Room is full')
 
-  const player = await repo.createPlayerSession({
-    game_session_id: session.id,
-    player_id: input.player_id ?? null,
-    player_guest_id: input.player_guest_id ?? null,
-    player_name: input.player_name,
-    lives: config.flow.lives ?? null // initialize lives if mode uses
-  })
+  let player: PlayerSessionRow | null = null
+  if (input.player_id) {
+    player = await repo.getPlayerSessionBySessionAndPlayer(session.id, input.player_id)
+  } else if (input.player_guest_id) {
+    player = await repo.getPlayerSessionBySessionAndGuest(session.id, input.player_guest_id)
+  }
+
+  if (!player) {
+    player = await repo.createPlayerSession({
+      game_session_id: session.id,
+      player_id: input.player_id ?? null,
+      player_guest_id: input.player_guest_id ?? null,
+      player_name: input.player_name,
+      lives: config.flow.lives ?? null // initialize lives if mode uses
+    })
+  }
   await cache.updatePlayer(session.id, player)
 
   const socketToken = signSocketToken({
@@ -144,4 +153,19 @@ export const getResults = async (gameId: number) => {
     leaderboard: await repo.getLeaderboard(gameId),
     perQuestion: await repo.getQuestionStats(gameId)
   }
+}
+
+// Used by the socket layer only: the host identity is already proven by the socket token,
+// so there is no hostId to compare here.
+export const applyConfigPatchFromSocket = async (gameId: number, patch: Partial<GameConfig>) => {
+  const session = await loadSessionById(gameId)
+  if (!session) throw new AppError(404, 'Room not found')
+  if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
+
+  const handler = getModeHandler(session.game_mode)
+  const config = gameConfigSchema.parse(mergeConfig(session.config, patch))
+  handler.validateConfig(config)
+  const updated = await repo.updateSessionConfig(gameId, config)
+  await cache.setSession(updated)
+  return updated
 }

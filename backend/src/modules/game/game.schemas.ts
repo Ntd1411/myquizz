@@ -12,6 +12,7 @@ const scoringSchema = z.object({
 })
 
 const timingSchema = z.object({
+  countdownSeconds: z.number().default(3),
   perQuestionSeconds: z.number().nullable().default(null), // null = use time_limit of question
   autoAdvance: z.boolean().default(true),
   showResultsSeconds: z.number().default(5),
@@ -29,7 +30,12 @@ const flowSchema = z.object({
   allowAnswerChange: z.boolean().default(false),
   showCorrectAnswer: z.boolean().default(true),
   showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).default('between_questions'),
-  lives: z.number().nullable().default(null)
+  lives: z.number().nullable().default(null),
+  allowAnswerLate: z.boolean().default(true),
+  shuffeQuestions: z.boolean().default(false),
+  shuffeOptions: z.boolean().default(false),
+  showHint: z.boolean().default(false),
+  reviewMode: z.boolean().default(false)
 })
 
 export const gameConfigSchema = z.object({
