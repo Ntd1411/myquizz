@@ -49,11 +49,62 @@ export const gameConfigSchema = z.object({
 
 export type GameConfig = z.infer<typeof gameConfigSchema>
 
+const scoringPatchSchema = z.object({
+  basePoints: z.number().min(0).optional(),
+  speedBonus: z.boolean().optional(),
+  streak: z.object({
+    enabled: z.boolean().optional(),
+    bonusPerStep: z.number().min(0).optional(),
+    max: z.number().min(0).optional()
+  }).optional(),
+  negativeMarking: z.boolean().optional(),
+  latePenaltyRatio: z.number().min(0).max(1).optional()
+})
+
+const timingPatchSchema = z.object({
+  countdownSeconds: z.number().min(0).max(30).optional(),
+  perQuestionSeconds: z.number().min(0).nullable().optional(),
+  autoAdvance: z.boolean().optional(),
+  showResultsSeconds: z.number().min(0).max(60).optional(),
+  totalMatchSeconds: z.number().min(0).nullable().optional()
+})
+
+const lobbyPatchSchema = z.object({
+  maxPlayers: z.number().int().min(1).max(500).optional(),
+  allowLateJoin: z.boolean().optional(),
+  allowGuests: z.boolean().optional()
+})
+
+const flowPatchSchema = z.object({
+  pacing: z.enum(['host', 'self']).optional(),
+  allowAnswerChange: z.boolean().optional(),
+  showCorrectAnswer: z.boolean().optional(),
+  showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).optional(),
+  lives: z.number().int().min(1).nullable().optional(),
+  allowAnswerLate: z.boolean().optional(),
+  shuffleQuestions: z.boolean().optional(),
+  shuffleOptions: z.boolean().optional(),
+  showHint: z.boolean().optional(),
+  reviewMode: z.boolean().optional()
+})
+
+// Deep-optional patch: nothing is filled with defaults, so merging a patch can
+// never silently reset a sibling field (this is what flipped rooms to host pacing)
+export const gameConfigPatchSchema = z.object({
+  version: z.literal(1).optional(),
+  scoring: scoringPatchSchema.optional(),
+  timing: timingPatchSchema.optional(),
+  lobby: lobbyPatchSchema.optional(),
+  flow: flowPatchSchema.optional()
+})
+
+export type GameConfigPatch = z.infer<typeof gameConfigPatchSchema>
+
 export const createGameSchema = z.object({
   quiz_id: z.number().positive(),
   session_name: z.string().min(2).max(100),
   mode: z.enum(['classic', 'solo', 'team', 'survival', 'marathon', 'practice']).default('classic'),
-  config: gameConfigSchema.partial().optional()
+  config: gameConfigPatchSchema.optional()
 })
 
 // join game (user or guest)
@@ -65,7 +116,7 @@ export const joinGameSchema = z.object({
 
 // host update game config
 export const updateConfigSchema = z.object({
-  config: gameConfigSchema.partial()
+  config: gameConfigPatchSchema.default(() => gameConfigPatchSchema.parse({}))
 })
 
 export type CreateGameInput = z.infer<typeof createGameSchema>

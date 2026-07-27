@@ -5,8 +5,9 @@ import * as repo from './game.repository.js'
 import * as cache from './game.cache.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { CreateGameInput, JoinGameInput } from './game.schemas.js'
-import type { LobbyPlayer, PlayerSessionRow } from './game.type.js'
+import type { GameSessionRow, LobbyPlayer, PlayerSessionRow } from './game.type.js'
 import { signSocketToken } from './socket.middleware.js'
+import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rules.js'
 
 // Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
 const loadSessionByCode = async (code: string) => {
@@ -29,16 +30,14 @@ const loadSessionById = async (gameId: number) => {
 }
 
 // GET /game-modes
+// listModes() returns mode names, so the handler has to be looked up per mode
 export const listGameModes = () =>
-  listModes().map((mode) => ({ mode, defaultConfig: getModeHandler(mode).defaultConfig() }))
+  listModes().map((mode) => describeModeConfig(mode, getModeHandler(mode).defaultConfig()))
 
 // POST /games
 export const createGame = async (input: CreateGameInput, hostId: number) => {
   const handler = getModeHandler(input.mode) // 400 if mode not found
-  const config = gameConfigSchema.parse(
-    mergeConfig(handler.defaultConfig(), (input.config ?? {}) as Partial<GameConfig>)
-  )
-  handler.validateConfig(config) // mode-specific validation
+  const { config, ignored } = buildConfig(input.mode, handler.defaultConfig(), input.config)
 
   const snapshot = await repo.createQuizSnapshot(input.quiz_id) // snapshot at the time of creation
   const session = await repo.createGameSession({
@@ -50,7 +49,7 @@ export const createGame = async (input: CreateGameInput, hostId: number) => {
     total_questions: snapshot.total_questions
   })
   await cache.setSession(session) // warm cache + map session_code -> id
-  return session
+  return { session, ignored }
 }
 
 // GET /games/:code
@@ -64,19 +63,14 @@ export const getLobby = async (code: string) => {
 
 // PATCH /games/:id/config — only host, only when in lobby
 export const updateGameConfig = async (
-  gameId: number, hostId: number, patch: Partial<GameConfig>
+  gameId: number, hostId: number, patch: unknown
 ) => {
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found')
   if (session.session_host !== hostId) throw new AppError(403, 'Only host can update config')
   if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
 
-  const handler = getModeHandler(session.game_mode)
-  const config = gameConfigSchema.parse(mergeConfig(session.config, patch))
-  handler.validateConfig(config)
-  const updated = await repo.updateSessionConfig(gameId, config)
-  await cache.setSession(updated)
-  return updated
+  return writeConfig(session, patch)
 }
 
 // POST /games/:code/join — for both user and guest
@@ -155,17 +149,33 @@ export const getResults = async (gameId: number) => {
   }
 }
 
-// Used by the socket layer only: the host identity is already proven by the socket token,
-// so there is no hostId to compare here.
-export const applyConfigPatchFromSocket = async (gameId: number, patch: Partial<GameConfig>) => {
+const buildConfig = (mode: string, base: GameConfig, patch: unknown) => {
+  // 1) drop everything this mode does not allow (and report it)
+  const { patch: safe, ignored } = sanitizeConfigPatch(mode, patch)
+  // 2) merge only the surviving fields on top of the stored config
+  const merged = gameConfigSchema.parse(mergeConfig(base, safe as Partial<GameConfig>))
+  // 3) rewrite what the mode owns, so the engine never reads a half-configured room
+  return { config: normalizeConfig(merged, mode), ignored }
+}
+
+export const applyConfigPatchFromSocket = async (gameId: number, patch: unknown) => {
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found')
-  if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
+  return writeConfig(session, patch)
+}
 
-  const handler = getModeHandler(session.game_mode)
-  const config = gameConfigSchema.parse(mergeConfig(session.config, patch))
-  handler.validateConfig(config)
-  const updated = await repo.updateSessionConfig(gameId, config)
+const writeConfig = async (session: GameSessionRow, patch: unknown) => {
+  // the config is part of the room contract: changing it mid-game desyncs players
+  if (session.session_status !== 'lobby')
+    throw new AppError(409, 'Can only update config in lobby')
+
+  const { config, ignored } = buildConfig(session.game_mode, session.config, patch)
+  // both sides went through gameConfigSchema.parse, so the key order is stable
+  const changed = JSON.stringify(config) !== JSON.stringify(session.config)
+  // nothing survived the filter: report it instead of rewriting the same row
+  if (!changed) return { session, ignored, changed: false }
+
+  const updated = await repo.updateSessionConfig(session.id, config)
   await cache.setSession(updated)
-  return updated
+  return { session: updated, ignored, changed: true }
 }

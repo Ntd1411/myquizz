@@ -1,19 +1,19 @@
 import { gameConfigSchema } from '../../game.schemas.js'
-import { computeScore } from '../scoring.js'
 import type { AnswerOutcome, GameModeHandler } from '../mode.type.js'
-import { AppError } from '../../../../shared/errors/AppError.js'
+import { getConfigSpec, normalizeConfig } from '../config.rules.js'
+import { computeScore } from '../scoring.js'
 
 export const marathonMode: GameModeHandler = {
   mode: 'marathon',
   defaultConfig: () =>
-    gameConfigSchema.parse({
-      flow: { pacing: 'self' },
-      timing: { totalMatchSeconds: 300 } // default 5 min
-    }),
-  validateConfig: (cfg) => {
-    if (!cfg.timing.totalMatchSeconds || cfg.timing.totalMatchSeconds < 30)
-      throw new AppError(400, 'marathon cần timing.totalMatchSeconds >= 30')
-  },
+    normalizeConfig(
+      gameConfigSchema.parse({
+        flow: { pacing: 'self', allowAnswerLate: false, lives: 3, showLeaderboard: 'end_only' },
+        timing: { totalMatchSeconds: 300 }
+      }),
+      'marathon'
+    ),
+  configSpec: getConfigSpec('marathon'),
   evaluateAnswer: (ctx, cfg) => {
     const hasLives = ctx.player.lives !== null
     const lives = ctx.player.lives ?? 0
@@ -32,6 +32,6 @@ export const marathonMode: GameModeHandler = {
     }
     return result
   },
-  shouldAdvance: () => true, // self-paced
+  shouldAdvance: () => true,
   isGameOver: (ctx) => ctx.matchTimeUp || ctx.noMoreQuestions
 }

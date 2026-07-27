@@ -8,9 +8,13 @@ export function computeScore(ctx: AnswerContext, cfg: GameConfig): number {
 
   const base = cfg.scoring.basePoints
 
-  if (ctx.isLate) return Math.round(base * cfg.scoring.latePenaltyRatio)
+  // late answers (self-paced only): a reduced base, never a speed or streak bonus
+  if (ctx.isLate) {
+    const ratio = Number.isFinite(cfg.scoring.latePenaltyRatio) ? cfg.scoring.latePenaltyRatio : 0
+    return Math.round(base * ratio)
+  }
 
-  // A speed bonus only makes sense when the question actually had a deadline
+  // a speed bonus only makes sense when the question actually had a deadline
   const speed =
     cfg.scoring.speedBonus && ctx.timeLimit > 0
       ? Math.max(0, ((ctx.timeLimit - ctx.timeTaken) / ctx.timeLimit) * base * 0.5)

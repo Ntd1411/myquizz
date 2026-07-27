@@ -103,7 +103,7 @@ export class GameSocket {
 
       this.on(socket, 'lobby:join', () => this.onLobbyJoin(socket))
       this.on(socket, 'lobby:leave', () => this.onLeave(socket))
-      this.on(socket, 'lobby:config-update', (p) => this.onConfigUpdate(socket, p))
+      this.on(socket, 'lobby:config-update', (p, ack) => this.onConfigUpdate(socket, p, ack))
       this.on(socket, 'game:start', () => this.onStart(socket))
       this.on(socket, 'game:next', () => this.onNext(socket))
       this.on(socket, 'game:pause', () => this.onPause(socket))
@@ -309,6 +309,12 @@ export class GameSocket {
     })
   }
 
+  // The host screen is a monitor: it must see every phase change, including the
+  // self-paced flow where no room-wide question event is ever emitted
+  private async emitHostState(session: GameSessionRow) {
+    this.nsp.to(this.hostRoom(session.session_code)).emit('game:state', await this.snapshot(session))
+  }
+
   private async onLobbyJoin(socket: Socket) {
     const data = socket.data as CustomSocketData
     if (!data.gameId || !data.code) throw new Error('FORBIDDEN: no room in token')
@@ -368,11 +374,21 @@ export class GameSocket {
     if (session && data.role !== 'host') await this.emitLobby(session)
   }
 
-  private async onConfigUpdate(socket: Socket, payload: unknown) {
+  private async onConfigUpdate(socket: Socket, payload: unknown, ack?: Ack) {
     const { gameId } = this.requireHost(socket)
-    const patch = (payload as { config?: Partial<GameConfig> } | null)?.config ?? {}
-    const updated = await gameService.applyConfigPatchFromSocket(gameId, patch)
-    await this.emitLobby(updated)
+    const raw = (payload ?? {}) as Record<string, unknown>
+    // accept both a wrapped config object and a bare config object
+    const patch = (raw.config ?? raw) as unknown
+    const { session, ignored, changed } = await gameService.applyConfigPatchFromSocket(gameId, patch)
+
+    // a fully ignored patch changes nothing, so there is nothing to broadcast
+    if (changed) {
+      await this.emitLobby(session)
+      await this.emitHostState(session)
+    }
+    // echo what the server stored plus every path it refused to take
+    if (typeof ack === 'function')
+      ack({ ok: true, changed, config: session.config, ignored })
   }
 
   // start
@@ -382,12 +398,11 @@ export class GameSocket {
     if (current.session_status !== 'lobby') throw new Error('CONFLICT: game already started')
 
     const cfg = current.config
-    const hostPaced = cfg.flow.pacing === 'host'
     const countdown = Math.max(0, cfg.timing.countdownSeconds ?? 0)
 
     const session = await repo.updateSessionState(gameId, {
       session_status: 'active',
-      current_phase: countdown > 0 ? 'countdown' : hostPaced ? 'question_active' : 'active',
+      current_phase: countdown > 0 ? 'countdown' : 'question_active',
       current_question_index: 0,
       started_at: iso(Date.now())
     })
@@ -428,8 +443,8 @@ export class GameSocket {
       return
     }
     const active = await this.patchSession(session.id, {
-      current_phase: 'active',
-      phase_ends_at: null
+      current_phase: 'question_active',
+      phase_ends_at: null // self-paced: the deadline lives in the per-player clock
     })
     // self-paced: every connected player starts their own sequence
     const sockets = await this.nsp.in(this.room(active.session_code)).fetchSockets()

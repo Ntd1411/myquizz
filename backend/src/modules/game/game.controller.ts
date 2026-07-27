@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express'
 import type { AuthRequest } from '../../shared/types/shared.types.js'
-import { createGameSchema, joinGameSchema, updateConfigSchema, type GameConfig, type JoinGameInput } from './game.schemas.js'
+import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schemas.js'
 import * as gameService from './game.services.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
@@ -11,8 +11,8 @@ export const createGame = async (req: AuthRequest, res: Response, next: NextFunc
   try {
     if (!req.user) throw new AppError(401, 'Unauthorized')
     const input = createGameSchema.parse(req.body)
-    const game = await gameService.createGame(input, req.user.id)
-    res.status(201).json({ data: game })
+    const { session, ignored } = await gameService.createGame(input, req.user.id)
+    res.status(201).json({ data: session, ignored })
   } catch (e) {
     next(e)
   }
@@ -35,12 +35,12 @@ export const updateGameConfig = async (req: AuthRequest, res: Response, next: Ne
   try {
     if (!req.user) throw new AppError(401, 'Unauthorized')
     const { config } = updateConfigSchema.parse(req.body)
-    const game = await gameService.updateGameConfig(
+    const { session, ignored, changed } = await gameService.updateGameConfig(
       Number(req.params['id']),
       req.user.id,
-      config as Partial<GameConfig>
+      config
     )
-    res.json({ data: game })
+    res.json({ data: { config: session.config }, changed, ignored })
   } catch (e) {
     next(e)
   }

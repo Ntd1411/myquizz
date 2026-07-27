@@ -1,15 +1,30 @@
 import { gameConfigSchema } from '../../game.schemas.js'
-import { computeScore } from '../scoring.js'
+import { normalizeConfig, getConfigSpec } from '../config.rules.js'
 import type { GameModeHandler } from '../mode.type.js'
+import { computeScore } from '../scoring.js'
 
 export const soloMode: GameModeHandler = {
   mode: 'solo',
-  defaultConfig: () => gameConfigSchema.parse({ flow: { pacing: 'self' } }),
-  validateConfig: () => {},
+  defaultConfig: () =>
+    normalizeConfig(
+      gameConfigSchema.parse({
+        flow: {
+          pacing: 'self',
+          allowAnswerLate: true,
+          showLeaderboard: 'end_only',
+          reviewMode: true,
+          showCorrectAnswer: true
+        },
+        scoring: { latePenaltyRatio: 0.9 },
+        timing: { autoAdvance: true }
+      }),
+      'solo'
+    ),
+  configSpec: getConfigSpec('solo'),
   evaluateAnswer: (ctx, cfg) => ({
     scoreEarned: computeScore(ctx, cfg),
     newStreak: ctx.isCorrect ? ctx.player.streak + 1 : 0
   }),
-  shouldAdvance: () => true, // self-paced: each player advances at their own pace
-  isGameOver: (ctx) => ctx.noMoreQuestions // self-paced: game ends when the player has no more questions
+  shouldAdvance: () => true,
+  isGameOver: (ctx) => ctx.noMoreQuestions
 }

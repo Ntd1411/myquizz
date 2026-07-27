@@ -1,4 +1,5 @@
 import type { GameConfig } from '../game.schemas.js'
+import type { ModeConfigSpec } from './config.rules.js'
 
 export interface AnswerContext {
   isCorrect: boolean
@@ -28,11 +29,11 @@ export interface GameContext {
   matchTimeUp?: boolean
 }
 
-export interface GameModeHandler {
+export type GameModeHandler = {
   mode: string
-  defaultConfig(): GameConfig
-  validateConfig(cfg: GameConfig): void
-  evaluateAnswer(ctx: AnswerContext, cfg: GameConfig): AnswerOutcome
-  shouldAdvance(ctx: GameContext, cfg: GameConfig): boolean
-  isGameOver(ctx: GameContext, cfg: GameConfig): boolean
+  configSpec: ModeConfigSpec
+  defaultConfig: () => GameConfig
+  evaluateAnswer: (ctx: AnswerContext, cfg: GameConfig) => AnswerOutcome
+  shouldAdvance: (ctx: GameContext, cfg: GameConfig) => boolean
+  isGameOver: (ctx: GameContext, cfg: GameConfig) => boolean
 }

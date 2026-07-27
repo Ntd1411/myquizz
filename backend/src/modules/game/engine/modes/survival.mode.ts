@@ -1,15 +1,19 @@
 import { gameConfigSchema } from '../../game.schemas.js'
 import { computeScore } from '../scoring.js'
 import type { GameModeHandler } from '../mode.type.js'
-import { AppError } from '../../../../shared/errors/AppError.js'
+import { normalizeConfig, getConfigSpec } from '../config.rules.js'
 
 export const survivalMode: GameModeHandler = {
   mode: 'survival',
-  defaultConfig: () => gameConfigSchema.parse({ flow: { lives: 3 } }),
-  validateConfig: (cfg) => {
-    if (!cfg.flow.lives || cfg.flow.lives < 1)
-      throw new AppError(400, 'survival cần flow.lives >= 1')
-  },
+  defaultConfig: () =>
+    normalizeConfig(
+      gameConfigSchema.parse({
+        flow: { pacing: 'host', lives: 3, allowAnswerLate: false },
+        scoring: { negativeMarking: false }
+      }),
+      'survival'
+    ),
+  configSpec: getConfigSpec('survival'),
   evaluateAnswer: (ctx, cfg) => {
     const lives = ctx.player.lives ?? 0
     const livesRemaining = ctx.isCorrect ? lives : lives - 1
