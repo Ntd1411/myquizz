@@ -335,7 +335,7 @@ export class GameSocket {
       await this.emitLobby(session, socket)
       socket.emit('game:state', await this.snapshot(session))
       await this.emitLeaderboard(session, 'host-only')
-    } else {
+    } else if (session.session_status === 'lobby') {
       // a player joined or reconnected: the roster changed, everyone needs it
       await this.emitLobby(session)
     }
@@ -416,7 +416,7 @@ export class GameSocket {
     })
 
     if (countdown <= 0) {
-      await this.beginFirstQuestion(session)
+      await this.beginFirstQuestion(session, socket)
       return
     }
 
@@ -432,14 +432,14 @@ export class GameSocket {
     })
     this.timer(waiting.id, countdown * 1000, async () => {
       const fresh = await this.loadSession(waiting.id)
-      await this.beginFirstQuestion(fresh)
+      await this.beginFirstQuestion(fresh, socket)
     })
   }
 
   // Shared by the direct start and by the end of the countdown timer
-  private async beginFirstQuestion(session: GameSessionRow) {
+  private async beginFirstQuestion(session: GameSessionRow, socket: Socket) {
     if (session.config.flow.pacing === 'host') {
-      await this.startQuestion(session, 0)
+      await this.startQuestion(session, 0, socket)
       return
     }
     const active = await this.patchSession(session.id, {
@@ -455,7 +455,7 @@ export class GameSocket {
   }
 
   // host-paced state machine
-  private async startQuestion(session: GameSessionRow, index: number) {
+  private async startQuestion(session: GameSessionRow, index: number, socket: Socket) {
     const questions = await this.loadQuestions(session.id)
     const q = questions[index]
     if (!q) return this.endGame(session)
@@ -490,10 +490,10 @@ export class GameSocket {
     })
 
     await this.emitLeaderboard(updated)
-    if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true))
+    if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true, socket))
   }
 
-  private async lockQuestion(gameId: number, byTimeUp: boolean) {
+  private async lockQuestion(gameId: number, byTimeUp: boolean, socket: Socket) {
     this.clearTimer(gameId)
     const current = await this.loadSession(gameId)
     if (current.current_phase !== 'question_active') return // already locked
@@ -506,10 +506,10 @@ export class GameSocket {
       reason: byTimeUp ? 'time_up' : 'all_answered',
       serverTime: iso(Date.now())
     })
-    await this.showResults(session)
+    await this.showResults(session, socket)
   }
 
-  private async showResults(session: GameSessionRow) {
+  private async showResults(session: GameSessionRow, socket: Socket) {
     const cfg = session.config
     const index = session.current_question_index
     const questions = await this.loadQuestions(session.id)
@@ -529,6 +529,7 @@ export class GameSocket {
     await repo.flushPlayers(players) // flush Postgres at the end of every question
 
     if (cfg.flow.showLeaderboard === 'between_questions') await this.emitLeaderboard(session)
+    else if ((socket.data as CustomSocketData).role === 'host') await this.emitLeaderboard(session, 'host-only')
 
     const handler = getModeHandler(session.game_mode)
     const activePlayers = players.filter((p) => p.status === 'connected').length
@@ -551,7 +552,7 @@ export class GameSocket {
     if (!cfg.timing.autoAdvance) return // wait for the host to send game:next
     this.timer(next.id, wait, async () => {
       const fresh = await this.loadSession(next.id)
-      await this.startQuestion(fresh, fresh.current_question_index + 1)
+      await this.startQuestion(fresh, fresh.current_question_index + 1, socket)
     })
   }
 
@@ -563,8 +564,8 @@ export class GameSocket {
     if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
 
     this.clearTimer(gameId)
-    if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false)
-    await this.startQuestion(session, session.current_question_index + 1)
+    if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false, socket)
+    await this.startQuestion(session, session.current_question_index + 1, socket)
   }
 
   private async onPause(socket: Socket) {
@@ -595,11 +596,11 @@ export class GameSocket {
 
     if (remaining <= 0) return
     if (updated.current_phase === 'question_active')
-      this.timer(gameId, remaining, () => this.lockQuestion(gameId, true))
+      this.timer(gameId, remaining, () => this.lockQuestion(gameId, true, socket))
     else if (updated.current_phase === 'showing_results' && updated.config.timing.autoAdvance)
       this.timer(gameId, remaining, async () => {
         const fresh = await this.loadSession(gameId)
-        await this.startQuestion(fresh, fresh.current_question_index + 1)
+        await this.startQuestion(fresh, fresh.current_question_index + 1, socket)
       })
   }
 
@@ -628,7 +629,11 @@ export class GameSocket {
     const q = questions[index]
     if (!q) throw new Error('CONFLICT: no active question')
 
-    // ---------- server authoritative timing ----------
+    // one answer per question, no exceptions
+    if ((player.answered_questions ?? []).some((a) => a.question_index === index))
+      throw new Error('CONFLICT: answer already submitted')
+
+    // server authoritative timing
     const clock = selfPaced ? await cache.getPlayerClock(gameId, psid) : null
     const limit = limitOf(q, cfg)
     const now = Date.now()
@@ -664,27 +669,14 @@ export class GameSocket {
 
     const isCorrect = grade(q, body.answer)
 
-    // ---------- dedupe / answer change ----------
-    const previous = (player.answered_questions ?? []).find((a) => a.question_index === index)
-    if (previous && !cfg.flow.allowAnswerChange)
-      throw new Error('CONFLICT: answer already submitted')
-
+    // ---------- claim the slot in Redis ----------
+    // allowChange: false, so two sockets racing on the same question cannot both win
     const accepted = await cache.recordAnswer(
       gameId, index, psid,
       { answer: body.answer, isCorrect, timeTaken, scoreEarned: 0 },
-      cfg.flow.allowAnswerChange
+      false
     )
     if (!accepted) throw new Error('CONFLICT: answer already submitted')
-
-    // roll back the previous attempt, otherwise a changed answer is counted twice
-    let baseStreak = player.streak
-    if (previous) {
-      player.player_score -= previous.score_earned
-      if (previous.is_correct) {
-        player.correct_answers_count -= 1
-        baseStreak = Math.max(0, player.streak - 1)
-      }
-    }
 
     const handler = getModeHandler(session.game_mode)
     const outcome = handler.evaluateAnswer(
@@ -693,7 +685,7 @@ export class GameSocket {
         timeTaken,
         timeLimit: limit ?? 0, // 0 = no deadline -> scoring skips the speed bonus
         isLate,
-        player: { streak: baseStreak, lives: player.lives }
+        player: { streak: player.streak, lives: player.lives }
       },
       cfg
     )
@@ -704,7 +696,9 @@ export class GameSocket {
     if (outcome.livesRemaining !== undefined) player.lives = outcome.livesRemaining
     if (outcome.eliminated) player.status = 'eliminated'
 
-    const entry: AnsweredQuestion = {
+    player.answered_questions = [
+      ...(player.answered_questions ?? []),
+    {
       question_id: q.id,
       question_index: index,
       answer: body.answer,
@@ -713,14 +707,12 @@ export class GameSocket {
       time_taken: Math.round(timeTaken * 100) / 100,
       score_earned: outcome.scoreEarned,
       answered_at: iso(now)
-    }
-    player.answered_questions = previous
-      ? (player.answered_questions ?? []).map((a) => (a.question_index === index ? entry : a))
-      : [...(player.answered_questions ?? []), entry]
-    // only a brand new answer advances a self-paced player, a changed one must not skip a question
-    if (selfPaced && !previous) player.current_question_index = index + 1
+    } satisfies AnsweredQuestion
+    ]
+    if (selfPaced) player.current_question_index = index + 1
 
     await cache.updatePlayer(gameId, player) // Redis now, Postgres at the end of the question
+    // rewrite the same slot with the real score once the mode has graded it
     await cache.recordAnswer(
       gameId, index, psid,
       { answer: body.answer, isCorrect, timeTaken, scoreEarned: outcome.scoreEarned },
@@ -728,19 +720,32 @@ export class GameSocket {
     )
 
     const serverTime = iso(Date.now())
-    if (typeof ack === 'function')
+
+    // ---------- ack: every field that tells right from wrong is a reveal ----------
+    // isCorrect, scoreEarned, totalScore and streak are each an answer oracle on
+    // their own, so they follow flow.showCorrectAnswer just like correct_answer.
+    // When it is off, the player learns the outcome from question:results and
+    // leaderboard:updated (host-paced) or from game:ended / game:review (self-paced).
+    if (typeof ack === 'function') {
+      const reveal = cfg.flow.showCorrectAnswer
       ack({
-        isCorrect,
+        accepted: true,
         isLate,
-        scoreEarned: outcome.scoreEarned,
-        totalScore: player.player_score,
-        streak: player.streak,
         lives: player.lives ?? null,
         eliminated: outcome.eliminated ?? false,
-        // self-paced has no question:results event, so the ack is the only reveal channel
-        correct_answer: selfPaced && cfg.flow.showCorrectAnswer ? q.correct_answer : undefined,
-        serverTime
+        serverTime,
+        ...(reveal
+          ? {
+            isCorrect,
+            scoreEarned: outcome.scoreEarned,
+            totalScore: player.player_score,
+            streak: player.streak,
+            // self-paced has no question:results event, so the ack is the only reveal channel
+            correct_answer: selfPaced ? q.correct_answer : undefined
+          }
+          : {})
       })
+    }
 
     if (outcome.eliminated)
       this.nsp.to(this.room(session.session_code)).emit('player:eliminated', {
@@ -776,7 +781,7 @@ export class GameSocket {
         },
         cfg
       )
-      if (advance) await this.lockQuestion(gameId, false)
+      if (advance) await this.lockQuestion(gameId, false, socket)
       return
     }
 
@@ -793,11 +798,6 @@ export class GameSocket {
       total_questions: questions.length,
       serverTime
     })
-
-    if (previous) {
-    // answer changed on the current question: stay where we are, just refresh the clock owner
-      return
-    }
 
     const matchTimeUp = clock?.matchEndsAt ? Date.now() >= Date.parse(clock.matchEndsAt) : false
     const over = handler.isGameOver(

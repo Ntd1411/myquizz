@@ -32,7 +32,6 @@ const ALL_EDITABLE: Record<string, FieldSpec> = {
   'lobby.maxPlayers': { kind: 'number', min: 1, max: 500 },
   'lobby.allowLateJoin': { kind: 'boolean' },
   'lobby.allowGuests': { kind: 'boolean' },
-  'flow.allowAnswerChange': { kind: 'boolean' },
   'flow.showCorrectAnswer': { kind: 'boolean' },
   'flow.showLeaderboard': { kind: 'enum', values: ['never', 'between_questions', 'end_only'] },
   'flow.lives': { kind: 'number', min: 1, max: 10, nullable: true },
@@ -111,7 +110,7 @@ export const MODE_CONFIG_SPEC: Record<string, ModeConfigSpec> = {
     // no score, no deadline, no ranking: only the study helpers stay editable
     editable: pick(
       'flow.shuffleQuestions', 'flow.shuffleOptions', 'flow.showHint',
-      'flow.allowAnswerChange', 'flow.reviewMode', 'lobby.maxPlayers', 'lobby.allowGuests'
+      'flow.reviewMode', 'lobby.maxPlayers', 'lobby.allowGuests'
     ),
     locked: [
       ...ALWAYS_LOCKED, 'flow.lives', 'flow.allowAnswerLate', 'flow.showCorrectAnswer',

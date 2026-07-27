@@ -28,7 +28,6 @@ const lobbySchema = z.object({
 
 const flowSchema = z.object({
   pacing: z.enum(['host', 'self']).default('host'),
-  allowAnswerChange: z.boolean().default(false),
   showCorrectAnswer: z.boolean().default(true),
   showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).default('between_questions'),
   lives: z.number().nullable().default(null),
@@ -77,7 +76,6 @@ const lobbyPatchSchema = z.object({
 
 const flowPatchSchema = z.object({
   pacing: z.enum(['host', 'self']).optional(),
-  allowAnswerChange: z.boolean().optional(),
   showCorrectAnswer: z.boolean().optional(),
   showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).optional(),
   lives: z.number().int().min(1).nullable().optional(),
