@@ -122,25 +122,27 @@ export const getLeaderboard = async (gameId: number, limit = 100) =>
 
 // answers
 // hsetnx = non-atomic set.
+// No silent fallback: if Redis is down we cannot guarantee one answer per
+// question, so the error must reach the socket error boundary instead of
+// letting the same question be scored twice.
 export const recordAnswer = async (
   gameId: number,
   qIndex: number,
   playerId: number,
   data: CachedAnswer,
   allowChange = false
-) =>
-  safe(async () => {
-    const k = key.answers(gameId, qIndex)
-    const field = String(playerId)
-    const payload = JSON.stringify(data)
+) => {
+  const k = key.answers(gameId, qIndex)
+  const field = String(playerId)
+  const payload = JSON.stringify(data)
 
-    let accepted = true
-    if (allowChange) await redis.hset(k, field, payload)
-    else accepted = (await redis.hsetnx(k, field, payload)) === 1
+  let accepted = true
+  if (allowChange) await redis.hset(k, field, payload)
+  else accepted = (await redis.hsetnx(k, field, payload)) === 1
 
-    await redis.expire(k, TTL.answers)
-    return accepted
-  }, true)
+  await redis.expire(k, TTL.answers)
+  return accepted
+}
 
 export const countAnswers = async (gameId: number, qIndex: number) =>
   safe(() => redis.hlen(key.answers(gameId, qIndex)), 0)
@@ -185,6 +187,7 @@ export interface PlayerClock {
   endsAt: string | null // null = no per question limit (practice)
   timeLimit: number
   matchEndsAt: string | null // marathon: whole match deadline
+  pausedAt?: string | null
 }
 
 export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) =>

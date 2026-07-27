@@ -12,6 +12,10 @@ import { seededShuffle } from './game.utils.js'
 
 type Ack = (payload: unknown) => void
 
+// beginFirstQuestion iterates RemoteSocket objects, which are not full Sockets:
+// only emit and data are safe to touch here
+type PlayerSocket = Pick<Socket, 'emit'> & { data: Socket['data'] }
+
 // Clock skew allowance used when late answers are NOT allowed
 const LATE_GRACE_MS = 1000
 
@@ -82,6 +86,7 @@ export class GameSocket {
   private timers = new Map<number, NodeJS.Timeout>() // gameId -> current phase timer
   private paused = new Map<number, number>() // gameId -> remaining ms while paused
   private questions = new Map<number, SnapshotQuestion[]>() // gameId -> snapshot questions
+  private matchTimers = new Map<string, NodeJS.Timeout>() // `${gameId}:${playerId}` -> marathon deadline
 
   constructor(io: Server) {
     this.nsp = io.of('/game')
@@ -172,6 +177,28 @@ export class GameSocket {
     return ordered
   }
 
+  // The snapshot goes to the player themselves, but answered_questions carries
+  // is_correct and score_earned for every answer, which is the same reveal
+  // channel as the question:answer ack. Gate it the same way.
+  private publicPlayer(player: PlayerSessionRow, reveal: boolean) {
+    if (reveal) return player
+    return {
+      id: player.id,
+      player_name: player.player_name,
+      status: player.status,
+      lives: player.lives ?? null,
+      current_question_index: player.current_question_index,
+      // enough for the client to know which questions are already done
+      answered_questions: (player.answered_questions ?? []).map((a) => ({
+        question_id: a.question_id,
+        question_index: a.question_index,
+        answer: a.answer,
+        is_late: a.is_late ?? false,
+        answered_at: a.answered_at
+      }))
+    }
+  }
+
   // hot fields go to Redis; if the cache is cold, write Postgres and re-warm
   private async patchSession(gameId: number, patch: repo.SessionStatePatch): Promise<GameSessionRow> {
     const hot = await cache.patchSession(gameId, patch)
@@ -210,6 +237,122 @@ export class GameSocket {
     const handle = this.timers.get(gameId)
     if (handle) clearTimeout(handle)
     this.timers.delete(gameId)
+  }
+
+  // marathon: the match budget must be enforced by the server, not by the next
+  // interaction of the player. A player who just stops answering would otherwise
+  // stay 'connected' forever and the match would never reach endGame.
+  private armMatchTimer(
+    session: GameSessionRow,
+    player: PlayerSessionRow,
+    matchEndsAt: string | null
+  ) {
+    this.clearMatchTimer(session.id, player.id)
+    if (!matchEndsAt) return
+
+    const key = `${session.id}:${player.id}`
+    const handle = setTimeout(() => {
+      this.matchTimers.delete(key)
+      void (async () => {
+        const fresh = await this.loadSession(session.id)
+        if (fresh.session_status !== 'active') return // paused or finished meanwhile
+        const p = await this.loadPlayer(fresh.id, player.id)
+        if (p.status === 'finished' || p.status === 'eliminated') return
+
+        // the player may be offline: emit to their socket if it is still there
+        const sockets = await this.nsp.in(this.room(fresh.session_code)).fetchSockets()
+        const target = sockets.find(
+          (s) => (s.data as CustomSocketData).playerSessionId === player.id
+        )
+        await this.finishPlayer(target ?? { emit: () => true, data: {} }, fresh, p)
+      })().catch((e: unknown) => console.error('[game.socket] match timer failed:', e))
+    }, Math.max(0, Date.parse(matchEndsAt) - Date.now()))
+
+    this.matchTimers.set(key, handle)
+  }
+
+  private clearMatchTimer(gameId: number, playerId: number) {
+    const key = `${gameId}:${playerId}`
+    const handle = this.matchTimers.get(key)
+    if (handle) clearTimeout(handle)
+    this.matchTimers.delete(key)
+  }
+
+  private clearMatchTimers(gameId: number) {
+    for (const key of [...this.matchTimers.keys()])
+      if (key.startsWith(`${gameId}:`)) {
+        const handle = this.matchTimers.get(key)
+        if (handle) clearTimeout(handle)
+        this.matchTimers.delete(key)
+      }
+  }
+
+  // Who still owes an answer for this question. cache.countAnswers() is a hlen over
+  // the Redis hash, so it also counts players that answered and then dropped:
+  // comparing it against the live connected count closes the question too early.
+  private pendingAnswers(players: PlayerSessionRow[], index: number) {
+    const eligible = players.filter((p) => p.status === 'connected')
+    const answered = eligible.filter((p) =>
+      (p.answered_questions ?? []).some((a) => a.question_index === index)
+    ).length
+    return { eligible: eligible.length, answered }
+  }
+
+  // self-paced deadlines live in per-player clocks and keep ticking in real time,
+  // so a pause has to shift every clock instead of only the phase timer
+  private async shiftClocks(session: GameSessionRow, mode: 'freeze' | 'resume') {
+    if (session.config.flow.pacing !== 'self') return
+    const now = Date.now()
+
+    for (const p of await this.loadPlayers(session.id)) {
+      const clock = await cache.getPlayerClock(session.id, p.id)
+      if (!clock) continue
+
+      if (mode === 'freeze') {
+        if (clock.pausedAt) continue // already frozen
+        await cache.setPlayerClock(session.id, p.id, { ...clock, pausedAt: iso(now) })
+        this.clearMatchTimer(session.id, p.id) // no deadline fires while paused
+        continue
+      }
+
+      if (!clock.pausedAt) continue
+      const shift = now - Date.parse(clock.pausedAt)
+      const push = (at: string | null) => (at ? iso(Date.parse(at) + shift) : null)
+      const next = {
+        ...clock,
+        startedAt: iso(Date.parse(clock.startedAt) + shift),
+        endsAt: push(clock.endsAt),
+        matchEndsAt: push(clock.matchEndsAt),
+        pausedAt: null
+      }
+      await cache.setPlayerClock(session.id, p.id, next)
+      this.armMatchTimer(session, p, next.matchEndsAt)
+    }
+  }
+
+  // A disconnect can complete the question: everyone still in the room may have
+  // answered already. Without this a question with no deadline hangs forever.
+  private async maybeAdvanceAfterLeave(session: GameSessionRow) {
+    if (session.session_status !== 'active') return
+    if (session.current_phase !== 'question_active') return
+    if (session.config.flow.pacing !== 'host') return
+
+    const players = await this.loadPlayers(session.id)
+    const questions = await this.loadQuestions(session.id)
+    const index = session.current_question_index
+    const { eligible, answered } = this.pendingAnswers(players, index)
+    if (eligible === 0 || answered < eligible) return
+
+    const advance = getModeHandler(session.game_mode).shouldAdvance(
+      {
+        activePlayers: eligible,
+        noMoreQuestions: index + 1 >= questions.length,
+        allAnswered: true,
+        timeUp: false
+      },
+      session.config
+    )
+    if (advance) await this.lockQuestion(session.id, false)
   }
 
   // lobby
@@ -370,8 +513,12 @@ export class GameSocket {
       }
     }
     void socket.leave(this.room(data.code))
+
     const session = await cache.getSession(data.gameId)
-    if (session && data.role !== 'host') await this.emitLobby(session)
+    if (!session || data.role === 'host') return
+    await this.emitLobby(session)
+    // the players left behind may all have answered already
+    await this.maybeAdvanceAfterLeave(session)
   }
 
   private async onConfigUpdate(socket: Socket, payload: unknown, ack?: Ack) {
@@ -383,6 +530,9 @@ export class GameSocket {
 
     // a fully ignored patch changes nothing, so there is nothing to broadcast
     if (changed) {
+    // flow.shuffleQuestions / shuffleOptions decide the order at first read, and
+    // the host screen already warmed this cache on lobby:join
+      this.questions.delete(gameId)
       await this.emitLobby(session)
       await this.emitHostState(session)
     }
@@ -416,7 +566,7 @@ export class GameSocket {
     })
 
     if (countdown <= 0) {
-      await this.beginFirstQuestion(session, socket)
+      await this.beginFirstQuestion(session)
       return
     }
 
@@ -432,14 +582,14 @@ export class GameSocket {
     })
     this.timer(waiting.id, countdown * 1000, async () => {
       const fresh = await this.loadSession(waiting.id)
-      await this.beginFirstQuestion(fresh, socket)
+      await this.beginFirstQuestion(fresh)
     })
   }
 
   // Shared by the direct start and by the end of the countdown timer
-  private async beginFirstQuestion(session: GameSessionRow, socket: Socket) {
+  private async beginFirstQuestion(session: GameSessionRow) {
     if (session.config.flow.pacing === 'host') {
-      await this.startQuestion(session, 0, socket)
+      await this.startQuestion(session, 0)
       return
     }
     const active = await this.patchSession(session.id, {
@@ -450,12 +600,12 @@ export class GameSocket {
     const sockets = await this.nsp.in(this.room(active.session_code)).fetchSockets()
     for (const s of sockets) {
       const sd = s.data as CustomSocketData
-      if (sd.role === 'player') await this.sendSelfQuestion(s as unknown as Socket, active)
+      if (sd.role === 'player') await this.sendSelfQuestion(s, active)
     }
   }
 
   // host-paced state machine
-  private async startQuestion(session: GameSessionRow, index: number, socket: Socket) {
+  private async startQuestion(session: GameSessionRow, index: number) {
     const questions = await this.loadQuestions(session.id)
     const q = questions[index]
     if (!q) return this.endGame(session)
@@ -490,10 +640,10 @@ export class GameSocket {
     })
 
     await this.emitLeaderboard(updated)
-    if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true, socket))
+    if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true))
   }
 
-  private async lockQuestion(gameId: number, byTimeUp: boolean, socket: Socket) {
+  private async lockQuestion(gameId: number, byTimeUp: boolean) {
     this.clearTimer(gameId)
     const current = await this.loadSession(gameId)
     if (current.current_phase !== 'question_active') return // already locked
@@ -506,10 +656,10 @@ export class GameSocket {
       reason: byTimeUp ? 'time_up' : 'all_answered',
       serverTime: iso(Date.now())
     })
-    await this.showResults(session, socket)
+    await this.showResults(session)
   }
 
-  private async showResults(session: GameSessionRow, socket: Socket) {
+  private async showResults(session: GameSessionRow) {
     const cfg = session.config
     const index = session.current_question_index
     const questions = await this.loadQuestions(session.id)
@@ -521,7 +671,8 @@ export class GameSocket {
       index,
       question_id: q?.id ?? null,
       correct_answer: cfg.flow.showCorrectAnswer ? q?.correct_answer ?? null : null,
-      stats,
+      // correct + distribution identify the answer key on their own
+      stats: cfg.flow.showCorrectAnswer ? stats : { total: stats.total },
       serverTime: iso(Date.now())
     })
 
@@ -529,7 +680,7 @@ export class GameSocket {
     await repo.flushPlayers(players) // flush Postgres at the end of every question
 
     if (cfg.flow.showLeaderboard === 'between_questions') await this.emitLeaderboard(session)
-    else if ((socket.data as CustomSocketData).role === 'host') await this.emitLeaderboard(session, 'host-only')
+    else await this.emitLeaderboard(session, 'host-only')
 
     const handler = getModeHandler(session.game_mode)
     const activePlayers = players.filter((p) => p.status === 'connected').length
@@ -552,7 +703,7 @@ export class GameSocket {
     if (!cfg.timing.autoAdvance) return // wait for the host to send game:next
     this.timer(next.id, wait, async () => {
       const fresh = await this.loadSession(next.id)
-      await this.startQuestion(fresh, fresh.current_question_index + 1, socket)
+      await this.startQuestion(fresh, fresh.current_question_index + 1)
     })
   }
 
@@ -564,8 +715,8 @@ export class GameSocket {
     if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
 
     this.clearTimer(gameId)
-    if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false, socket)
-    await this.startQuestion(session, session.current_question_index + 1, socket)
+    if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false)
+    await this.startQuestion(session, session.current_question_index + 1)
   }
 
   private async onPause(socket: Socket) {
@@ -576,6 +727,8 @@ export class GameSocket {
     const remaining = session.phase_ends_at ? Date.parse(session.phase_ends_at) - Date.now() : 0
     this.paused.set(gameId, Math.max(0, remaining)) // keep the leftover time of the current phase
     this.clearTimer(gameId)
+    // host-paced only has the phase timer; self-paced also has one clock per player
+    await this.shiftClocks(session, 'freeze')
 
     const updated = await this.patchSession(gameId, { session_status: 'paused', phase_ends_at: null })
     await repo.updateSessionState(gameId, { session_status: 'paused' })
@@ -589,24 +742,39 @@ export class GameSocket {
 
     const remaining = this.paused.get(gameId) ?? 0
     this.paused.delete(gameId)
+    // give back exactly the time that was frozen, and re-arm the marathon deadlines
+    await this.shiftClocks(session, 'resume')
+
     const endsAt = remaining > 0 ? iso(Date.now() + remaining) : null
     const updated = await this.patchSession(gameId, { session_status: 'active', phase_ends_at: endsAt })
     await repo.updateSessionState(gameId, { session_status: 'active' })
     this.nsp.to(this.room(updated.session_code)).emit('game:state', await this.snapshot(updated))
 
     if (remaining <= 0) return
-    if (updated.current_phase === 'question_active')
-      this.timer(gameId, remaining, () => this.lockQuestion(gameId, true, socket))
+    // a pause during the countdown must resume the countdown, not a question
+    if (updated.current_phase === 'countdown')
+      this.timer(gameId, remaining, async () => {
+        const fresh = await this.loadSession(gameId)
+        await this.beginFirstQuestion(fresh)
+      })
+    else if (updated.current_phase === 'question_active')
+      this.timer(gameId, remaining, () => this.lockQuestion(gameId, true))
     else if (updated.current_phase === 'showing_results' && updated.config.timing.autoAdvance)
       this.timer(gameId, remaining, async () => {
         const fresh = await this.loadSession(gameId)
-        await this.startQuestion(fresh, fresh.current_question_index + 1, socket)
+        await this.startQuestion(fresh, fresh.current_question_index + 1)
       })
   }
 
   private async onEndByHost(socket: Socket) {
     const { gameId } = this.requireHost(socket)
-    await this.endGame(await this.loadSession(gameId))
+    const session = await this.loadSession(gameId)
+    // ending from the lobby would write finished_at on a match that never started
+    if (session.session_status === 'lobby')
+      throw new Error('CONFLICT: the game has not started yet')
+    if (session.session_status === 'finished' || session.session_status === 'cancelled')
+      throw new Error('CONFLICT: game is not active')
+    await this.endGame(session)
   }
 
   // answering
@@ -669,7 +837,7 @@ export class GameSocket {
 
     const isCorrect = grade(q, body.answer)
 
-    // ---------- claim the slot in Redis ----------
+    // Claim the slot in Redis
     // allowChange: false, so two sockets racing on the same question cannot both win
     const accepted = await cache.recordAnswer(
       gameId, index, psid,
@@ -755,18 +923,20 @@ export class GameSocket {
       })
 
     const players = await this.loadPlayers(gameId)
+    // cache.updatePlayer already ran, so this snapshot includes the answer above
     const activePlayers = players.filter((p) => p.status === 'connected').length
-    const answered = await cache.countAnswers(gameId, index)
 
     if (!selfPaced) {
-    // the room only learns how many answers arrived, never who was right
+      const { eligible, answered } = this.pendingAnswers(players, index)
+
+      // the room only learns how many answers arrived, never who was right
       this.nsp.to(this.room(session.session_code)).except(this.hostRoom(session.session_code))
-        .emit('answer:received', { index, answered, activePlayers, serverTime })
+        .emit('answer:received', { index, answered, activePlayers: eligible, serverTime })
 
       this.nsp.to(this.hostRoom(session.session_code)).emit('host:answer-received', {
         index,
         answered,
-        activePlayers,
+        activePlayers: eligible,
         player: { id: player.id, player_name: player.player_name },
         is_correct: isCorrect, // host room only
         serverTime
@@ -774,14 +944,15 @@ export class GameSocket {
 
       const advance = handler.shouldAdvance(
         {
-          activePlayers,
+          activePlayers: eligible,
           noMoreQuestions: index + 1 >= questions.length,
-          allAnswered: answered >= activePlayers,
+          // an empty room must not count as "everybody answered"
+          allAnswered: eligible > 0 && answered >= eligible,
           timeUp: false
         },
         cfg
       )
-      if (advance) await this.lockQuestion(gameId, false, socket)
+      if (advance) await this.lockQuestion(gameId, false)
       return
     }
 
@@ -815,7 +986,7 @@ export class GameSocket {
   }
 
   // self-paced flow
-  private async sendSelfQuestion(socket: Socket, session: GameSessionRow) {
+  private async sendSelfQuestion(socket: PlayerSocket, session: GameSessionRow): Promise<void> {
     const data = socket.data as CustomSocketData
     if (!data.playerSessionId) return
     const player = await this.loadPlayer(session.id, data.playerSessionId)
@@ -836,34 +1007,93 @@ export class GameSocket {
     if (!q) return this.finishPlayer(socket, session, player)
 
     const limit = limitOf(q, cfg)
-    const endsAt = limit === null ? null : iso(Date.now() + limit * 1000)
-    await cache.setPlayerClock(session.id, player.id, {
-      questionIndex: index,
-      startedAt: iso(Date.now()),
-      endsAt,
-      timeLimit: limit ?? 0,
-      matchEndsAt
-    })
+    // Reconnecting must not restart the question timer: reuse the clock while it
+    // still points at the same question, otherwise a player farms unlimited time
+    // by dropping the socket and joining again.
+    const resume = previous && previous.questionIndex === index ? previous : null
+    const clock = resume
+      ? { ...resume, matchEndsAt, pausedAt: null }
+      : {
+        questionIndex: index,
+        startedAt: iso(Date.now()),
+        endsAt: limit === null ? null : iso(Date.now() + limit * 1000),
+        timeLimit: limit ?? 0,
+        matchEndsAt,
+        pausedAt: null
+      }
+
+    // The deadline expired while the player was offline and late answers are off:
+    // nobody was there to grade it, so close the question as unanswered instead of
+    // handing back a question that can never be submitted.
+    if (
+      resume &&
+  resume.endsAt &&
+  !cfg.flow.allowAnswerLate &&
+  Date.now() > Date.parse(resume.endsAt) + LATE_GRACE_MS
+    ) {
+      player.answered_questions = [
+        ...(player.answered_questions ?? []),
+    {
+      question_id: q.id,
+      question_index: index,
+      answer: null,
+      is_correct: false,
+      is_late: true,
+      time_taken: resume.timeLimit,
+      score_earned: 0,
+      answered_at: iso(Date.now())
+    } satisfies AnsweredQuestion
+      ]
+      player.streak = 0 // a timeout breaks the streak, like a wrong answer
+      player.current_question_index = index + 1
+      await cache.updatePlayer(session.id, player)
+      await cache.recordAnswer(
+        session.id, index, player.id,
+        { answer: null, isCorrect: false, timeTaken: resume.timeLimit, scoreEarned: 0 },
+        true
+      )
+      // the stale clock is left untouched on purpose: questionIndex no longer matches
+      // the new index, so the next round creates a fresh one
+      return this.sendSelfQuestion(socket, session)
+    }
+
+    await cache.setPlayerClock(session.id, player.id, clock)
+    this.armMatchTimer(session, player, matchEndsAt)
 
     socket.emit('question:started', {
     // each self-paced player gets their own option order
       question: publicQuestion(q, index, questions.length, cfg, session.id + player.id),
       time_limit: limit,
-      endsAt,
+      endsAt: clock.endsAt,
       matchEndsAt,
       // the client must know the deadline is soft, so it keeps the inputs enabled
       allow_answer_late: cfg.flow.allowAnswerLate,
+      // a reconnect gets the leftover time, not the full limit
+      remainingSeconds: clock.endsAt
+        ? Math.max(0, Math.round((Date.parse(clock.endsAt) - Date.now()) / 1000))
+        : null,
       serverTime: iso(Date.now())
     })
   }
 
-  private async finishPlayer(socket: Socket, session: GameSessionRow, player: PlayerSessionRow) {
+  private async finishPlayer(
+    socket: PlayerSocket,
+    session: GameSessionRow,
+    player: PlayerSessionRow
+  ) {
     if (player.status !== 'eliminated') player.status = 'finished'
     await cache.updatePlayer(session.id, player)
     await repo.flushPlayers([player])
+    this.clearMatchTimer(session.id, player.id)
 
     const serverTime = iso(Date.now())
     const showLeaderboard = session.config.flow.showLeaderboard
+
+    // Redis holds the live scores: self-paced modes never run showResults, so
+    // Postgres is still stale until endGame does the final flush
+    const players = await this.loadPlayers(session.id)
+    const questions = await this.loadQuestions(session.id)
+    const board = this.buildLeaderboard(players, questions.length).map((r) => r.lean)
 
     // a single player finishing is not the end of the match: use a dedicated event
     socket.emit('player:finished', {
@@ -873,7 +1103,7 @@ export class GameSocket {
         correct_answers_count: player.correct_answers_count,
         status: player.status
       },
-      leaderboard: showLeaderboard === 'never' ? [] : await repo.getLeaderboard(session.id),
+      leaderboard: showLeaderboard === 'never' ? [] : board,
       serverTime
     })
 
@@ -890,7 +1120,6 @@ export class GameSocket {
 
     await this.emitLeaderboard(session)
 
-    const players = await this.loadPlayers(session.id)
     const stillPlaying = players.some((p) => p.status !== 'finished' && p.status !== 'eliminated')
     if (!stillPlaying) await this.endGame(session)
   }
@@ -912,6 +1141,7 @@ export class GameSocket {
     const clock = selfPaced && player ? await cache.getPlayerClock(session.id, player.id) : null
     const endsAt = selfPaced && player && !counting ? clock?.endsAt ?? null : session.phase_ends_at
     const optionSeed = selfPaced && player ? session.id + player.id : session.id
+    const reveal = cfg.flow.showCorrectAnswer || session.session_status === 'finished'
 
     return {
       session_status: session.session_status,
@@ -930,11 +1160,13 @@ export class GameSocket {
         ? Math.max(0, Math.round((Date.parse(endsAt) - Date.now()) / 1000))
         : null,
       serverTime: iso(Date.now()),
-      player: player ?? null,
+      player: player ? this.publicPlayer(player, reveal) : null,
       leaderboard:
-      cfg.flow.showLeaderboard === 'never'
-        ? []
-        : (await cache.getLeaderboard(session.id)) ?? (await repo.getLeaderboard(session.id))
+        cfg.flow.showLeaderboard === 'never' ||
+        // a live score during an open question tells the player whether they were right
+        (!reveal && session.current_phase === 'question_active')
+          ? []
+          : (await cache.getLeaderboard(session.id)) ?? (await repo.getLeaderboard(session.id))
     }
   }
 
@@ -986,6 +1218,7 @@ export class GameSocket {
   // end of match
   private async endGame(session: GameSessionRow) {
     this.clearTimer(session.id)
+    this.clearMatchTimers(session.id)
     this.paused.delete(session.id)
 
     const players = await this.loadPlayers(session.id)
