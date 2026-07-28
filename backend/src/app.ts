@@ -9,11 +9,14 @@ import { errorHandler } from './shared/middlewares/error.handler.js'
 import cookieParser from 'cookie-parser'
 import { userRouter } from './modules/user/user.routes.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
-import { gameRouter } from './modules/game/game.routes.js'
-// import { GameSocket } from './modules/game/game.socket.js'
+import gameRouter from './modules/game/game.routes.js'
+import { GameSocket } from './modules/game/game.socket.js'
 import swaggerUi from 'swagger-ui-express'
 import { swaggerSpec } from './swagger/swagger.config.js'
 import { redisClient } from './infrastructure/cache/redis.client.js'
+import { bootstrapEngine } from './modules/game/engine/index.js'
+
+bootstrapEngine()
 
 const port = env.PORT
 await runMigrations()
@@ -29,7 +32,7 @@ try {
 
 const app = express()
 const httpServer = createServer(app)
-const _io = new Server(httpServer, {
+const io = new Server(httpServer, {
   cors: {
     origin: [env.FRONTEND_URL, ...env.ALLOW_ORIGIN.split(',').map((o) => o.trim())],
     credentials: true
@@ -61,6 +64,7 @@ app.get('/', (req, res) => {
 })
 
 const router = express.Router()
+// router.use('/', (req, res) => res.send({ success: 'ok' }))
 router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'MyQuizz API Documentation'
@@ -70,7 +74,7 @@ router.use('/users', userRouter)
 router.use('/quizzes', quizRouter)
 router.use('/games', gameRouter)
 
-// new GameSocket(io)
+new GameSocket(io)
 
 app.use('/api/v1', router)
 app.use(errorHandler)

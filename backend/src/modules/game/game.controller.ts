@@ -1,193 +1,94 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest, User } from '../../shared/types/shared.types.js'
+import type { AuthRequest } from '../../shared/types/shared.types.js'
+import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schemas.js'
 import * as gameService from './game.services.js'
-import { createGameSchema, joinGameSchema, type CreateGameRequest, type JoinGameRequest } from './game.schemas.js'
+import { AppError } from '../../shared/errors/AppError.js'
 
-export async function createGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+export const listGameModes = (_req: AuthRequest, res: Response) =>
+  res.json({ data: gameService.listGameModes() })
+
+export const createGame = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const user = req.user
-    const data: CreateGameRequest = createGameSchema.parse(req.body)
-
-    const result = await gameService.createGame(user as User, data)
-
-    res.status(201).json({
-      message: 'Game created successfully',
-      data: result
-    })
-  } catch (error) {
-    next(error)
+    if (!req.user) throw new AppError(401, 'Unauthorized')
+    const input = createGameSchema.parse(req.body)
+    const { session, ignored } = await gameService.createGame(input, req.user.id)
+    res.status(201).json({ data: session, ignored })
+  } catch (e) {
+    next(e)
   }
 }
 
-export async function joinGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+export const getGameByCode = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const session_code = req.params.session_code as string
-
-    if (!session_code) {
-      res.status(400).json({ message: 'session_code is required' })
+    const code = req.params['code'] as string
+    if (!code) {
+      res.status(400).json({ error: 'Missing code' })
       return
     }
+    res.json({ data: await gameService.getLobby(code) })
+  } catch (e) {
+    next(e)
+  }
+}
 
-    let data: JoinGameRequest
-    if (!req.user) {
-      data = joinGameSchema.parse(req.body)
-      if (!data.player_name) {
-        res.status(400).json({ message: 'player_name is required' })
-        return
-      }
+export const updateGameConfig = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) throw new AppError(401, 'Unauthorized')
+    const { config } = updateConfigSchema.parse(req.body)
+    const { session, ignored, changed } = await gameService.updateGameConfig(
+      Number(req.params['id']),
+      req.user.id,
+      config
+    )
+    res.json({ data: { config: session.config }, changed, ignored })
+  } catch (e) {
+    next(e)
+  }
+}
+
+export const joinGame = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const code = req.params['code'] as string
+    if (!code) {
+      res.status(400).json({ error: 'Missing code' })
+      return
+    }
+    let input: JoinGameInput
+    if (req.user) {
+      input = joinGameSchema.parse({ player_name: req.user.fullname, player_id: req.user.id })
     } else {
-      data = {
-        player_id: req.user.id,
-        player_name: req.user.fullname
-      }
+      input = joinGameSchema
+        .omit({ player_id: true })
+        .required({ player_guest_id: true })
+        .parse(req.body)
     }
-
-    const result = await gameService.joinGame(session_code, data)
-
-    res.status(200).json({
-      message: 'Joined game session successfully',
-      data: result
-    })
-  } catch (error) {
-    next(error)
+    res.status(201).json({ data: await gameService.joinGame(code, input) })
+  } catch (e) {
+    next(e)
   }
 }
 
-export async function startGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+export const getHostToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.id
-    const sessionId = parseInt(req.params.session_id as string)
-
-    if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' })
-      return
-    }
-
-    if (isNaN(sessionId)) {
-      res.status(400).json({ message: 'session_id is invalid' })
-      return
-    }
-
-    await gameService.startGame(sessionId, userId)
-
-    res.status(200).json({
-      message: 'Game started successfully'
-    })
-  } catch (error) {
-    next(error)
+    if (!req.user) throw new AppError(401, 'Unauthorized')
+    res.json({ data: await gameService.issueHostToken(Number(req.params['id']), req.user.id) })
+  } catch (e) {
+    next(e)
   }
 }
 
-export async function getQuestion(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+export const getLeaderboard = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const sessionId = parseInt(req.params.session_id as string)
-    const questionIndex = parseInt(req.query.index as string) || 0
-
-    if (isNaN(sessionId)) {
-      res.status(400).json({ message: 'session_id is invalid' })
-      return
-    }
-
-    const result = await gameService.getQuestionForGame(sessionId, questionIndex)
-
-    res.status(200).json({
-      data: result
-    })
-  } catch (error) {
-    next(error)
+    res.json({ data: await gameService.getLeaderboard(Number(req.params['id'])) })
+  } catch (e) {
+    next(e)
   }
 }
 
-// export async function getLeaderboard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-//   try {
-//     const sessionId = parseInt(req.params.session_id as string)
-
-//     if (isNaN(sessionId)) {
-//       res.status(400).json({ message: 'session_id is invalid' })
-//       return
-//     }
-
-//     const result = await gameService.getLeaderboard(sessionId)
-
-//     res.status(200).json({
-//       data: result
-//     })
-//   } catch (error) {
-//     next(error)
-//   }
-// }
-
-// export async function finishGame(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-//   try {
-//     const userId = req.user?.id
-//     const sessionId = parseInt(req.params.session_id as string)
-
-//     if (!userId) {
-//       res.status(401).json({ message: 'Unauthorized' })
-//       return
-//     }
-
-//     if (isNaN(sessionId)) {
-//       res.status(400).json({ message: 'session_id is invalid' })
-//       return
-//     }
-
-//     const result = await gameService.finishGame(sessionId, userId)
-
-//     res.status(200).json({
-//       message: 'Game finished successfully',
-//       data: result
-//     })
-//   } catch (error) {
-//     next(error)
-//   }
-// }
-
-// export async function getGameSession(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-//   try {
-//     const sessionId = parseInt(req.params.session_id as string)
-
-//     if (isNaN(sessionId)) {
-//       res.status(400).json({ message: 'session_id is invalid' })
-//       return
-//     }
-
-//     const result = await gameService.getGameSession(sessionId)
-
-//     if (!result) {
-//       res.status(404).json({ message: 'Game session not found' })
-//       return
-//     }
-
-//     res.status(200).json({
-//       data: result
-//     })
-//   } catch (error) {
-//     next(error)
-//   }
-// }
-
-// export async function reconnect(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-//   try {
-//     const playerSessionId = parseInt(req.params.player_session_id as string)
-
-//     if (isNaN(playerSessionId)) {
-//       res.status(400).json({ message: 'player_session_id is invalid' })
-//       return
-//     }
-
-//     const result = await gameService.reconnect(playerSessionId)
-
-//     if (!result) {
-//       res.status(404).json({ message: 'Player session not found or game ended' })
-//       return
-//     }
-
-//     res.status(200).json({
-//       message: 'Reconnected successfully',
-//       data: result
-//     })
-//   } catch (error) {
-//     next(error)
-//   }
-// }
+export const getResults = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    res.json({ data: await gameService.getResults(Number(req.params['id'])) })
+  } catch (e) {
+    next(e)
+  }
+}

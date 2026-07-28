@@ -19,7 +19,7 @@ export interface Question {
   question_text: string;
   time_limit: number;
   correct_answer: number[] | string;
-  hint?: string | undefined;
+  question_hint?: string | undefined;
   explanation?: string | undefined;
   question_image?: string | undefined;
   answer_options?:
