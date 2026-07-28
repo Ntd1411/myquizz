@@ -13,9 +13,10 @@ export const soloMode: GameModeHandler = {
           allowAnswerLate: true,
           showLeaderboard: 'end_only',
           reviewMode: true,
-          showCorrectAnswer: true
+          showCorrectAnswer: true,
+          shuffleQuestions: true,
+          shuffleOptions: true
         },
-        scoring: { latePenaltyRatio: 0.9 },
         timing: { autoAdvance: true }
       }),
       'solo'

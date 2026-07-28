@@ -8,7 +8,12 @@ export const survivalMode: GameModeHandler = {
   defaultConfig: () =>
     normalizeConfig(
       gameConfigSchema.parse({
-        flow: { pacing: 'host', lives: 3, allowAnswerLate: false },
+        flow: {
+          pacing: 'self', lives: 3,
+          showLeaderboard: 'end_only',
+          shuffleQuestions: true,
+          shuffleOptions: true
+        },
         scoring: { negativeMarking: false }
       }),
       'survival'
@@ -25,5 +30,5 @@ export const survivalMode: GameModeHandler = {
     }
   },
   shouldAdvance: (ctx) => ctx.allAnswered || ctx.timeUp,
-  isGameOver: (ctx) => ctx.activePlayers <= 1 || ctx.noMoreQuestions
+  isGameOver: (ctx) => ctx.activePlayers < 1 || ctx.noMoreQuestions
 }

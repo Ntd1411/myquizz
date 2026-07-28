@@ -13,10 +13,11 @@ export const practiceMode: GameModeHandler = {
         flow: {
           pacing: 'self',
           showCorrectAnswer: true,
-          allowAnswerChange: true,
           reviewMode: true,
           allowAnswerLate: false,
-          showLeaderboard: 'never'
+          showLeaderboard: 'never',
+          shuffleQuestions: true,
+          shuffleOptions: true
         },
         // 0 means no time limit at all, null would still fall back to question.time_limit
         timing: { perQuestionSeconds: 0, countdownSeconds: 0 }

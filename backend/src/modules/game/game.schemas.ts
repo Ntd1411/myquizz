@@ -16,7 +16,7 @@ const timingSchema = z.object({
   countdownSeconds: z.number().default(3),
   perQuestionSeconds: z.number().nullable().default(null), // null = use time_limit of question
   autoAdvance: z.boolean().default(true),
-  showResultsSeconds: z.number().default(5),
+  showResultsSeconds: z.number().default(2),
   totalMatchSeconds: z.number().nullable().default(null)
 })
 
@@ -31,15 +31,15 @@ const flowSchema = z.object({
   showCorrectAnswer: z.boolean().default(true),
   showLeaderboard: z.enum(['never', 'between_questions', 'end_only']).default('between_questions'),
   lives: z.number().nullable().default(null),
-  allowAnswerLate: z.boolean().default(true),
+  allowAnswerLate: z.boolean().default(false),
   shuffleQuestions: z.boolean().default(false),
   shuffleOptions: z.boolean().default(false),
   showHint: z.boolean().default(false),
-  reviewMode: z.boolean().default(false)
+  reviewMode: z.boolean().default(true)
 })
 
 export const gameConfigSchema = z.object({
-  version: z.literal(1).default(1),
+  version: z.number().default(1),
   scoring: scoringSchema.default(() => scoringSchema.parse({})),
   timing: timingSchema.default(() => timingSchema.parse({})),
   lobby: lobbySchema.default(() => lobbySchema.parse({})),
@@ -89,7 +89,7 @@ const flowPatchSchema = z.object({
 // Deep-optional patch: nothing is filled with defaults, so merging a patch can
 // never silently reset a sibling field (this is what flipped rooms to host pacing)
 export const gameConfigPatchSchema = z.object({
-  version: z.literal(1).optional(),
+  version: z.number().optional(),
   scoring: scoringPatchSchema.optional(),
   timing: timingPatchSchema.optional(),
   lobby: lobbyPatchSchema.optional(),
@@ -101,7 +101,7 @@ export type GameConfigPatch = z.infer<typeof gameConfigPatchSchema>
 export const createGameSchema = z.object({
   quiz_id: z.number().positive(),
   session_name: z.string().min(2).max(100),
-  mode: z.enum(['classic', 'solo', 'team', 'survival', 'marathon', 'practice']).default('classic'),
+  mode: z.enum(['classic', 'solo', 'survival', 'marathon', 'practice']).default('classic'),
   config: gameConfigPatchSchema.optional()
 })
 

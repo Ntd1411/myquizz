@@ -21,8 +21,6 @@ export type ModeConfigSpec = {
 
 // Every field a host could ever tune; a mode narrows this set or locks a field
 const ALL_EDITABLE: Record<string, FieldSpec> = {
-  'timing.countdownSeconds': { kind: 'number', min: 0, max: 30 },
-  'timing.showResultsSeconds': { kind: 'number', min: 0, max: 60 },
   'timing.perQuestionSeconds': {
     kind: 'number', min: 0, max: 600, nullable: true,
     note: 'null = use question time limit, 0 = no time limit'
@@ -40,13 +38,8 @@ const ALL_EDITABLE: Record<string, FieldSpec> = {
   'flow.shuffleOptions': { kind: 'boolean' },
   'flow.showHint': { kind: 'boolean' },
   'flow.reviewMode': { kind: 'boolean' },
-  'scoring.basePoints': { kind: 'number', min: 100, max: 10000 },
   'scoring.speedBonus': { kind: 'boolean' },
-  'scoring.negativeMarking': { kind: 'boolean' },
-  'scoring.latePenaltyRatio': { kind: 'number', min: 0, max: 1, note: 'score deducted when answering late' },
-  'scoring.streak.enabled': { kind: 'boolean' },
-  'scoring.streak.bonusPerStep': { kind: 'number', min: 0, max: 1000 },
-  'scoring.streak.max': { kind: 'number', min: 0, max: 5000 }
+  'scoring.negativeMarking': { kind: 'boolean' }
 }
 
 const pick = (...paths: string[]): Record<string, FieldSpec> =>
@@ -60,47 +53,44 @@ const except = (...paths: string[]): Record<string, FieldSpec> =>
   Object.fromEntries(Object.entries(ALL_EDITABLE).filter(([path]) => !paths.includes(path)))
 
 // pacing and the config version are never negotiable, in any mode
-const ALWAYS_LOCKED = ['version', 'flow.pacing']
+const ALWAYS_LOCKED = ['version', 'flow.pacing', 'flow.allowAnswerLate', 'timing.countdownSeconds', 'timing.showResultsSeconds',
+  'scoring.basePoints', 'scoring.latePenaltyRatio', 'scoring.streak.enabled', 'scoring.streak.bonusPerStep',
+  'scoring.streak.max'
+]
 
 // Anything not listed in editable is implicitly ignored; locked is the explicit
 // list the frontend renders as read-only with the mode value next to it
 export const MODE_CONFIG_SPEC: Record<string, ModeConfigSpec> = {
   classic: {
     pacing: 'host', usesLives: false, usesMatchBudget: false, scored: true,
-    editable: except('flow.lives', 'flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'timing.totalMatchSeconds'),
-    locked: [...ALWAYS_LOCKED, 'flow.lives', 'flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'timing.totalMatchSeconds']
-  },
-  team: {
-    pacing: 'host', usesLives: false, usesMatchBudget: false, scored: true,
-    editable: except('flow.lives', 'flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'timing.totalMatchSeconds'),
-    locked: [...ALWAYS_LOCKED, 'flow.lives', 'flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'timing.totalMatchSeconds']
+    editable: except('flow.lives', 'timing.totalMatchSeconds'),
+    locked: [...ALWAYS_LOCKED, 'flow.lives', 'timing.totalMatchSeconds']
   },
   survival: {
-    pacing: 'host', usesLives: true, usesMatchBudget: false, scored: true,
-    // lives replace negative marking: being wrong already costs a life
+    // self-paced: each player fights independently until lives run out or questions end
+    pacing: 'self', usesLives: true, usesMatchBudget: false, scored: true,
     editable: {
-      ...except('flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'scoring.negativeMarking', 'timing.totalMatchSeconds'),
+      ...except('scoring.negativeMarking', 'timing.totalMatchSeconds', 'timing.autoAdvance'),
       // survival needs a real number of lives, so null is not acceptable here
-      'flow.lives': { kind: 'number', min: 1, max: 10 }
+      'flow.lives': { kind: 'number', min: 1, max: 10 },
+      'flow.showLeaderboard': { kind: 'enum', values: ['never', 'end_only'] }
     },
-    locked: [...ALWAYS_LOCKED, 'flow.allowAnswerLate', 'scoring.latePenaltyRatio', 'scoring.negativeMarking', 'timing.totalMatchSeconds']
+    locked: [...ALWAYS_LOCKED, 'scoring.negativeMarking', 'timing.totalMatchSeconds', 'timing.autoAdvance']
   },
   solo: {
     pacing: 'self', usesLives: false, usesMatchBudget: false, scored: true,
     editable: {
-      ...except('flow.lives', 'timing.autoAdvance', 'timing.totalMatchSeconds'),
+      ...except('flow.lives', 'timing.totalMatchSeconds'),
       // a self-paced player is never between the same two questions as anyone else
       'flow.showLeaderboard': { kind: 'enum', values: ['never', 'end_only'] }
     },
-    locked: [...ALWAYS_LOCKED, 'flow.lives', 'timing.autoAdvance', 'timing.totalMatchSeconds']
+    locked: [...ALWAYS_LOCKED, 'flow.lives', 'timing.totalMatchSeconds']
   },
   marathon: {
     pacing: 'self', usesLives: true, usesMatchBudget: true, scored: true,
     editable: {
       ...except('timing.autoAdvance'),
       'flow.showLeaderboard': { kind: 'enum', values: ['never', 'end_only'] },
-      // the whole point of marathon: a real budget and a real number of lives
-      'flow.lives': { kind: 'number', min: 1, max: 10 },
       'timing.totalMatchSeconds': { kind: 'number', min: 30, max: 7200 }
     },
     locked: [...ALWAYS_LOCKED, 'timing.autoAdvance']
@@ -113,11 +103,9 @@ export const MODE_CONFIG_SPEC: Record<string, ModeConfigSpec> = {
       'flow.reviewMode', 'lobby.maxPlayers', 'lobby.allowGuests'
     ),
     locked: [
-      ...ALWAYS_LOCKED, 'flow.lives', 'flow.allowAnswerLate', 'flow.showCorrectAnswer',
+      ...ALWAYS_LOCKED, 'flow.lives', 'flow.showCorrectAnswer',
       'flow.showLeaderboard', 'timing.autoAdvance', 'timing.perQuestionSeconds',
-      'timing.countdownSeconds', 'timing.totalMatchSeconds', 'scoring.basePoints',
-      'scoring.speedBonus', 'scoring.negativeMarking', 'scoring.latePenaltyRatio',
-      'scoring.streak.enabled'
+      'timing.totalMatchSeconds', 'scoring.speedBonus', 'scoring.negativeMarking'
     ]
   }
 }
@@ -228,15 +216,27 @@ export const normalizeConfig = (cfg: GameConfig, mode: string): GameConfig => {
   out.flow.pacing = spec.pacing
   if (!spec.usesLives) out.flow.lives = null
   if (!spec.usesMatchBudget) out.timing.totalMatchSeconds = null
-  // self-paced has no host game:next, so the server must always advance
-  if (spec.pacing === 'self') out.timing.autoAdvance = true
-  // late answering needs a player-owned clock and a deadline to be late against
-  if (spec.pacing !== 'self' || noDeadline) out.flow.allowAnswerLate = false
+  // marathon loops questions against a time budget: it must always auto-advance
+  // solo and survival (self-paced) let the host choose, so they are not forced here
+  if (mode === 'marathon') out.timing.autoAdvance = true
+  // late answering needs a player-owned clock and a hard deadline to be late against;
+  // it also makes no sense when the server auto-advances as soon as the answer arrives.
+  // When autoAdvance is false in self-paced mode with a deadline, allowAnswerLate is automatically enabled.
+  if (spec.pacing !== 'self' || noDeadline || out.timing.autoAdvance) {
+    out.flow.allowAnswerLate = false
+  } else if (spec.pacing === 'self' && !out.timing.autoAdvance && !noDeadline) {
+    out.flow.allowAnswerLate = true
+  }
   if (noDeadline) out.scoring.speedBonus = false
   if (spec.pacing === 'self' && out.flow.showLeaderboard === 'between_questions')
     out.flow.showLeaderboard = 'end_only'
   // reviewing answers is pointless without the answer key
   if (out.flow.reviewMode) out.flow.showCorrectAnswer = true
+  // marathon: fast feedback loop — lock the result window and always reveal the answer
+  if (mode === 'marathon') {
+    out.timing.showResultsSeconds = 2
+    out.flow.showCorrectAnswer = true
+  }
   if (!spec.scored) {
     out.scoring.basePoints = 0
     out.scoring.speedBonus = false

@@ -87,6 +87,7 @@ export class GameSocket {
   private paused = new Map<number, number>() // gameId -> remaining ms while paused
   private questions = new Map<number, SnapshotQuestion[]>() // gameId -> snapshot questions
   private matchTimers = new Map<string, NodeJS.Timeout>() // `${gameId}:${playerId}` -> marathon deadline
+  private selfTimeouts = new Map<string, NodeJS.Timeout>() // `${gameId}:${playerId}` -> self-paced question timeout
 
   constructor(io: Server) {
     this.nsp = io.of('/game')
@@ -115,6 +116,7 @@ export class GameSocket {
       this.on(socket, 'game:resume', () => this.onResume(socket))
       this.on(socket, 'game:end', () => this.onEndByHost(socket))
       this.on(socket, 'question:answer', (p, ack) => this.onAnswer(socket, p, ack))
+      this.on(socket, 'question:next', () => this.onPlayerNext(socket))
       this.on(socket, 'player:sync', () => this.onSync(socket))
       this.on(socket, 'game:review', () => this.onReview(socket))
 
@@ -279,23 +281,51 @@ export class GameSocket {
   }
 
   private clearMatchTimers(gameId: number) {
-    for (const key of [...this.matchTimers.keys()])
-      if (key.startsWith(`${gameId}:`)) {
-        const handle = this.matchTimers.get(key)
-        if (handle) clearTimeout(handle)
-        this.matchTimers.delete(key)
-      }
+    for (const key of Array.from(this.matchTimers.keys())) {
+      if (key.startsWith(`${gameId}:`)) this.clearMatchTimer(gameId, Number(key.split(':')[1]))
+    }
   }
 
-  // Who still owes an answer for this question. cache.countAnswers() is a hlen over
-  // the Redis hash, so it also counts players that answered and then dropped:
-  // comparing it against the live connected count closes the question too early.
+  private armSelfTimeout(
+    gameId: number,
+    playerId: number,
+    delayMs: number,
+    fn: () => Promise<void>
+  ) {
+    this.clearSelfTimeout(gameId, playerId)
+    const key = `${gameId}:${playerId}`
+    const handle = setTimeout(() => {
+      this.selfTimeouts.delete(key)
+      fn().catch((e: unknown) => console.error('[game.socket] self timeout failed:', e))
+    }, Math.max(0, delayMs))
+    this.selfTimeouts.set(key, handle)
+  }
+
+  private clearSelfTimeout(gameId: number, playerId: number) {
+    const key = `${gameId}:${playerId}`
+    const handle = this.selfTimeouts.get(key)
+    if (handle) clearTimeout(handle)
+    this.selfTimeouts.delete(key)
+  }
+
+  // Who still owes an answer for this question.
   private pendingAnswers(players: PlayerSessionRow[], index: number) {
     const eligible = players.filter((p) => p.status === 'connected')
     const answered = eligible.filter((p) =>
       (p.answered_questions ?? []).some((a) => a.question_index === index)
     ).length
     return { eligible: eligible.length, answered }
+  }
+
+  // self-paced: each player gets their own deterministic question order when
+  // shuffleQuestions is on. seededShuffle with a stable seed (session + player)
+  // always produces the same sequence, so reconnects see the same questions.
+  private orderedQuestionsFor(
+    questions: SnapshotQuestion[], cfg: GameConfig, sessionId: number, playerId: number
+  ): SnapshotQuestion[] {
+    if (cfg.flow.pacing === 'self' && cfg.flow.shuffleQuestions)
+      return seededShuffle([...questions], sessionId + playerId)
+    return questions
   }
 
   // self-paced deadlines live in per-player clocks and keep ticking in real time,
@@ -666,6 +696,11 @@ export class GameSocket {
     const q = questions[index]
     const stats = await cache.getAnswerStats(session.id, index)
 
+    // pre-calculate when the next question fires so the client can show a precise
+    // countdown instead of computing Date.now() + showResultsSeconds itself
+    const wait = cfg.timing.showResultsSeconds * 1000
+    const nextQuestionAt = cfg.timing.autoAdvance ? iso(Date.now() + wait) : null
+
     // the correct answer is revealed only after the question is locked
     this.nsp.to(this.room(session.session_code)).emit('question:results', {
       index,
@@ -673,6 +708,8 @@ export class GameSocket {
       correct_answer: cfg.flow.showCorrectAnswer ? q?.correct_answer ?? null : null,
       // correct + distribution identify the answer key on their own
       stats: cfg.flow.showCorrectAnswer ? stats : { total: stats.total },
+      // null when autoAdvance=false: host will drive the next transition manually
+      nextQuestionAt,
       serverTime: iso(Date.now())
     })
 
@@ -693,17 +730,19 @@ export class GameSocket {
       },
       cfg
     )
-    if (over) return this.endGame(session)
 
-    const wait = cfg.timing.showResultsSeconds * 1000
     const next = await this.patchSession(session.id, {
       current_phase: 'showing_results',
-      phase_ends_at: iso(Date.now() + wait)
+      phase_ends_at: nextQuestionAt
     })
     if (!cfg.timing.autoAdvance) return // wait for the host to send game:next
     this.timer(next.id, wait, async () => {
       const fresh = await this.loadSession(next.id)
-      await this.startQuestion(fresh, fresh.current_question_index + 1)
+      if (over) {
+        await this.endGame(fresh)
+      } else {
+        await this.startQuestion(fresh, fresh.current_question_index + 1)
+      }
     })
   }
 
@@ -713,10 +752,41 @@ export class GameSocket {
     if (session.config.flow.pacing !== 'host')
       throw new Error('CONFLICT: self-paced modes have no host advance')
     if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
+    if (session.current_phase === 'countdown')
+      throw new Error('CONFLICT: countdown in progress, cannot advance manually')
+    if (session.config.timing.autoAdvance)
+      throw new Error('CONFLICT: autoAdvance is enabled, host cannot advance manually')
 
     this.clearTimer(gameId)
     if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false)
     await this.startQuestion(session, session.current_question_index + 1)
+  }
+
+  // Player-initiated advance for self-paced modes with autoAdvance=false.
+  // The player must have already answered the current question; this just
+  // sends the next one without waiting for a timer or host action.
+  private async onPlayerNext(socket: Socket) {
+    const { gameId, psid } = this.requirePlayer(socket)
+    const session = await this.loadSession(gameId)
+    if (session.config.flow.pacing !== 'self')
+      throw new Error('CONFLICT: question:next is only for self-paced modes')
+    if (session.session_status !== 'active')
+      throw new Error('CONFLICT: game is not active')
+    if (session.config.timing.autoAdvance)
+      throw new Error('CONFLICT: autoAdvance is on, the server advances automatically')
+
+    const player = await this.loadPlayer(gameId, psid)
+    if (player.status === 'eliminated' || player.status === 'finished')
+      throw new Error('CONFLICT: player is no longer active')
+
+    // The player can only advance after answering the question they are on.
+    // current_question_index is already incremented by onAnswer, so if it
+    // equals the number of answered questions the player has moved past it.
+    const answered = (player.answered_questions ?? []).length
+    if (player.current_question_index > answered)
+      throw new Error('CONFLICT: answer the current question before advancing')
+
+    await this.sendSelfQuestion(socket, session, { fromPlayerNext: true })
   }
 
   private async onPause(socket: Socket) {
@@ -794,7 +864,14 @@ export class GameSocket {
     const questions = await this.loadQuestions(gameId)
     const selfPaced = cfg.flow.pacing === 'self'
     const index = selfPaced ? player.current_question_index : session.current_question_index
-    const q = questions[index]
+    const total = questions.length
+    // marathon loops the question bank; resolve the same way sendSelfQuestion does
+    const marathon = selfPaced && cfg.timing.totalMatchSeconds !== null
+    // self-paced: each player may have a different question order (per-player shuffle)
+    const orderedQuestions = selfPaced
+      ? this.orderedQuestionsFor(questions, cfg, gameId, psid)
+      : questions
+    const q = (marathon && total > 0) ? orderedQuestions[index % total] : orderedQuestions[index]
     if (!q) throw new Error('CONFLICT: no active question')
 
     // one answer per question, no exceptions
@@ -818,10 +895,7 @@ export class GameSocket {
 
       const deadline = clock?.endsAt ? Date.parse(clock.endsAt) : null
       if (deadline && now > deadline) {
-      // allowAnswerLate: the player may answer whenever they want, it is graded as late
-        if (!cfg.flow.allowAnswerLate && now > deadline + LATE_GRACE_MS)
-          throw new Error('CONFLICT: time is up for this question')
-        isLate = cfg.flow.allowAnswerLate
+        isLate = true
       }
     } else {
       if (session.current_phase !== 'question_active')
@@ -835,7 +909,8 @@ export class GameSocket {
     // a late answer keeps its real duration for the history, but never feeds the speed bonus
     if (limit !== null && limit > 0 && !isLate) timeTaken = Math.min(timeTaken, limit)
 
-    const isCorrect = grade(q, body.answer)
+    // if late and allowAnswerLate is false, answer is treated as incorrect (timeout)
+    const isCorrect = (isLate && !cfg.flow.allowAnswerLate) ? false : grade(q, body.answer)
 
     // Claim the slot in Redis
     // allowChange: false, so two sockets racing on the same question cannot both win
@@ -877,7 +952,10 @@ export class GameSocket {
       answered_at: iso(now)
     } satisfies AnsweredQuestion
     ]
-    if (selfPaced) player.current_question_index = index + 1
+    if (selfPaced) {
+      this.clearSelfTimeout(gameId, psid)
+      player.current_question_index = index + 1
+    }
 
     await cache.updatePlayer(gameId, player) // Redis now, Postgres at the end of the question
     // rewrite the same slot with the real score once the mode has graded it
@@ -891,11 +969,12 @@ export class GameSocket {
 
     // ---------- ack: every field that tells right from wrong is a reveal ----------
     // isCorrect, scoreEarned, totalScore and streak are each an answer oracle on
-    // their own, so they follow flow.showCorrectAnswer just like correct_answer.
-    // When it is off, the player learns the outcome from question:results and
-    // leaderboard:updated (host-paced) or from game:ended / game:review (self-paced).
+    // Reveal answer outcome immediately only for self-paced modes.
+    // For host-paced modes, the player receives only an acceptance ack ('accepted: true')
+    // while the question is active; their individual outcome (isCorrect, score, streak)
+    // is revealed when the question locks via question:results / leaderboard broadcast.
     if (typeof ack === 'function') {
-      const reveal = cfg.flow.showCorrectAnswer
+      const reveal = cfg.flow.showCorrectAnswer && selfPaced
       ack({
         accepted: true,
         isLate,
@@ -908,8 +987,7 @@ export class GameSocket {
             scoreEarned: outcome.scoreEarned,
             totalScore: player.player_score,
             streak: player.streak,
-            // self-paced has no question:results event, so the ack is the only reveal channel
-            correct_answer: selfPaced ? q.correct_answer : undefined
+            correct_answer: q.correct_answer
           }
           : {})
       })
@@ -956,7 +1034,7 @@ export class GameSocket {
       return
     }
 
-    // ---------- self-paced: only this player moves on ----------
+    // self-paced: only this player moves on
     this.nsp.to(this.hostRoom(session.session_code)).emit('host:player-progress', {
       player: {
         id: player.id,
@@ -981,12 +1059,30 @@ export class GameSocket {
       },
       cfg
     )
-    if (over || outcome.eliminated) return this.finishPlayer(socket, session, player)
-    await this.sendSelfQuestion(socket, session)
+
+    const advance = async () => {
+      if (over || outcome.eliminated) return this.finishPlayer(socket, session, player)
+      // autoAdvance=false: player must tap question:next to move on
+      if (!cfg.timing.autoAdvance) return
+      await this.sendSelfQuestion(socket, session)
+    }
+
+    const wait = (cfg.timing.showResultsSeconds ?? 0) * 1000
+    if (wait > 0) {
+      setTimeout(() => {
+        advance().catch((e: unknown) => console.error('[game.socket] self next failed:', e))
+      }, wait)
+    } else {
+      await advance()
+    }
   }
 
   // self-paced flow
-  private async sendSelfQuestion(socket: PlayerSocket, session: GameSessionRow): Promise<void> {
+  private async sendSelfQuestion(
+    socket: PlayerSocket,
+    session: GameSessionRow,
+    opts: { fromPlayerNext?: boolean } = {}
+  ): Promise<void> {
     const data = socket.data as CustomSocketData
     if (!data.playerSessionId) return
     const player = await this.loadPlayer(session.id, data.playerSessionId)
@@ -1003,8 +1099,41 @@ export class GameSocket {
     if (matchEndsAt && Date.now() >= Date.parse(matchEndsAt))
       return this.finishPlayer(socket, session, player)
 
-    const q = questions[index]
+    const total = questions.length
+    if (total === 0) return this.finishPlayer(socket, session, player)
+    // marathon loops through the question bank until the match budget expires;
+    // solo/survival use a per-player question order when shuffleQuestions is on
+    const orderedQuestions = this.orderedQuestionsFor(questions, cfg, session.id, player.id)
+    const marathon = cfg.timing.totalMatchSeconds !== null
+    const q = marathon ? orderedQuestions[index % total] : orderedQuestions[index]
     if (!q) return this.finishPlayer(socket, session, player)
+
+    // Gap 2: detect reconnect in the "answered, waiting for next" state.
+    // When autoAdvance=false, after the player answers question N the server does NOT
+    // call sendSelfQuestion, so the clock still points at N while current_question_index
+    // is already N+1. Re-emit the previous result so the client can restore its UI
+    // and show the "Next Question" button again.
+    // A player tapping "Next" lands here in the exact same state as a reconnect
+    // (clock still at N, current_question_index already N+1). opts.fromPlayerNext
+    // tells the two apart so an explicit Next actually advances instead of
+    // re-emitting the awaiting_next state.
+    if (!opts.fromPlayerNext && !cfg.timing.autoAdvance && index > 0 && previous?.questionIndex === index - 1) {
+      const prevIndex = index - 1
+      const prevQ = marathon ? orderedQuestions[prevIndex % total] : orderedQuestions[prevIndex]
+      const lastAnswer = (player.answered_questions ?? []).find((a) => a.question_index === prevIndex)
+      socket.emit('question:awaiting_next', {
+        previous_result: {
+          question_index: prevIndex,
+          is_correct: lastAnswer?.is_correct ?? false,
+          score_earned: lastAnswer?.score_earned ?? 0,
+          correct_answer: cfg.flow.showCorrectAnswer && prevQ ? prevQ.correct_answer : null
+        },
+        player_score: player.player_score,
+        lives: player.lives ?? null,
+        serverTime: iso(Date.now())
+      })
+      return
+    }
 
     const limit = limitOf(q, cfg)
     // Reconnecting must not restart the question timer: reuse the clock while it
@@ -1060,6 +1189,77 @@ export class GameSocket {
     await cache.setPlayerClock(session.id, player.id, clock)
     this.armMatchTimer(session, player, matchEndsAt)
 
+    if (cfg.timing.autoAdvance && limit !== null && limit > 0) {
+      const remainingMs = clock.endsAt
+        ? Math.max(0, Date.parse(clock.endsAt) + LATE_GRACE_MS - Date.now())
+        : limit * 1000 + LATE_GRACE_MS
+
+      this.armSelfTimeout(session.id, player.id, remainingMs, async () => {
+        const freshSession = await this.loadSession(session.id)
+        const freshPlayer = await this.loadPlayer(session.id, player.id)
+        if (freshPlayer.current_question_index !== index) return // already answered
+
+        freshPlayer.answered_questions = [
+          ...(freshPlayer.answered_questions ?? []),
+          {
+            question_id: q.id,
+            question_index: index,
+            answer: null,
+            is_correct: false,
+            is_late: true,
+            time_taken: limit,
+            score_earned: 0,
+            answered_at: iso(Date.now())
+          } satisfies AnsweredQuestion
+        ]
+        freshPlayer.streak = 0
+        if (freshPlayer.lives !== null && freshPlayer.lives !== undefined) {
+          freshPlayer.lives = Math.max(0, freshPlayer.lives - 1)
+          if (freshPlayer.lives <= 0) freshPlayer.status = 'eliminated'
+        }
+        freshPlayer.current_question_index = index + 1
+        await cache.updatePlayer(session.id, freshPlayer)
+        await cache.recordAnswer(
+          session.id, index, freshPlayer.id,
+          { answer: null, isCorrect: false, timeTaken: limit, scoreEarned: 0 },
+          true
+        )
+
+        const over = freshPlayer.status === 'eliminated' || freshPlayer.current_question_index >= questions.length
+        const reveal = freshSession.config.flow.showCorrectAnswer
+        const showResultsMs = freshSession.config.timing.showResultsSeconds * 1000
+
+        socket.emit('question:timeout', {
+          index,
+          question_id: q.id,
+          is_correct: false,
+          correct_answer: reveal ? q.correct_answer : null,
+          lives: freshPlayer.lives ?? null,
+          eliminated: freshPlayer.status === 'eliminated',
+          serverTime: iso(Date.now())
+        })
+
+        const delay = reveal ? Math.max(1000, showResultsMs) : 0
+        if (delay > 0) {
+          setTimeout(() => {
+            void (async () => {
+              if (over) {
+                await this.finishPlayer(socket, freshSession, freshPlayer)
+              } else {
+                await this.sendSelfQuestion(socket, freshSession)
+              }
+            })()
+          }, delay)
+        } else {
+          if (over) {
+            await this.finishPlayer(socket, freshSession, freshPlayer)
+          } else {
+            await this.sendSelfQuestion(socket, freshSession)
+          }
+        }
+      })
+    }
+
     socket.emit('question:started', {
     // each self-paced player gets their own option order
       question: publicQuestion(q, index, questions.length, cfg, session.id + player.id),
@@ -1072,6 +1272,8 @@ export class GameSocket {
       remainingSeconds: clock.endsAt
         ? Math.max(0, Math.round((Date.parse(clock.endsAt) - Date.now()) / 1000))
         : null,
+      // survival and marathon: lives counter so the client never needs to track it locally
+      lives: player.lives ?? null,
       serverTime: iso(Date.now())
     })
   }
@@ -1085,6 +1287,7 @@ export class GameSocket {
     await cache.updatePlayer(session.id, player)
     await repo.flushPlayers([player])
     this.clearMatchTimer(session.id, player.id)
+    this.clearSelfTimeout(session.id, player.id)
 
     const serverTime = iso(Date.now())
     const showLeaderboard = session.config.flow.showLeaderboard

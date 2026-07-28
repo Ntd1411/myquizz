@@ -8,7 +8,12 @@ export const marathonMode: GameModeHandler = {
   defaultConfig: () =>
     normalizeConfig(
       gameConfigSchema.parse({
-        flow: { pacing: 'self', allowAnswerLate: false, lives: 3, showLeaderboard: 'end_only' },
+        flow: {
+          pacing: 'self',
+          allowAnswerLate: false,
+          lives: null,
+          showLeaderboard: 'end_only'
+        },
         timing: { totalMatchSeconds: 300 }
       }),
       'marathon'
@@ -33,5 +38,5 @@ export const marathonMode: GameModeHandler = {
     return result
   },
   shouldAdvance: () => true,
-  isGameOver: (ctx) => ctx.matchTimeUp || ctx.noMoreQuestions
+  isGameOver: (ctx) => ctx.matchTimeUp === true || ctx.activePlayers < 1
 }

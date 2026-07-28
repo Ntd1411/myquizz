@@ -8,7 +8,11 @@ export const classicMode: GameModeHandler = {
   defaultConfig: () =>
     normalizeConfig(
       gameConfigSchema.parse({
-        flow: { pacing: 'host', allowAnswerLate: false, showLeaderboard: 'between_questions' }
+        flow: {
+          pacing: 'host',
+          allowAnswerLate: false,
+          showLeaderboard: 'between_questions'
+        }
       }),
       'classic'
     ),
