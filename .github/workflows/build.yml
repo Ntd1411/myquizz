@@ -18,30 +18,25 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
       - name: Cache backend dependencies
         uses: actions/cache@v3
         with:
           path: backend/node_modules
-          key: ${{ runner.os }}-backend-pnpm-${{ hashFiles('backend/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-backend-npm-${{ hashFiles('backend/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-backend-pnpm-
+            ${{ runner.os }}-backend-npm-
 
       - name: Install dependencies
         working-directory: ./backend
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Lint
         working-directory: ./backend
-        run: pnpm lint
+        run: npm run lint
 
       - name: Build
         working-directory: ./backend
-        run: pnpm build
+        run: npm run build
 
   build-frontend:
     name: Build Frontend
@@ -56,27 +51,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
       - name: Cache frontend dependencies
         uses: actions/cache@v3
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-frontend-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-frontend-npm-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-frontend-pnpm-
+            ${{ runner.os }}-frontend-npm-
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Lint
         working-directory: ./frontend
-        run: pnpm lint
+        run: npm run lint
 
       - name: Build
         working-directory: ./frontend
-        run: pnpm build
+        run: npm run build
