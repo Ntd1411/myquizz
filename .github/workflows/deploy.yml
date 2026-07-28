@@ -1,0 +1,61 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add VPS to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd ${{ env.VPS_DEPLOY_PATH }}
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
+          ENDSSH
+
+      - name: Check deployment status
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
+            cd ${{ env.VPS_DEPLOY_PATH }}
+            docker compose ps
+          ENDSSH
+
+      - name: Notify deployment result
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "Deploy thanh cong den VPS"
+          else
+            echo "Deploy that bai"
+          fi

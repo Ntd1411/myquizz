@@ -1,0 +1,82 @@
+name: Build and Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Cache backend dependencies
+        uses: actions/cache@v3
+        with:
+          path: backend/node_modules
+          key: ${{ runner.os }}-backend-pnpm-${{ hashFiles('backend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-pnpm-
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ./backend
+        run: pnpm lint
+
+      - name: Build
+        working-directory: ./backend
+        run: pnpm build
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v3
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-frontend-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-frontend-pnpm-
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ./frontend
+        run: pnpm lint
+
+      - name: Build
+        working-directory: ./frontend
+        run: pnpm build
