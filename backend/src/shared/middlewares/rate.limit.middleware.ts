@@ -32,7 +32,17 @@ export function createRateLimiter(options: RateLimitOptions) {
     try {
       const redis = RedisClient.getInstance()
       const userId = req.user?.id
-      const ip = req.ip || req.socket.remoteAddress || 'unknown'
+      const rawIp = req.ip || req.socket.remoteAddress || 'unknown'
+
+      // Normalize IP address: chuyển IPv6 loopback thành IPv4, loại bỏ ký tự đặc biệt
+      let ip = rawIp
+      if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+        ip = '127.0.0.1'
+      }
+      // Loại bỏ prefix ::ffff: của IPv4-mapped IPv6
+      ip = ip.replace(/^::ffff:/, '')
+      // Thay thế : bằng - để tránh conflict với Redis key delimiter
+      ip = ip.replace(/:/g, '-')
 
       // Xác định identifier cho rate limit
       let identifier: string
@@ -128,10 +138,10 @@ export const globalRateLimiter = createRateLimiter({
 })
 
 export const apiRateLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 1000,
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 2000,
   keyPrefix: 'rate_limit:api',
-  byBoth: true // userId + IP
+  byIp: true
 })
 
 export const authRateLimiter = createRateLimiter({
