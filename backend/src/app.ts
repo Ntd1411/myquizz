@@ -15,6 +15,8 @@ import swaggerUi from 'swagger-ui-express'
 import { swaggerSpec } from './swagger/swagger.config.js'
 import { redisClient } from './infrastructure/cache/redis.client.js'
 import { bootstrapEngine } from './modules/game/engine/index.js'
+import { storageRouter } from './modules/storage/storage.routes.js'
+import { apiRateLimiter, globalRateLimiter } from './shared/middlewares/rate.limit.middleware.js'
 
 bootstrapEngine()
 
@@ -59,12 +61,14 @@ app.use(express.json())
 
 app.use(cookieParser())
 
+app.use(globalRateLimiter)
+
 app.get('/', (req, res) => {
   res.send('Hello, world')
 })
 
 const router = express.Router()
-// router.use('/', (req, res) => res.send({ success: 'ok' }))
+router.get('/', (req, res) => res.send({ success: 'ok' }))
 router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'MyQuizz API Documentation'
@@ -73,10 +77,11 @@ router.use('/auth', authRouter)
 router.use('/users', userRouter)
 router.use('/quizzes', quizRouter)
 router.use('/games', gameRouter)
+router.use('/storage', storageRouter)
 
 new GameSocket(io)
 
-app.use('/api/v1', router)
+app.use('/api/v1', apiRateLimiter, router)
 app.use(errorHandler)
 
 httpServer.listen(port, () => {
