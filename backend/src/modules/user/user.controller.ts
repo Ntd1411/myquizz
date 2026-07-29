@@ -8,7 +8,6 @@ import {
   uploadAvatarService
 } from './user.services.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import { storageService } from '../../infrastructure/storage/storage.service.js'
 
 export function getMe(
   req: AuthRequest,
@@ -82,15 +81,10 @@ export async function uploadAvatar(
   next: NextFunction
 ) {
   try {
-    const file = req.file
-    if (!file) {
+    const { fileUrl } = req.body as { fileUrl?: string }
+    if (!fileUrl) {
       throw new AppError(400, 'No file uploaded')
     }
-
-    const fileUrl = await storageService.upload(
-      file,
-      `avatars/${req.user?.id}`
-    )
 
     await uploadAvatarService(req.user?.id as number, fileUrl)
 
