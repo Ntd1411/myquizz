@@ -9,8 +9,8 @@ const ALLOWED_MIME_TYPES = [
   'image/webp'
 ]
 
-// Limit file size (20MB)
-const MAX_FILE_SIZE = 20 * 1024 * 1024
+// Limit file size (2MB)
+const MAX_FILE_SIZE = 2 * 1024 * 1024
 
 const fileFilter = (
   req: Express.Request,

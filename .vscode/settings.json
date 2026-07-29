@@ -10,5 +10,9 @@
   ],
   "editor.formatOnSave": false,
   "js/ts.tsdk.path": "node_modules/typescript/lib",
-  "postman.settings.dotenv-detection-notification-visibility": false
+  "postman.settings.dotenv-detection-notification-visibility": false,
+  "search.exclude": {
+    "**/.env": true,
+    "**/backend/.env": true
+  }
 }
