@@ -34,8 +34,7 @@ const envSchema = z.object({
   SMTP_PORT: z.string().transform(Number),
   SMTP_USER: z.string(),
   SMTP_PASSWORD: z.string(),
-  SMTP_SECURE: z.string().transform((val) => val === 'true'),
-  MAIL_FROM: z.email()
+  MAIL_FROM: z.string()
 })
 
 const envParsed = envSchema.safeParse(process.env)

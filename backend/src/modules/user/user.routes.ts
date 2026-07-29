@@ -3,8 +3,11 @@ import { authMiddleware } from '../auth/auth.middleware.js'
 import {
   changePassword,
   deactivateAccount,
+  forgotPassword,
   getMe,
   getUser,
+  resetPassword,
+  resetPasswordWithToken,
   updateProfile,
   uploadAvatar
 } from './user.controller.js'
@@ -12,8 +15,11 @@ import { validateBody } from '../../shared/validators/validator.js'
 import {
   changePasswordSchema,
   deactivateAccountSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  resetPasswordWithTokenSchema,
   updateProfileSchema
-} from '../../shared/validators/schemas.js'
+} from './user.schemas.js'
 import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const userRouter: Router = Router()
@@ -283,4 +289,147 @@ userRouter.patch(
   '/me/avatar',
   authMiddleware,
   uploadAvatar
+)
+
+/**
+ * @swagger
+ * /api/v1/users/forgot-password:
+ *   post:
+ *     summary: Quên mật khẩu - Gửi OTP qua email
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *     responses:
+ *       200:
+ *         description: OTP đã được gửi qua email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: OTP sent to your email
+ *       404:
+ *         description: Email không tồn tại
+ *       410:
+ *         description: Tài khoản đã bị vô hiệu hóa
+ */
+userRouter.post(
+  '/forgot-password',
+  authRateLimiter,
+  validateBody(forgotPasswordSchema),
+  forgotPassword
+)
+
+/**
+ * @swagger
+ * /api/v1/users/reset-password:
+ *   post:
+ *     summary: Reset mật khẩu với OTP
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - otp
+ *               - newPassword
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               otp:
+ *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
+ *                 example: "123456"
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 example: newpassword123
+ *     responses:
+ *       200:
+ *         description: Mật khẩu đã được reset thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Password reset successfully
+ *       400:
+ *         description: OTP không hợp lệ hoặc đã hết hạn
+ *       404:
+ *         description: Người dùng không tồn tại
+ */
+userRouter.post(
+  '/reset-password',
+  authRateLimiter,
+  validateBody(resetPasswordSchema),
+  resetPassword
+)
+
+/**
+ * @swagger
+ * /api/v1/users/reset-password-token:
+ *   post:
+ *     summary: Reset mật khẩu với token từ link email
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - newPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: "a1b2c3d4e5f6..."
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 example: newpassword123
+ *     responses:
+ *       200:
+ *         description: Mật khẩu đã được reset thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Password reset successfully
+ *       400:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *       404:
+ *         description: Người dùng không tồn tại
+ */
+userRouter.post(
+  '/reset-password-token',
+  authRateLimiter,
+  validateBody(resetPasswordWithTokenSchema),
+  resetPasswordWithToken
 )

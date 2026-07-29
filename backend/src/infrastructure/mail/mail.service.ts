@@ -25,7 +25,7 @@ class MailService {
     })
   }
 
-  // Gửi email, trả về messageId
+  // Send email, return messageId
   async sendMail(options: MailOptions): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const info = await this.transporter.sendMail({
@@ -43,7 +43,7 @@ class MailService {
     return info.messageId ?? ''
   }
 
-  // (Tuỳ chọn) kiểm tra cấu hình SMTP lúc khởi động
+  // (Optional) Verify SMTP configuration on startup
   async verify(): Promise<boolean> {
     return this.transporter.verify()
   }

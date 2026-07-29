@@ -5,9 +5,10 @@ import { sharedRepository } from '../../shared/repositories/shared.repository.js
 import { hashPassword, verifyPassword } from '../../shared/utils/auth.utils.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { deleteFileService } from '../storage/storage.service.js'
-
-const USER_CACHE_TTL = 5 * 60 // 5 minutes
-const USER_CACHE_PREFIX = 'user:profile'
+import { mailService } from '../../infrastructure/mail/mail.service.js'
+import { env } from '../../infrastructure/config/envconfig.js'
+import { generateOTP, generateResetToken } from './user.utils.js'
+import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schemas.js'
 
 async function invalidateUserCache(userId: number): Promise<void> {
   const redis = RedisClient.getInstance()
@@ -149,6 +150,146 @@ export async function deactivateAccountService(
   if (!isDeactivated) {
     throw new AppError(500, 'Failed to deactivate account')
   }
+
+  await invalidateUserCache(user.id)
+}
+
+export async function forgotPasswordService(email: string): Promise<void> {
+  const user = await sharedRepository.findByEmail(email)
+
+  if (!user) {
+    throw new AppError(404, 'Email not found')
+  }
+
+  if (user.deleted_at) {
+    throw new AppError(410, 'Account is deactivated')
+  }
+
+  const redis = RedisClient.getInstance()
+  const otpKey = `${RESET_PREFIX}:${email}`
+  const existingOtp = await redis.get(otpKey)
+
+  if (existingOtp) {
+    const ttl = await redis.ttl(otpKey)
+    throw new AppError(
+      429,
+      `OTP already sent. Please wait ${ttl} seconds before requesting again.`
+    )
+  }
+
+  const otp = generateOTP()
+  const resetToken = generateResetToken()
+  const tokenKey = `${RESET_PREFIX}:${resetToken}`
+
+  await redis.setex(otpKey, RESET_TTL, otp)
+  await redis.setex(tokenKey, RESET_TTL, resetToken)
+
+  const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`
+
+  const resetHtml = `
+  <h2>Reset Password</h2>
+  <p>Click the link below to reset your password:</p>
+  <p>
+    <a href="${resetUrl}"
+       style="display:inline-block;padding:10px 20px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px">
+      Reset Password
+    </a>
+  </p>
+  <p>Or use this OTP code: <strong>${otp}</strong></p>
+  <p>Link and OTP will expire in 5 minutes.</p>
+  <p>If you didn't request this, please ignore this email.</p>
+`
+
+  await mailService.sendMail({
+    to: email,
+    subject: 'Reset Password',
+    html: resetHtml,
+    text: `Reset Password: ${resetUrl}\nOTP Code: ${otp}\nLink and OTP will expire in 5 minutes.`
+  })
+}
+
+export async function resetPasswordService(
+  email: string,
+  otp: string,
+  newPassword: string
+): Promise<void> {
+  const redis = RedisClient.getInstance()
+  const otpKey = `${RESET_PREFIX}:${email}`
+
+  const savedOtp = await redis.get(otpKey)
+
+  if (!savedOtp) {
+    throw new AppError(400, 'OTP expired or not found')
+  }
+
+  if (savedOtp !== otp) {
+    throw new AppError(400, 'Invalid OTP')
+  }
+
+  const user = await sharedRepository.findByEmail(email)
+
+  if (!user) {
+    throw new AppError(404, 'User not found')
+  }
+
+  const newPasswordHash = await hashPassword(newPassword)
+  const isPasswordChanged = await userRepository.changePassword(
+    user.id,
+    newPasswordHash
+  )
+
+  if (!isPasswordChanged) {
+    throw new AppError(500, 'Failed to reset password')
+  }
+
+  await redis.del(otpKey)
+
+  const tokenPattern = `${RESET_PREFIX}:*`
+  const keys = await redis.keys(tokenPattern)
+
+  for (const key of keys) {
+    const value = await redis.get(key)
+    if (value === email) {
+      await redis.del(key)
+    }
+  }
+
+  await invalidateUserCache(user.id)
+}
+
+export async function resetPasswordWithTokenService(
+  token: string,
+  newPassword: string
+): Promise<void> {
+  const redis = RedisClient.getInstance()
+  const tokenKey = `${RESET_PREFIX}:${token}`
+
+  const email = await redis.get(tokenKey)
+
+  if (!email) {
+    throw new AppError(400, 'Reset token expired or invalid')
+  }
+
+  const user = await sharedRepository.findByEmail(email)
+
+  if (!user) {
+    throw new AppError(404, 'User not found')
+  }
+
+  const newPasswordHash = await hashPassword(newPassword)
+  const isPasswordChanged = await userRepository.changePassword(
+    user.id,
+    newPasswordHash
+  )
+
+  if (!isPasswordChanged) {
+    throw new AppError(500, 'Failed to reset password')
+  }
+
+  await redis.del(tokenKey)
+
+  const otpKey = `${RESET_PREFIX}:${email}`
+  await redis.del(otpKey)
 
   await invalidateUserCache(user.id)
 }
