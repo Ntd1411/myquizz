@@ -106,12 +106,14 @@ export async function createPresignedUploadService(
  */
 export async function deleteFileService(fileUrl: string): Promise<void> {
   if (!fileUrl) {
-    throw new AppError(400, 'fileUrl is required')
+    console.log('fileUrl is required')
+    return
   }
 
   const key = extractKeyFromUrl(fileUrl)
   if (!key) {
-    throw new AppError(500, `Cannot extract key from URL: ${fileUrl}`)
+    console.log(`Cannot extract key from URL: ${fileUrl}`)
+    return
   }
 
   const command = new DeleteObjectCommand({

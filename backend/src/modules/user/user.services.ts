@@ -4,6 +4,7 @@ import { userRepository } from './user.repository.js'
 import { sharedRepository } from '../../shared/repositories/shared.repository.js'
 import { hashPassword, verifyPassword } from '../../shared/utils/auth.utils.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
+import { deleteFileService } from '../storage/storage.service.js'
 
 const USER_CACHE_TTL = 5 * 60 // 5 minutes
 const USER_CACHE_PREFIX = 'user:profile'
@@ -78,6 +79,13 @@ export async function uploadAvatarService(
   userId: number,
   avatarUrl: string
 ): Promise<void> {
+  const user = await sharedRepository.findById(userId)
+  if (!user) {
+    throw new AppError(404, 'User not found')
+  }
+  if (user.avatar)
+    await deleteFileService(user.avatar)
+
   const isAvatarUploaded = await userRepository.uploadAvatar(userId, avatarUrl)
 
   if (!isAvatarUploaded) {
