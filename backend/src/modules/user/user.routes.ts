@@ -14,7 +14,7 @@ import {
   deactivateAccountSchema,
   updateProfileSchema
 } from '../../shared/validators/schemas.js'
-import { uploadMiddleware } from '../../infrastructure/config/multer.config.js'
+import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const userRouter: Router = Router()
 
@@ -232,6 +232,7 @@ userRouter.get('/:userId', getUser)
 userRouter.patch(
   '/me/password',
   authMiddleware,
+  authRateLimiter,
   validateBody(changePasswordSchema),
   changePassword
 )
@@ -281,6 +282,5 @@ userRouter.patch(
 userRouter.patch(
   '/me/avatar',
   authMiddleware,
-  uploadMiddleware.single('avatar'),
   uploadAvatar
 )

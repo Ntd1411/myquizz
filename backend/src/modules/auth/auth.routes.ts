@@ -6,6 +6,7 @@ import {
 } from '../../shared/validators/schemas.js'
 import { authMiddleware } from './auth.middleware.js'
 import { login, register, refreshToken, logout } from './auth.controller.js'
+import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const authRouter: Router = Router()
 
@@ -81,7 +82,7 @@ export const authRouter: Router = Router()
  *       403:
  *         description: Tài khoản bị vô hiệu hóa
  */
-authRouter.post('/login', validateBody(loginSchema), login)
+authRouter.post('/login', validateBody(loginSchema), authRateLimiter, login)
 
 /**
  * @swagger
@@ -159,7 +160,7 @@ authRouter.post('/login', validateBody(loginSchema), login)
  *       500:
  *         description: Lỗi máy chủ
  */
-authRouter.post('/register', validateBody(registerSchema), register)
+authRouter.post('/register', validateBody(registerSchema), authRateLimiter, register)
 
 /**
  * @swagger
