@@ -151,3 +151,11 @@ export const authRateLimiter = createRateLimiter({
   byIp: true,
   skipSuccessfulRequests: true // Only count failed requests
 })
+
+export const resetPasswordRateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyPrefix: 'rate_limit:reset-password',
+  byIp: true,
+  skipFailedRequests: true // Only count successful requests
+})

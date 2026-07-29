@@ -20,7 +20,7 @@ import {
   resetPasswordWithTokenSchema,
   updateProfileSchema
 } from './user.schemas.js'
-import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
+import { authRateLimiter, resetPasswordRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const userRouter: Router = Router()
 
@@ -382,7 +382,7 @@ userRouter.post(
  */
 userRouter.post(
   '/reset-password',
-  authRateLimiter,
+  resetPasswordRateLimiter,
   validateBody(resetPasswordSchema),
   resetPassword
 )
@@ -429,7 +429,7 @@ userRouter.post(
  */
 userRouter.post(
   '/reset-password-token',
-  authRateLimiter,
+  resetPasswordRateLimiter,
   validateBody(resetPasswordWithTokenSchema),
   resetPasswordWithToken
 )
