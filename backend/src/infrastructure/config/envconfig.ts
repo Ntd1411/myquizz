@@ -29,7 +29,13 @@ const envSchema = z.object({
   SPACES_BUCKET: z.string(),
   SPACES_REGION: z.string(),
   SPACES_ENDPOINT: z.string(),
-  SPACES_PUBLIC_URL: z.string()
+  SPACES_PUBLIC_URL: z.string(),
+  SMTP_HOST: z.string(),
+  SMTP_PORT: z.string().transform(Number),
+  SMTP_USER: z.string(),
+  SMTP_PASSWORD: z.string(),
+  SMTP_SECURE: z.string().transform((val) => val === 'true'),
+  MAIL_FROM: z.email()
 })
 
 const envParsed = envSchema.safeParse(process.env)
