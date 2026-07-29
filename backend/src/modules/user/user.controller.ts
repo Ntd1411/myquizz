@@ -3,7 +3,10 @@ import type { AuthRequest, User } from '../../shared/types/shared.types.js'
 import {
   changePasswordService,
   deactivateAccountService,
+  forgotPasswordService,
   getUserService,
+  resetPasswordService,
+  resetPasswordWithTokenService,
   updateProfileService,
   uploadAvatarService
 } from './user.services.js'
@@ -132,6 +135,73 @@ export async function deactivateAccount(
     await deactivateAccountService(user, password)
 
     res.json({ message: 'Account deactivated successfully' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function forgotPassword(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { email } = req.body as { email?: string }
+
+    if (!email) {
+      throw new AppError(400, 'Email is required')
+    }
+
+    await forgotPasswordService(email)
+
+    res.json({ message: 'OTP sent to your email' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function resetPassword(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { email, otp, newPassword } = req.body as {
+      email?: string
+      otp?: string
+      newPassword?: string
+    }
+
+    if (!email || !otp || !newPassword) {
+      throw new AppError(400, 'Email, OTP and new password are required')
+    }
+
+    await resetPasswordService(email, otp, newPassword)
+
+    res.json({ message: 'Password reset successfully' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function resetPasswordWithToken(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { token, newPassword } = req.body as {
+      token?: string
+      newPassword?: string
+    }
+
+    if (!token || !newPassword) {
+      throw new AppError(400, 'Token and new password are required')
+    }
+
+    await resetPasswordWithTokenService(token, newPassword)
+
+    res.json({ message: 'Password reset successfully' })
   } catch (error) {
     next(error)
   }

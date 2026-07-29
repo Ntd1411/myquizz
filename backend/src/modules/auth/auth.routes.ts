@@ -3,7 +3,7 @@ import { validateBody } from '../../shared/validators/validator.js'
 import {
   loginSchema,
   registerSchema
-} from '../../shared/validators/schemas.js'
+} from './auth.schemas.js'
 import { authMiddleware } from './auth.middleware.js'
 import { login, register, refreshToken, logout } from './auth.controller.js'
 import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
