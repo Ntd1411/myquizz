@@ -3,8 +3,27 @@ import type { User } from '../../shared/types/shared.types.js'
 import { userRepository } from './user.repository.js'
 import { sharedRepository } from '../../shared/repositories/shared.repository.js'
 import { hashPassword, verifyPassword } from '../../shared/utils/auth.utils.js'
+import RedisClient from '../../infrastructure/cache/redis.client.js'
+
+const USER_CACHE_TTL = 5 * 60 // 5 minutes
+const USER_CACHE_PREFIX = 'user:profile'
+
+async function invalidateUserCache(userId: number): Promise<void> {
+  const redis = RedisClient.getInstance()
+  const cacheKey = `${USER_CACHE_PREFIX}:${userId}`
+
+  await redis.del(cacheKey)
+}
 
 export async function getUserService(userId: number): Promise<User> {
+  const redis = RedisClient.getInstance()
+  const cacheKey = `${USER_CACHE_PREFIX}:${userId}`
+
+  const cached = await redis.get(cacheKey)
+  if (cached) {
+    return JSON.parse(cached) as User
+  }
+  // Cache miss
   const user = await sharedRepository.findById(userId)
   if (!user) {
     throw new AppError(404, 'User not found')
@@ -13,6 +32,8 @@ export async function getUserService(userId: number): Promise<User> {
   if (user.deleted_at) {
     throw new AppError(410, 'Account is deactivated')
   }
+
+  await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
 
   return user
 }
@@ -49,6 +70,8 @@ export async function changePasswordService(
   if (!isPasswordChanged) {
     throw new AppError(500, 'Failed to change password')
   }
+
+  await invalidateUserCache(user.id)
 }
 
 export async function uploadAvatarService(
@@ -60,6 +83,8 @@ export async function uploadAvatarService(
   if (!isAvatarUploaded) {
     throw new AppError(500, 'Failed to upload avatar')
   }
+
+  await invalidateUserCache(userId)
 }
 
 export async function updateProfileService(
@@ -97,6 +122,8 @@ export async function updateProfileService(
   if (!isProfileUpdated) {
     throw new AppError(500, 'Failed to update profile')
   }
+
+  await invalidateUserCache(userId)
 }
 
 export async function deactivateAccountService(
@@ -114,4 +141,6 @@ export async function deactivateAccountService(
   if (!isDeactivated) {
     throw new AppError(500, 'Failed to deactivate account')
   }
+
+  await invalidateUserCache(user.id)
 }
