@@ -161,7 +161,7 @@ export async function deactivateAccountService(
   await invalidateUserCache(user.id)
 }
 
-export async function forgotPasswordService(email: string): Promise<void> {
+export async function forgotPasswordService(email: string): Promise<Date> {
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
@@ -210,12 +210,17 @@ export async function forgotPasswordService(email: string): Promise<void> {
   <p>If you didn't request this, please ignore this email.</p>
 `
 
-  await mailService.sendMail({
+  mailService.sendMail({
     to: email,
     subject: 'Reset Password',
     html: resetHtml,
     text: `Reset Password: ${resetUrl}\nOTP Code: ${otp}\nLink and OTP will expire in 5 minutes.`
+  }).catch(error => {
+    console.error('Failed to send reset password email:', error)
   })
+
+  const resetTime = new Date(Date.now() + RESET_TTL * 1000)
+  return resetTime
 }
 
 export async function resetPasswordService(

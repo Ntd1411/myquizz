@@ -153,9 +153,9 @@ export async function forgotPassword(
       throw new AppError(400, 'Email is required')
     }
 
-    await forgotPasswordService(email)
+    const resetTime = await forgotPasswordService(email)
 
-    return success(res, { message: 'Password reset email sent successfully' })
+    return success(res, { resetTime })
   } catch (error) {
     next(error)
   }

@@ -11,7 +11,6 @@ export async function authMiddleware(
   next: NextFunction
 ) {
   try {
-    // Đọc token từ cookie thay vì Authorization header
     const token = req.cookies.accessToken as string | undefined
 
     if (!token) {

@@ -128,7 +128,7 @@ export class AuthRepository {
     ])
   }
 
-  // Kiểm tra nếu token đã bị blacklist
+  // Check if access token is blacklisted
   async isTokenBlacklisted(token: string): Promise<boolean> {
     const hashedToken = hashToken(token)
     const result = await pool.query(
