@@ -5,7 +5,7 @@ import {
   registerSchema
 } from './auth.schemas.js'
 import { authMiddleware } from './auth.middleware.js'
-import { login, register, refreshToken, logout, googleCallback, googleRedirect } from './auth.controller.js'
+import { login, register, refreshToken, logout, googleCallback, googleRedirect, googleOneTap } from './auth.controller.js'
 import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const authRouter: Router = Router()
@@ -226,3 +226,5 @@ authRouter.get('/google', authRateLimiter, googleRedirect)
  *         description: State không hợp lệ / email chưa xác thực
  */
 authRouter.get('/google/callback', googleCallback)
+
+authRouter.post('/google/one-tap', authRateLimiter, googleOneTap)

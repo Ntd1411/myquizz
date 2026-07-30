@@ -5,6 +5,7 @@ import {
   getGoogleAuthUrl,
   loginService,
   loginWithGoogle,
+  loginWithGoogleCredential,
   logoutService,
   refreshTokenService,
   registerService
@@ -229,7 +230,58 @@ export async function googleCallback(
     })
 
     // Browser came here via a top-level redirect, so send it back to the app
-    res.redirect(`${env.FRONTEND_URL}/auth/callback`)
+    // res.redirect(`${env.FRONTEND_URL}/auth/callback`)
+    res.redirect('http://localhost:5173/google-oauth-test')
+  } catch (err) {
+    next(err)
+  }
+}
+
+// One Tap: receive the Google credential (id_token), verify, issue our cookies
+export async function googleOneTap(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { credential } = req.body as { credential?: string }
+    if (!credential) {
+      throw new AppError(400, 'Missing Google credential')
+    }
+
+    const user = await loginWithGoogleCredential(credential)
+
+    // Issue tokens exactly like the redirect flow
+    const tokens = generateTokens(user.id)
+    const deviceName = req.headers['user-agent'] || 'Unknown Device'
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown'
+
+    await authRepository.saveRefreshToken(
+      user.id,
+      deviceName,
+      ipAddress,
+      hashToken(tokens.refreshToken),
+      new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue))
+    )
+
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
+    // AJAX request: return JSON instead of redirecting
+    res.json({
+      success: true,
+      user: { id: user.id, email: user.email, fullname: user.fullname, avatar: user.avatar }
+    })
   } catch (err) {
     next(err)
   }

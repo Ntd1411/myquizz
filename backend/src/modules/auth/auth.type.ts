@@ -23,7 +23,7 @@ export interface User {
   fullname: string
   email: string
   phone?: string
-  password: string
+  password: string | null
   role: 'admin' | 'moderator' | 'user'
   avatar?: string
   description?: string

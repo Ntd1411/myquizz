@@ -138,6 +138,10 @@ export async function deactivateAccountService(
   user: User,
   password: string
 ): Promise<void> {
+  if (!user.password) {
+    throw new AppError(400, 'Cannot deactivate your account')
+  }
+
   const isPasswordCorrect = await verifyPassword(password, user.password)
 
   if (!isPasswordCorrect) {
@@ -163,6 +167,9 @@ export async function forgotPasswordService(email: string): Promise<void> {
   if (user.deleted_at) {
     throw new AppError(410, 'Account is deactivated')
   }
+
+  if (user.auth_provider === 'google')
+    throw new AppError(400, 'Google account cannot reset password')
 
   const redis = RedisClient.getInstance()
   const otpKey = `${RESET_PREFIX}:${email}`

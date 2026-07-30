@@ -70,7 +70,7 @@ export async function loginService(
   }
 
   // Verify password
-  const isValid = await verifyPassword(password, user.password)
+  const isValid = await verifyPassword(password, user.password || '')
 
   if (!isValid) {
     throw new AppError(401, 'Invalid email or password')
@@ -185,24 +185,16 @@ export function getGoogleAuthUrl(state: string): string {
   })
 }
 
-// Exchange the authorization code and verify the returned id_token
-async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
-  const { tokens } = await oauthClient.getToken(code)
-
-  if (!tokens.id_token) {
-    throw new AppError(401, 'Google did not return an id_token')
-  }
-
+// Verify a Google id_token and extract the profile (shared by both flows)
+async function profileFromIdToken(idToken: string): Promise<GoogleProfile> {
   const ticket = await oauthClient.verifyIdToken({
-    idToken: tokens.id_token,
+    idToken,
     audience: env.GOOGLE_CLIENT_ID
   })
-
   const payload = ticket.getPayload()
   if (!payload?.sub || !payload.email) {
     throw new AppError(401, 'Cannot read profile from Google account')
   }
-
   return {
     googleId: payload.sub,
     email: payload.email,
@@ -212,18 +204,18 @@ async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
   }
 }
 
-// Resolve (or create) the app user for a Google authorization code.
-export async function loginWithGoogle(code: string): Promise<User> {
-  const profile = await fetchGoogleProfile(code)
+// Authorization Code flow: exchange the code, then verify
+async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
+  const { tokens } = await oauthClient.getToken(code)
+  if (!tokens.id_token) throw new AppError(401, 'Google did not return an id_token')
+  return profileFromIdToken(tokens.id_token)
+}
 
-  // Already linked before
+// Resolve or create the app user (same 3-branch logic, now shared)
+async function resolveUser(profile: GoogleProfile): Promise<User> {
   const byGoogleId = await authRepository.findByGoogleId(profile.googleId)
-  if (byGoogleId) {
-    return byGoogleId
-  }
+  if (byGoogleId) return byGoogleId
 
-  // Auto-link to an existing account with the same email.
-  // Require a verified email to prevent account takeover.
   const byEmail = await userRepository.findByEmail(profile.email)
   if (byEmail) {
     if (!profile.emailVerified) {
@@ -232,18 +224,23 @@ export async function loginWithGoogle(code: string): Promise<User> {
     if (byEmail.deleted_at !== null) {
       throw new AppError(403, 'Account is deactivated')
     }
-    return authRepository.linkGoogleId(
-      byEmail.id,
-      profile.googleId,
-      profile.avatar
-    )
+    return authRepository.linkGoogleId(byEmail.id, profile.googleId, profile.avatar)
   }
 
-  // Brand new user
   return authRepository.addGoogleUser({
     fullname: profile.fullname,
     email: profile.email,
     googleId: profile.googleId,
     avatar: profile.avatar
   })
+}
+
+// Redirect flow entrypoint (unchanged behavior)
+export async function loginWithGoogle(code: string): Promise<User> {
+  return resolveUser(await fetchGoogleProfile(code))
+}
+
+// One Tap entrypoint: frontend already provides a Google-signed id_token
+export async function loginWithGoogleCredential(idToken: string): Promise<User> {
+  return resolveUser(await profileFromIdToken(idToken))
 }
