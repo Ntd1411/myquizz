@@ -8,9 +8,10 @@ import {
   resetPasswordWithTokenService,
   updateProfileService,
   uploadAvatarService
-} from './user.services.js'
+} from './user.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest, User } from '../auth/auth.type.js'
+import { success } from '../../shared/utils/response.js'
 
 export function getMe(
   req: AuthRequest,
@@ -20,7 +21,7 @@ export function getMe(
   try {
     const { password: _pw, deleted_at: _da, ...userWithoutPassword } = req.user as User
 
-    res.json(userWithoutPassword)
+    return success(res, { user: userWithoutPassword })
   } catch (error) {
     next(error)
   }
@@ -48,7 +49,7 @@ export async function getUser(
       description: user.description
     }
 
-    res.json(userData)
+    return success(res, { user: userData })
   } catch (error) {
     next(error)
   }
@@ -72,7 +73,7 @@ export async function changePassword(
 
     await changePasswordService(user, oldPassword, newPassword)
 
-    res.json({ message: 'Password changed successfully' })
+    return success(res, { message: 'Password changed successfully' })
   } catch (error) {
     next(error)
   }
@@ -89,9 +90,9 @@ export async function uploadAvatar(
       throw new AppError(400, 'No file uploaded')
     }
 
-    await uploadAvatarService(req.user?.id as number, fileUrl)
+    const avatarUrl = await uploadAvatarService(req.user?.id as number, fileUrl)
 
-    res.json({ message: 'Avatar uploaded successfully', fileUrl })
+    return success(res, { avatarUrl })
   } catch (error) {
     next(error)
   }
@@ -111,9 +112,9 @@ export async function updateProfile(
       description?: string
     }
 
-    await updateProfileService(userId, fullname, email, phone, description)
+    const user = await updateProfileService(userId, fullname, email, phone, description)
 
-    res.json({ message: 'Profile updated successfully' })
+    return success(res, { user })
   } catch (error) {
     next(error)
   }
@@ -134,7 +135,7 @@ export async function deactivateAccount(
 
     await deactivateAccountService(user, password)
 
-    res.json({ message: 'Account deactivated successfully' })
+    return success(res, { message: 'Account deactivated successfully' })
   } catch (error) {
     next(error)
   }
@@ -152,9 +153,9 @@ export async function forgotPassword(
       throw new AppError(400, 'Email is required')
     }
 
-    await forgotPasswordService(email)
+    const resetTime = await forgotPasswordService(email)
 
-    res.json({ message: 'OTP sent to your email' })
+    return success(res, { resetTime })
   } catch (error) {
     next(error)
   }
@@ -178,7 +179,7 @@ export async function resetPassword(
 
     await resetPasswordService(email, otp, newPassword)
 
-    res.json({ message: 'Password reset successfully' })
+    return success(res, { message: 'Password reset successfully' })
   } catch (error) {
     next(error)
   }
@@ -201,7 +202,7 @@ export async function resetPasswordWithToken(
 
     await resetPasswordWithTokenService(token, newPassword)
 
-    res.json({ message: 'Password reset successfully' })
+    return success(res, { message: 'Password reset successfully' })
   } catch (error) {
     next(error)
   }

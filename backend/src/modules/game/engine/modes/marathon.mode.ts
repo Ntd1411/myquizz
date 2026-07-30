@@ -1,6 +1,6 @@
-import { gameConfigSchema } from '../../game.schemas.js'
+import { gameConfigSchema } from '../../game.schema.js'
 import type { AnswerOutcome, GameModeHandler } from '../mode.type.js'
-import { getConfigSpec, normalizeConfig } from '../config.rules.js'
+import { getConfigSpec, normalizeConfig } from '../config.rule.js'
 import { computeScore } from '../scoring.js'
 
 export const marathonMode: GameModeHandler = {

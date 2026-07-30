@@ -1,13 +1,13 @@
 import { getModeHandler, listModes } from './engine/registry.js'
-import { gameConfigSchema, type GameConfig } from './game.schemas.js'
-import { mergeConfig } from './game.utils.js'
+import { gameConfigSchema, type GameConfig } from './game.schema.js'
+import { mergeConfig } from './game.util.js'
 import * as repo from './game.repository.js'
 import * as cache from './game.cache.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import type { CreateGameInput, JoinGameInput } from './game.schemas.js'
+import type { CreateGameInput, JoinGameInput } from './game.schema.js'
 import type { GameSessionRow, LobbyPlayer, PlayerSessionRow } from './game.type.js'
 import { signSocketToken } from './socket.middleware.js'
-import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rules.js'
+import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rule.js'
 
 // Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
 const loadSessionByCode = async (code: string) => {

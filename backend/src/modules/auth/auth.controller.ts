@@ -9,20 +9,19 @@ import {
   logoutService,
   refreshTokenService,
   registerService
-} from './auth.services.js'
+} from './auth.service.js'
 import crypto from 'crypto'
 import { AppError } from '../../shared/errors/AppError.js'
-import { generateTokens, hashToken } from './auth.utils.js'
+import { generateTokens, hashToken } from './auth.util.js'
 import { authRepository } from './auth.repository.js'
 import { STATE_COOKIE, STATE_TTL_MS, type AuthRequest } from './auth.type.js'
+import { success } from '../../shared/utils/response.js'
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as { email?: string; password?: string }
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: 'Email and password are required' })
+      throw new AppError(400, 'Email and password are required')
     }
 
     const deviceName = req.headers['user-agent'] || 'Unknown Device'
@@ -45,9 +44,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
 
-    res.json({
-      user: result.user
-    })
+    return success(res, { user: result.user })
   } catch (error) {
     next(error)
   }
@@ -67,9 +64,7 @@ export async function register(
     }
 
     if (!email || !password || !fullname) {
-      return res.status(400).json({
-        message: 'Email, password, and fullname are required'
-      })
+      throw new AppError(400, 'Email, password, and fullname are required')
     }
 
     const result = await registerService(
@@ -78,7 +73,7 @@ export async function register(
       fullname,
       phone || null
     )
-    res.status(201).json(result)
+    return success(res, { user: result }, 201)
   } catch (error) {
     next(error)
   }
@@ -93,7 +88,7 @@ export async function refreshToken(
     const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!refreshToken) {
-      return res.status(401).json({ error: 'Refresh token missing' })
+      throw new AppError(400, 'Refresh token is required')
     }
 
     const tokens = await refreshTokenService(refreshToken)
@@ -112,7 +107,7 @@ export async function refreshToken(
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
 
-    res.json({ message: 'Token refreshed successfully' })
+    return success(res, { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
   } catch (error) {
     next(error)
   }
@@ -129,9 +124,7 @@ export async function logout(
     const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!accessToken || !refreshToken) {
-      return res
-        .status(400)
-        .json({ message: 'Access token and refresh token are required' })
+      throw new AppError(400, 'Access token and refresh token are required')
     }
 
     await logoutService(userId, accessToken, refreshToken)
@@ -148,7 +141,7 @@ export async function logout(
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
 
-    res.json({ message: 'Logged out successfully' })
+    return success(res, { message: 'Logged out successfully' })
   } catch (error) {
     next(error)
   }
@@ -180,6 +173,7 @@ export async function googleCallback(
     }
 
     if (error) {
+      res.redirect(`${env.FRONTEND_URL}/auth/callback?error=${encodeURIComponent(error)}`)
       throw new AppError(401, `Google OAuth error: ${error}`)
     }
     if (!code || !state) {
@@ -230,8 +224,7 @@ export async function googleCallback(
     })
 
     // Browser came here via a top-level redirect, so send it back to the app
-    // res.redirect(`${env.FRONTEND_URL}/auth/callback`)
-    res.redirect('http://localhost:5173/google-oauth-test')
+    res.redirect(`${env.FRONTEND_URL}/auth/callback`)
   } catch (err) {
     next(err)
   }
@@ -277,11 +270,9 @@ export async function googleOneTap(
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
     })
 
-    // AJAX request: return JSON instead of redirecting
-    res.json({
-      success: true,
-      user: { id: user.id, email: user.email, fullname: user.fullname, avatar: user.avatar }
-    })
+    const { password: _pw, deleted_at: _deletedAt, ...userData } = user
+
+    return success(res, { user: userData })
   } catch (err) {
     next(err)
   }

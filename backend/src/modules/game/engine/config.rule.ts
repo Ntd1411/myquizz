@@ -1,5 +1,5 @@
 import { AppError } from '../../../shared/errors/AppError.js'
-import type { GameConfig } from '../game.schemas.js'
+import type { GameConfig } from '../game.schema.js'
 
 // A field descriptor is both what the frontend needs to render the control and
 // what the server uses to accept or ignore an incoming value

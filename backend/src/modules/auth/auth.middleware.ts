@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from 'express'
-import { verifyToken } from './auth.utils.js'
+import { verifyToken } from './auth.util.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest } from './auth.type.js'
 import { authRepository } from './auth.repository.js'
@@ -11,7 +11,6 @@ export async function authMiddleware(
   next: NextFunction
 ) {
   try {
-    // Đọc token từ cookie thay vì Authorization header
     const token = req.cookies.accessToken as string | undefined
 
     if (!token) {

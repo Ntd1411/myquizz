@@ -1,6 +1,6 @@
 import { pool, withTransaction } from '../../infrastructure/database/connection.js'
-import { generateSessionCode } from './game.utils.js'
-import type { GameConfig } from './game.schemas.js'
+import { generateSessionCode } from './game.util.js'
+import type { GameConfig } from './game.schema.js'
 import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow, AnsweredQuestion, SnapshotQuestion } from './game.type.js'
 import { AppError } from '../../shared/errors/AppError.js'
 

@@ -1,12 +1,12 @@
 import { AppError } from '../../shared/errors/AppError.js'
 import { userRepository } from './user.repository.js'
-import { hashPassword, verifyPassword } from '../auth/auth.utils.js'
+import { hashPassword, verifyPassword } from '../auth/auth.util.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { deleteFileService } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
-import { generateOTP, generateResetToken } from './user.utils.js'
-import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schemas.js'
+import { generateOTP, generateResetToken } from './user.util.js'
+import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schema.js'
 import type { User } from '../auth/auth.type.js'
 
 async function invalidateUserCache(userId: number): Promise<void> {
@@ -78,7 +78,7 @@ export async function changePasswordService(
 export async function uploadAvatarService(
   userId: number,
   avatarUrl: string
-): Promise<void> {
+): Promise<string> {
   const user = await userRepository.findById(userId)
   if (!user) {
     throw new AppError(404, 'User not found')
@@ -93,6 +93,8 @@ export async function uploadAvatarService(
   }
 
   await invalidateUserCache(userId)
+
+  return avatarUrl
 }
 
 export async function updateProfileService(
@@ -101,7 +103,7 @@ export async function updateProfileService(
   email?: string,
   phone?: string,
   description?: string
-): Promise<void> {
+): Promise<User> {
   const updates: Record<string, string> = {}
 
   if (fullname) updates.fullname = fullname
@@ -132,6 +134,8 @@ export async function updateProfileService(
   }
 
   await invalidateUserCache(userId)
+
+  return userRepository.findById(userId) as unknown as User
 }
 
 export async function deactivateAccountService(
@@ -157,7 +161,7 @@ export async function deactivateAccountService(
   await invalidateUserCache(user.id)
 }
 
-export async function forgotPasswordService(email: string): Promise<void> {
+export async function forgotPasswordService(email: string): Promise<Date> {
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
@@ -206,12 +210,17 @@ export async function forgotPasswordService(email: string): Promise<void> {
   <p>If you didn't request this, please ignore this email.</p>
 `
 
-  await mailService.sendMail({
+  mailService.sendMail({
     to: email,
     subject: 'Reset Password',
     html: resetHtml,
     text: `Reset Password: ${resetUrl}\nOTP Code: ${otp}\nLink and OTP will expire in 5 minutes.`
+  }).catch(error => {
+    console.error('Failed to send reset password email:', error)
   })
+
+  const resetTime = new Date(Date.now() + RESET_TTL * 1000)
+  return resetTime
 }
 
 export async function resetPasswordService(

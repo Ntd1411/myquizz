@@ -1,5 +1,5 @@
-import type { GameConfig } from '../game.schemas.js'
-import type { ModeConfigSpec } from './config.rules.js'
+import type { GameConfig } from '../game.schema.js'
+import type { ModeConfigSpec } from './config.rule.js'
 
 export interface AnswerContext {
   isCorrect: boolean

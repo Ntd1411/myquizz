@@ -7,7 +7,7 @@ import {
   verifyPassword,
   verifyToken,
   hashToken
-} from './auth.utils.js'
+} from './auth.util.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import { GOOGLE_SCOPES, type GoogleProfile, type User } from './auth.type.js'
 import { oauthClient } from '../../infrastructure/config/google.config.js'
