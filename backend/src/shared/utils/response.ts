@@ -1,6 +1,6 @@
 import type { Response } from 'express'
 
-export function success(res: Response, data: unknown, meta = {}, status = 200) {
+export function success(res: Response, data: unknown = null, status = 200, meta = {}) {
   if (!data) data = null
   return res.status(status).json({
     success: true,

@@ -78,7 +78,7 @@ export async function changePasswordService(
 export async function uploadAvatarService(
   userId: number,
   avatarUrl: string
-): Promise<void> {
+): Promise<string> {
   const user = await userRepository.findById(userId)
   if (!user) {
     throw new AppError(404, 'User not found')
@@ -93,6 +93,8 @@ export async function uploadAvatarService(
   }
 
   await invalidateUserCache(userId)
+
+  return avatarUrl
 }
 
 export async function updateProfileService(
@@ -101,7 +103,7 @@ export async function updateProfileService(
   email?: string,
   phone?: string,
   description?: string
-): Promise<void> {
+): Promise<User> {
   const updates: Record<string, string> = {}
 
   if (fullname) updates.fullname = fullname
@@ -132,6 +134,8 @@ export async function updateProfileService(
   }
 
   await invalidateUserCache(userId)
+
+  return userRepository.findById(userId) as unknown as User
 }
 
 export async function deactivateAccountService(
