@@ -1,5 +1,5 @@
 import { pool } from '../../infrastructure/database/connection.js'
-import type { CreateQuestionRequest, CreateQuizRequest, UpdateQuizRequest } from './quiz.schemas.js'
+import type { CreateQuestionRequest, CreateQuizRequest, UpdateQuizRequest } from './quiz.schema.js'
 import type { Question, Quiz } from './quiz.type.js'
 
 export class QuizRepository {

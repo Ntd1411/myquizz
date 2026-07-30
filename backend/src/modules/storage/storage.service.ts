@@ -7,7 +7,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { v4 as uuidv4 } from 'uuid'
 import { storageConfig } from '../../infrastructure/config/storage.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import { ALLOWED_FOLDERS, MAX_FILE_SIZE, type AllowedFolder } from './storage.schemas.js'
+import { ALLOWED_FOLDERS, MAX_FILE_SIZE, type AllowedFolder } from './storage.schema.js'
 
 // S3 client
 const s3Client = new S3Client({

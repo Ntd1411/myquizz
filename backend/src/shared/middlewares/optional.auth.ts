@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from 'express'
-import { verifyToken } from '../../modules/auth/auth.utils.js'
+import { verifyToken } from '../../modules/auth/auth.util.js'
 import type { AuthRequest } from '../../modules/auth/auth.type.js'
 import { authRepository } from '../../modules/auth/auth.repository.js'
 import { userRepository } from '../../modules/user/user.repository.js'

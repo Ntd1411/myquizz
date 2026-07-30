@@ -9,10 +9,10 @@ import {
   logoutService,
   refreshTokenService,
   registerService
-} from './auth.services.js'
+} from './auth.service.js'
 import crypto from 'crypto'
 import { AppError } from '../../shared/errors/AppError.js'
-import { generateTokens, hashToken } from './auth.utils.js'
+import { generateTokens, hashToken } from './auth.util.js'
 import { authRepository } from './auth.repository.js'
 import { STATE_COOKIE, STATE_TTL_MS, type AuthRequest } from './auth.type.js'
 import { success } from '../../shared/utils/response.js'

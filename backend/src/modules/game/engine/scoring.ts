@@ -1,4 +1,4 @@
-import type { GameConfig } from '../game.schemas.js'
+import type { GameConfig } from '../game.schema.js'
 import type { AnswerContext } from './mode.type.js'
 
 export function computeScore(ctx: AnswerContext, cfg: GameConfig): number {

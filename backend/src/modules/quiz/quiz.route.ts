@@ -10,7 +10,7 @@ import {
   listQuizzesSchema,
   searchQuizzesSchema,
   updateQuizSchema
-} from './quiz.schemas.js'
+} from './quiz.schema.js'
 import { optionalAuthMiddleware } from '../../shared/middlewares/optional.auth.js'
 
 export const quizRouter: Router = Router()

@@ -1,7 +1,7 @@
-import { gameConfigSchema } from '../../game.schemas.js'
+import { gameConfigSchema } from '../../game.schema.js'
 import { computeScore } from '../scoring.js'
 import type { GameModeHandler } from '../mode.type.js'
-import { normalizeConfig, getConfigSpec } from '../config.rules.js'
+import { normalizeConfig, getConfigSpec } from '../config.rule.js'
 
 export const survivalMode: GameModeHandler = {
   mode: 'survival',

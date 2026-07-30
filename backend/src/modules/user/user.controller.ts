@@ -8,7 +8,7 @@ import {
   resetPasswordWithTokenService,
   updateProfileService,
   uploadAvatarService
-} from './user.services.js'
+} from './user.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest, User } from '../auth/auth.type.js'
 import { success } from '../../shared/utils/response.js'

@@ -1,12 +1,12 @@
 import { AppError } from '../../shared/errors/AppError.js'
 import { userRepository } from './user.repository.js'
-import { hashPassword, verifyPassword } from '../auth/auth.utils.js'
+import { hashPassword, verifyPassword } from '../auth/auth.util.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { deleteFileService } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
-import { generateOTP, generateResetToken } from './user.utils.js'
-import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schemas.js'
+import { generateOTP, generateResetToken } from './user.util.js'
+import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schema.js'
 import type { User } from '../auth/auth.type.js'
 
 async function invalidateUserCache(userId: number): Promise<void> {

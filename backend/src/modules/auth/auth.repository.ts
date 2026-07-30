@@ -1,6 +1,6 @@
 import { pool } from '../../infrastructure/database/connection.js'
 import type { User, RefreshSession } from './auth.type.js'
-import { hashToken } from './auth.utils.js'
+import { hashToken } from './auth.util.js'
 
 export class AuthRepository {
   // Create new user

@@ -19,7 +19,7 @@ import {
   resetPasswordSchema,
   resetPasswordWithTokenSchema,
   updateProfileSchema
-} from './user.schemas.js'
+} from './user.schema.js'
 import { authRateLimiter, resetPasswordRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const userRouter: Router = Router()

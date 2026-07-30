@@ -1,5 +1,5 @@
-import { gameConfigSchema } from '../../game.schemas.js'
-import { getConfigSpec, normalizeConfig } from '../config.rules.js'
+import { gameConfigSchema } from '../../game.schema.js'
+import { getConfigSpec, normalizeConfig } from '../config.rule.js'
 import type { GameModeHandler } from '../mode.type.js'
 import { computeScore } from '../scoring.js'
 

@@ -3,12 +3,12 @@ import { socketAuth, type CustomSocketData } from './socket.middleware.js'
 import { getModeHandler } from './engine/registry.js'
 import * as cache from './game.cache.js'
 import * as repo from './game.repository.js'
-import * as gameService from './game.services.js'
-import type { GameConfig } from './game.schemas.js'
+import * as gameService from './game.service.js'
+import type { GameConfig } from './game.schema.js'
 import type {
   AnsweredQuestion, GameSessionRow, PlayerSessionRow, SnapshotQuestion
 } from './game.type.js'
-import { seededShuffle } from './game.utils.js'
+import { seededShuffle } from './game.util.js'
 
 type Ack = (payload: unknown) => void
 

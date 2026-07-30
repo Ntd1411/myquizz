@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express'
-import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schemas.js'
-import * as gameService from './game.services.js'
+import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schema.js'
+import * as gameService from './game.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest } from '../auth/auth.type.js'
 import { success } from '../../shared/utils/response.js'

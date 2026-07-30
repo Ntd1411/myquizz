@@ -1,7 +1,7 @@
 import type { PaginatedResponse, Quiz } from './quiz.type.js'
 import { quizRepository } from './quiz.repository.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import type { CreateQuizRequest } from './quiz.schemas.js'
+import type { CreateQuizRequest } from './quiz.schema.js'
 
 export async function createQuizService(
   userId: number,
