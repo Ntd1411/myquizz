@@ -1,6 +1,6 @@
+import type { User } from '../auth/auth.type.js'
 import type { GameConfig } from './game.schemas.js'
 import type { Socket } from 'socket.io'
-import type { User } from '../../shared/types/shared.types.js'
 
 export interface GameSessionRow {
   id: number

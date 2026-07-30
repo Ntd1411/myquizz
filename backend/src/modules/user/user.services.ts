@@ -1,14 +1,13 @@
 import { AppError } from '../../shared/errors/AppError.js'
-import type { User } from '../../shared/types/shared.types.js'
 import { userRepository } from './user.repository.js'
-import { sharedRepository } from '../../shared/repositories/shared.repository.js'
-import { hashPassword, verifyPassword } from '../../shared/utils/auth.utils.js'
+import { hashPassword, verifyPassword } from '../auth/auth.utils.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { deleteFileService } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
 import { generateOTP, generateResetToken } from './user.utils.js'
 import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schemas.js'
+import type { User } from '../auth/auth.type.js'
 
 async function invalidateUserCache(userId: number): Promise<void> {
   const redis = RedisClient.getInstance()
@@ -26,7 +25,7 @@ export async function getUserService(userId: number): Promise<User> {
     return JSON.parse(cached) as User
   }
   // Cache miss
-  const user = await sharedRepository.findById(userId)
+  const user = await userRepository.findById(userId)
   if (!user) {
     throw new AppError(404, 'User not found')
   }
@@ -80,7 +79,7 @@ export async function uploadAvatarService(
   userId: number,
   avatarUrl: string
 ): Promise<void> {
-  const user = await sharedRepository.findById(userId)
+  const user = await userRepository.findById(userId)
   if (!user) {
     throw new AppError(404, 'User not found')
   }
@@ -107,14 +106,14 @@ export async function updateProfileService(
 
   if (fullname) updates.fullname = fullname
   if (email) {
-    const user = await sharedRepository.findByEmail(email)
+    const user = await userRepository.findByEmail(email)
     if (user) {
       throw new AppError(400, 'Email is already in use')
     }
     updates.email = email
   }
   if (phone) {
-    const user = await sharedRepository.findByPhone(phone)
+    const user = await userRepository.findByPhone(phone)
     if (user) {
       throw new AppError(400, 'Phone number is already in use')
     }
@@ -155,7 +154,7 @@ export async function deactivateAccountService(
 }
 
 export async function forgotPasswordService(email: string): Promise<void> {
-  const user = await sharedRepository.findByEmail(email)
+  const user = await userRepository.findByEmail(email)
 
   if (!user) {
     throw new AppError(404, 'Email not found')
@@ -226,7 +225,7 @@ export async function resetPasswordService(
     throw new AppError(400, 'Invalid OTP')
   }
 
-  const user = await sharedRepository.findByEmail(email)
+  const user = await userRepository.findByEmail(email)
 
   if (!user) {
     throw new AppError(404, 'User not found')
@@ -270,7 +269,7 @@ export async function resetPasswordWithTokenService(
     throw new AppError(400, 'Reset token expired or invalid')
   }
 
-  const user = await sharedRepository.findByEmail(email)
+  const user = await userRepository.findByEmail(email)
 
   if (!user) {
     throw new AppError(404, 'User not found')

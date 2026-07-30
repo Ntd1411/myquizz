@@ -1,8 +1,8 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest } from '../../shared/types/shared.types.js'
 import type { Quiz } from './quiz.type.js'
 import * as quizService from './quiz.service.js'
 import type { CreateQuizRequest } from './quiz.schemas.js'
+import type { AuthRequest } from '../auth/auth.type.js'
 
 export async function createQuiz(
   req: AuthRequest,

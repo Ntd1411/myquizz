@@ -3,7 +3,7 @@ import * as controller from './game.controller.js'
 import { authMiddleware } from '../auth/auth.middleware.js'
 import { optionalAuthMiddleware } from '../../shared/middlewares/optional.auth.js'
 
-const router = Router()
+const router: Router = Router()
 
 /**
  * @openapi
