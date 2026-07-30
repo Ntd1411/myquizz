@@ -34,7 +34,10 @@ const envSchema = z.object({
   SMTP_PORT: z.string().transform(Number),
   SMTP_USER: z.string(),
   SMTP_PASSWORD: z.string(),
-  MAIL_FROM: z.string()
+  MAIL_FROM: z.string(),
+  GOOGLE_CLIENT_ID: z.string(),
+  GOOGLE_CLIENT_SECRET: z.string(),
+  GOOGLE_CALLBACK_URL: z.string().url()
 })
 
 const envParsed = envSchema.safeParse(process.env)

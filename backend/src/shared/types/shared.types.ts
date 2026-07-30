@@ -16,6 +16,8 @@ export interface User {
   role: 'admin' | 'moderator' | 'user'
   avatar?: string
   description?: string
+  google_id?: string | null
+  auth_provider: 'local' | 'google'
   deleted_at: string | null
   created_at: string
   updated_at: string
