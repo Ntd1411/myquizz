@@ -1,4 +1,5 @@
 import { pool } from '../../infrastructure/database/connection.js'
+import type { User } from '../auth/auth.type.js'
 
 export class UserRepository {
   // Change user password
@@ -57,6 +58,28 @@ export class UserRepository {
       [userId]
     )
     return result.rowCount !== null && result.rowCount === 1
+  }
+
+  // Find user by id
+  async findById(id: number): Promise<User | null> {
+    const result = await pool.query<User>('SELECT * FROM users WHERE id = $1 and deleted_at IS NULL', [id])
+    return result.rows[0] || null
+  }
+
+  // Find user by email
+  async findByEmail(email: string): Promise<User | null> {
+    const result = await pool.query<User>('SELECT * FROM users WHERE email = $1', [
+      email
+    ])
+    return result.rows[0] || null
+  }
+
+  // Find user by phone
+  async findByPhone(phone: string): Promise<User | null> {
+    const result = await pool.query<User>('SELECT * FROM users WHERE phone = $1', [
+      phone
+    ])
+    return result.rows[0] || null
   }
 }
 

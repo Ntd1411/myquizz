@@ -1,4 +1,15 @@
+export const STATE_COOKIE = 'g_oauth_state'
+export const STATE_TTL_MS = 10 * 60 * 1000
+export const GOOGLE_SCOPES = ['openid', 'email', 'profile']
 import { type Request } from 'express'
+
+export interface GoogleProfile {
+  googleId: string
+  email: string
+  emailVerified: boolean
+  fullname: string
+  avatar?: string
+}
 
 export interface AuthRequest extends Request {
   user?: User | null
@@ -12,10 +23,12 @@ export interface User {
   fullname: string
   email: string
   phone?: string
-  password: string
+  password: string | null
   role: 'admin' | 'moderator' | 'user'
   avatar?: string
   description?: string
+  google_id?: string | null
+  auth_provider: 'local' | 'google'
   deleted_at: string | null
   created_at: string
   updated_at: string

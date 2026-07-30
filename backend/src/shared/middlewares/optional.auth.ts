@@ -1,7 +1,8 @@
 import type { Response, NextFunction } from 'express'
-import { verifyToken } from '../../shared/utils/auth.utils.js'
-import { sharedRepository } from '../../shared/repositories/shared.repository.js'
-import { type AuthRequest } from '../../shared/types/shared.types.js'
+import { verifyToken } from '../../modules/auth/auth.utils.js'
+import type { AuthRequest } from '../../modules/auth/auth.type.js'
+import { authRepository } from '../../modules/auth/auth.repository.js'
+import { userRepository } from '../../modules/user/user.repository.js'
 
 export async function optionalAuthMiddleware(
   req: AuthRequest,
@@ -17,7 +18,7 @@ export async function optionalAuthMiddleware(
     }
 
     // Check if token is blacklisted
-    const isBlacklisted = await sharedRepository.isTokenBlacklisted(token)
+    const isBlacklisted = await authRepository.isTokenBlacklisted(token)
 
     if (isBlacklisted) {
       return next()
@@ -29,7 +30,7 @@ export async function optionalAuthMiddleware(
       return next()
     }
 
-    const user = await sharedRepository.findById(decoded.userId)
+    const user = await userRepository.findById(decoded.userId)
 
     if (!user) {
       return next()

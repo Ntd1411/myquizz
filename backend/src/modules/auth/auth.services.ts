@@ -7,9 +7,11 @@ import {
   verifyPassword,
   verifyToken,
   hashToken
-} from '../../shared/utils/auth.utils.js'
+} from './auth.utils.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import { sharedRepository } from '../../shared/repositories/shared.repository.js'
+import { GOOGLE_SCOPES, type GoogleProfile, type User } from './auth.type.js'
+import { oauthClient } from '../../infrastructure/config/google.config.js'
+import { userRepository } from '../user/user.repository.js'
 
 export async function registerService(
   email: string,
@@ -56,7 +58,7 @@ export async function loginService(
   ipAddress: string
 ) {
   // Find user by email
-  const user = await sharedRepository.findByEmail(email)
+  const user = await userRepository.findByEmail(email)
 
   if (!user) {
     throw new AppError(401, 'Invalid email or password')
@@ -68,7 +70,7 @@ export async function loginService(
   }
 
   // Verify password
-  const isValid = await verifyPassword(password, user.password)
+  const isValid = await verifyPassword(password, user.password || '')
 
   if (!isValid) {
     throw new AppError(401, 'Invalid email or password')
@@ -100,7 +102,7 @@ export async function refreshTokenService(refreshToken: string) {
     throw new AppError(401, 'Invalid refresh token')
   }
 
-  const user = await sharedRepository.findById(decoded.userId)
+  const user = await userRepository.findById(decoded.userId)
   if (!user) {
     throw new AppError(401, 'User not found')
   }
@@ -170,5 +172,75 @@ export async function logoutService(
   }
 
   await authRepository.revokeRefreshToken(hashedRefreshToken)
-  await sharedRepository.revokeAccessToken(accessToken)
+  await authRepository.revokeAccessToken(accessToken)
+}
+
+// Build the Google consent screen URL, carrying our anti-CSRF state
+export function getGoogleAuthUrl(state: string): string {
+  return oauthClient.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'select_account',
+    scope: GOOGLE_SCOPES,
+    state
+  })
+}
+
+// Verify a Google id_token and extract the profile (shared by both flows)
+async function profileFromIdToken(idToken: string): Promise<GoogleProfile> {
+  const ticket = await oauthClient.verifyIdToken({
+    idToken,
+    audience: env.GOOGLE_CLIENT_ID
+  })
+  const payload = ticket.getPayload()
+  if (!payload?.sub || !payload.email) {
+    throw new AppError(401, 'Cannot read profile from Google account')
+  }
+  return {
+    googleId: payload.sub,
+    email: payload.email,
+    emailVerified: payload.email_verified ?? false,
+    fullname: payload.name ?? payload.email.split('@')[0] as string,
+    avatar: payload.picture
+  }
+}
+
+// Authorization Code flow: exchange the code, then verify
+async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
+  const { tokens } = await oauthClient.getToken(code)
+  if (!tokens.id_token) throw new AppError(401, 'Google did not return an id_token')
+  return profileFromIdToken(tokens.id_token)
+}
+
+// Resolve or create the app user (same 3-branch logic, now shared)
+async function resolveUser(profile: GoogleProfile): Promise<User> {
+  const byGoogleId = await authRepository.findByGoogleId(profile.googleId)
+  if (byGoogleId) return byGoogleId
+
+  const byEmail = await userRepository.findByEmail(profile.email)
+  if (byEmail) {
+    if (!profile.emailVerified) {
+      throw new AppError(401, 'Google email is not verified, cannot link account')
+    }
+    if (byEmail.deleted_at !== null) {
+      throw new AppError(403, 'Account is deactivated')
+    }
+    return authRepository.linkGoogleId(byEmail.id, profile.googleId, profile.avatar)
+  }
+
+  return authRepository.addGoogleUser({
+    fullname: profile.fullname,
+    email: profile.email,
+    googleId: profile.googleId,
+    avatar: profile.avatar
+  })
+}
+
+// Redirect flow entrypoint (unchanged behavior)
+export async function loginWithGoogle(code: string): Promise<User> {
+  return resolveUser(await fetchGoogleProfile(code))
+}
+
+// One Tap entrypoint: frontend already provides a Google-signed id_token
+export async function loginWithGoogleCredential(idToken: string): Promise<User> {
+  return resolveUser(await profileFromIdToken(idToken))
 }

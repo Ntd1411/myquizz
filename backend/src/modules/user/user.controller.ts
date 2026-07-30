@@ -1,5 +1,4 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest, User } from '../../shared/types/shared.types.js'
 import {
   changePasswordService,
   deactivateAccountService,
@@ -11,6 +10,7 @@ import {
   uploadAvatarService
 } from './user.services.js'
 import { AppError } from '../../shared/errors/AppError.js'
+import type { AuthRequest, User } from '../auth/auth.type.js'
 
 export function getMe(
   req: AuthRequest,

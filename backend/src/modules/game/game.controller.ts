@@ -1,8 +1,8 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest } from '../../shared/types/shared.types.js'
 import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schemas.js'
 import * as gameService from './game.services.js'
 import { AppError } from '../../shared/errors/AppError.js'
+import type { AuthRequest } from '../auth/auth.type.js'
 
 export const listGameModes = (_req: AuthRequest, res: Response) =>
   res.json({ data: gameService.listGameModes() })

@@ -1,10 +1,10 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest } from '../../shared/types/shared.types.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import {
   createPresignedUploadService
 } from './storage.service.js'
 import type { PresignUploadInput } from './storage.schemas.js'
+import type { AuthRequest } from '../auth/auth.type.js'
 
 // Controller for presigning upload requests
 export async function presignUpload(

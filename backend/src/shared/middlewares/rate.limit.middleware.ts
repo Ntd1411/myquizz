@@ -1,7 +1,7 @@
 import type { Response, NextFunction } from 'express'
-import type { AuthRequest } from '../types/shared.types.js'
 import { AppError } from '../errors/AppError.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
+import type { AuthRequest } from '../../modules/auth/auth.type.js'
 
 interface RateLimitOptions {
   windowMs: number // Window time in milliseconds
