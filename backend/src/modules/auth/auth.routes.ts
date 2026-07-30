@@ -5,7 +5,7 @@ import {
   registerSchema
 } from './auth.schemas.js'
 import { authMiddleware } from './auth.middleware.js'
-import { login, register, refreshToken, logout } from './auth.controller.js'
+import { login, register, refreshToken, logout, googleCallback, googleRedirect } from './auth.controller.js'
 import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const authRouter: Router = Router()
@@ -193,3 +193,36 @@ authRouter.post('/refresh', refreshToken)
  *         description: Chưa đăng nhập
  */
 authRouter.post('/logout', authMiddleware, logout)
+
+/**
+ * @swagger
+ * /api/v1/auth/google:
+ *   get:
+ *     summary: Bắt đầu đăng nhập Google (redirect sang trang consent của Google)
+ *     tags: [Authentication]
+ *     responses:
+ *       302:
+ *         description: Redirect sang Google
+ */
+authRouter.get('/google', authRateLimiter, googleRedirect)
+
+/**
+ * @swagger
+ * /api/v1/auth/google/callback:
+ *   get:
+ *     summary: Google callback; phát cookie access + refresh rồi redirect về FRONTEND_URL
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema: { type: string }
+ *       - in: query
+ *         name: state
+ *         schema: { type: string }
+ *     responses:
+ *       302:
+ *         description: Đăng nhập thành công, redirect về FRONTEND_URL/auth/callback
+ *       401:
+ *         description: State không hợp lệ / email chưa xác thực
+ */
+authRouter.get('/google/callback', googleCallback)

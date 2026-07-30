@@ -1,13 +1,19 @@
 import type { Request, Response, NextFunction } from 'express'
 import { env } from '../../infrastructure/config/envconfig.js'
 import ms from 'ms'
-import { type AuthRequest } from '../../shared/types/shared.types.js'
 import {
+  getGoogleAuthUrl,
   loginService,
+  loginWithGoogle,
   logoutService,
   refreshTokenService,
   registerService
 } from './auth.services.js'
+import crypto from 'crypto'
+import { AppError } from '../../shared/errors/AppError.js'
+import { generateTokens, hashToken } from './auth.utils.js'
+import { authRepository } from './auth.repository.js'
+import { STATE_COOKIE, STATE_TTL_MS, type AuthRequest } from './auth.type.js'
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
@@ -144,5 +150,87 @@ export async function logout(
     res.json({ message: 'Logged out successfully' })
   } catch (error) {
     next(error)
+  }
+}
+
+export function googleRedirect(_req: Request, res: Response) {
+  const state = crypto.randomBytes(16).toString('hex')
+
+  res.cookie(STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: STATE_TTL_MS
+  })
+
+  res.redirect(getGoogleAuthUrl(state))
+}
+
+export async function googleCallback(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { code, state, error } = req.query as {
+      code?: string
+      state?: string
+      error?: string
+    }
+
+    if (error) {
+      throw new AppError(401, `Google OAuth error: ${error}`)
+    }
+    if (!code || !state) {
+      throw new AppError(400, 'Missing authorization code or state')
+    }
+
+    // Validate anti-CSRF state against the cookie set in googleRedirect
+    const cookieState = req.cookies?.g_oauth_state as string | undefined
+    if (!cookieState || cookieState !== state) {
+      throw new AppError(401, 'Invalid OAuth state')
+    }
+    res.clearCookie(STATE_COOKIE, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
+    // Resolve or create the user
+    const user = await loginWithGoogle(code)
+
+    // Issue tokens exactly like loginService
+    const tokens = generateTokens(user.id)
+
+    const deviceName = req.headers['user-agent'] || 'Unknown Device'
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown'
+
+    await authRepository.saveRefreshToken(
+      user.id,
+      deviceName,
+      ipAddress,
+      hashToken(tokens.refreshToken),
+      new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue))
+    )
+
+    // Same cookies as the normal login flow
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
+    })
+
+    // Browser came here via a top-level redirect, so send it back to the app
+    res.redirect(`${env.FRONTEND_URL}/auth/callback`)
+  } catch (err) {
+    next(err)
   }
 }
