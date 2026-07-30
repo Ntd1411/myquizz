@@ -14,8 +14,12 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: 'http://localhost:3000',
+        url: 'http://localhost:3000/api/v1',
         description: 'Development server'
+      },
+      {
+        url: 'https://myquizz.dpdns.org/api/v1',
+        description: 'Production server'
       }
     ],
     components: {
@@ -29,7 +33,7 @@ const options: swaggerJsdoc.Options = {
       }
     }
   },
-  apis: ['./src/modules/**/*.ts', './src/modules/**/*.js', './dist/modules/**/*.js']
+  apis: ['./dist/modules/**/*.route.js', './dist/swagger/*.js']
 }
 
 export const swaggerSpec = swaggerJsdoc(options)
