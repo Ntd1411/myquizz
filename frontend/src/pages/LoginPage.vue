@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { startGoogleLogin } from '@/api/auth.api'
 import { toErrorMessage } from '@/api/envelope'
+import { useGoogleOneTap } from '@/composables/useGoogleOneTap'
 
 const auth = useAuthStore()
 const ui = useUiStore()
@@ -16,17 +17,38 @@ const router = useRouter()
 const email = ref('')
 const password = ref('')
 const formError = ref('')
+const googleButtonEl = ref(null)
+
+function goAfterLogin() {
+  router.push(route.query.redirect || { name: 'home' })
+}
 
 async function submit() {
   formError.value = ''
   try {
     await auth.login({ email: email.value, password: password.value })
     ui.toast('Signed in successfully.')
-    router.push(route.query.redirect || { name: 'home' })
+    goAfterLogin()
   } catch (error) {
     formError.value = toErrorMessage(error, 'Incorrect email or password.')
   }
 }
+
+// Google One Tap: the backend verifies the credential on /auth/google/one-tap and
+// sets the same cookies as the redirect flow, so the session is read back normally.
+const { available: oneTapAvailable } = useGoogleOneTap({
+  buttonEl: googleButtonEl,
+  prompt: true,
+  enabled: !auth.isLoggedIn,
+  onSuccess: async (user) => {
+    await auth.refresh()
+    ui.toast(`Welcome back, ${user?.fullname || user?.email || 'friend'}.`)
+    goAfterLogin()
+  },
+  onError: (error) => {
+    formError.value = toErrorMessage(error, 'Google sign-in failed.')
+  },
+})
 </script>
 
 <template>
@@ -53,8 +75,25 @@ async function submit() {
         <span class="h-px flex-1 bg-hairline"></span>
       </div>
 
-      <button class="btn-utility w-full" type="button" @click="startGoogleLogin">
+      <!-- Google Identity Services renders its own button here when a client id is set. -->
+      <div ref="googleButtonEl" class="flex justify-center"></div>
+
+      <!-- Redirect flow: always available, and the only option without a client id. -->
+      <button
+        v-if="!oneTapAvailable"
+        class="btn-utility w-full"
+        type="button"
+        @click="startGoogleLogin"
+      >
         Continue with Google
+      </button>
+      <button
+        v-else
+        class="mt-xs w-full text-caption text-ink-muted hover:text-ink"
+        type="button"
+        @click="startGoogleLogin"
+      >
+        Having trouble? Use the Google redirect flow
       </button>
 
       <div class="mt-md flex justify-between text-caption">

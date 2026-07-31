@@ -3,38 +3,50 @@ import { ref, computed } from 'vue'
 import * as authApi from '@/api/auth.api'
 import * as usersApi from '@/api/users.api'
 
+/**
+ * Login state mirrors the backend exactly.
+ *
+ * The backend keeps accessToken / refreshToken in HttpOnly cookies, so the only
+ * reliable way to know whether the user is signed in is to ask GET /users/me.
+ * Nothing about the session is cached in localStorage: a stale flag there would
+ * show a signed-in header while every API call answers 401.
+ */
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
-  // `ready` flips to true after the first bootstrap attempt. Route guards must wait
-  // for it, otherwise a hard refresh on a protected page bounces to /login.
+  // `ready` flips to true after the first session probe. Route guards and the header
+  // must wait for it, otherwise a hard refresh flashes the guest state.
   const ready = ref(false)
   const pending = ref(false)
 
   const isLoggedIn = computed(() => user.value !== null)
-  const displayName = computed(() => {
-    if (!user.value) return ''
-    return user.value.fullname || user.value.username || user.value.email || 'User'
-  })
+  // Fields come straight from the backend user row: fullname, email, avatar.
+  const displayName = computed(() => user.value?.fullname || user.value?.email || 'Account')
+  const avatarUrl = computed(() => user.value?.avatar || null)
+  const initials = computed(() => (displayName.value.trim()[0] || 'A').toUpperCase())
 
   /**
-   * Called once at app start. A 401 here is expected and simply means "guest";
-   * the http interceptor already tried a silent refresh before we get here.
+   * Called once before the first navigation. A 401 here is the normal answer for a
+   * guest, so the probe flag keeps it out of the refresh-and-retry pipeline and
+   * prevents a bogus "session expired" toast on a plain first visit.
    */
   async function bootstrap() {
-    if (ready.value) return
+    if (ready.value) return user.value
     try {
-      user.value = await usersApi.getMe()
+      user.value = await usersApi.getMe({ probe: true })
     } catch {
       user.value = null
     } finally {
       ready.value = true
     }
+    return user.value
   }
 
   async function login(credentials) {
     pending.value = true
     try {
+      // POST /auth/login sets both cookies and returns the user in data.user.
       user.value = await authApi.login(credentials)
+      ready.value = true
       return user.value
     } finally {
       pending.value = false
@@ -44,36 +56,45 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(payload) {
     pending.value = true
     try {
-      await authApi.register(payload)
-      // The backend does not always sign the user in on register, so read the
-      // session back explicitly instead of trusting the register response.
-      await refresh()
+      // POST /auth/register answers 201 with data.user and already sets the cookies,
+      // so the account is signed in immediately.
+      user.value = await authApi.register(payload)
+      ready.value = true
       return user.value
     } finally {
       pending.value = false
     }
   }
 
+  /** Re-reads the session, e.g. after the Google OAuth redirect. */
   async function refresh() {
     try {
       user.value = await usersApi.getMe()
     } catch {
       user.value = null
+    } finally {
+      ready.value = true
     }
     return user.value
   }
 
   async function logout() {
     try {
+      // POST /auth/logout requires a valid access token. If it is already gone the
+      // backend answers 401, which still means the session is over locally.
       await authApi.logout()
+    } catch {
+      // Ignored on purpose: the local state must be cleared either way.
     } finally {
       user.value = null
+      ready.value = true
     }
   }
 
   /** Called by the AUTH_EXPIRED event when the refresh token itself is dead. */
   function clear() {
     user.value = null
+    ready.value = true
   }
 
   return {
@@ -82,6 +103,8 @@ export const useAuthStore = defineStore('auth', () => {
     pending,
     isLoggedIn,
     displayName,
+    avatarUrl,
+    initials,
     bootstrap,
     login,
     register,

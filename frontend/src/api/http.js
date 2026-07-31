@@ -19,7 +19,8 @@ let refreshPromise = null
 function refreshTokens() {
   if (!refreshPromise) {
     refreshPromise = http
-      .post('/auth/refresh')
+      // The probe flag keeps this call itself out of the retry/expire pipeline.
+      .post('/auth/refresh', null, { skipAuthHandling: true })
       .finally(() => {
         refreshPromise = null
       })
@@ -28,6 +29,8 @@ function refreshTokens() {
 }
 
 // Requests that must never trigger a refresh-and-retry cycle.
+// /auth/refresh returns only new tokens, and login/register/logout answer with a
+// meaningful 401/403 of their own that the calling page has to surface as-is.
 const NON_REFRESHABLE = ['/auth/refresh', '/auth/login', '/auth/register', '/auth/logout']
 
 http.interceptors.response.use(
@@ -40,6 +43,10 @@ http.interceptors.response.use(
       window.dispatchEvent(new CustomEvent(RATE_LIMITED_EVENT))
       return Promise.reject(error)
     }
+
+    // Session probes (the bootstrap /users/me call) must stay completely silent:
+    // for a guest a 401 is the correct answer, not an expired session.
+    if (original?.skipAuthHandling) return Promise.reject(error)
 
     const isNonRefreshable = NON_REFRESHABLE.some((path) => original?.url?.includes(path))
 

@@ -9,6 +9,7 @@ const ui = useUiStore()
 const router = useRouter()
 
 const mobileOpen = ref(false)
+const menuOpen = ref(false)
 const keyword = ref('')
 
 // Labels are English only, matching the home_myquizz.html demo navigation.
@@ -23,6 +24,8 @@ function submitSearch() {
 }
 
 async function handleLogout() {
+  menuOpen.value = false
+  mobileOpen.value = false
   await auth.logout()
   ui.toast('Signed out.')
   router.push({ name: 'home' })
@@ -68,7 +71,62 @@ async function handleLogout() {
 
         <RouterLink :to="{ name: 'discover' }" class="btn-primary hidden sm:inline-flex">Join game</RouterLink>
 
-        <button v-if="auth.isLoggedIn" class="btn-utility" type="button" @click="handleLogout">Log out</button>
+        <!--
+          The session is only known after the first /users/me probe. Until then no
+          auth control is rendered at all, so the header never shows a wrong state.
+        -->
+        <div v-if="!auth.ready" class="h-[34px] w-[34px] shrink-0 rounded-full bg-canvas-soft"></div>
+
+        <!-- Signed in: avatar only. The name and email live inside the dropdown. -->
+        <div v-else-if="auth.isLoggedIn" class="relative">
+          <button
+            class="grid h-[34px] w-[34px] shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-hairline transition-shadow duration-150 hover:ring-ink-faint"
+            type="button"
+            :aria-expanded="menuOpen"
+            :aria-label="auth.displayName"
+            :title="auth.displayName"
+            aria-haspopup="menu"
+            @click="menuOpen = !menuOpen"
+          >
+            <img
+              v-if="auth.avatarUrl"
+              :src="auth.avatarUrl"
+              :alt="auth.displayName"
+              class="h-full w-full object-cover"
+            />
+            <span v-else class="grid h-full w-full place-items-center bg-primary text-[13px] font-semibold text-white">
+              {{ auth.initials }}
+            </span>
+          </button>
+
+          <div
+            v-if="menuOpen"
+            class="absolute right-0 top-[calc(100%+8px)] w-[220px] rounded-lg border border-hairline bg-surface p-xxs shadow-1"
+            role="menu"
+          >
+            <div class="px-sm py-xs">
+              <p class="truncate text-body-sm font-medium text-ink">{{ auth.displayName }}</p>
+              <p class="truncate text-caption text-ink-faint">{{ auth.user?.email }}</p>
+            </div>
+            <RouterLink
+              :to="{ name: 'library' }"
+              class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
+              role="menuitem"
+              @click="menuOpen = false"
+            >
+              My library
+            </RouterLink>
+            <button
+              class="block w-full rounded-md px-sm py-xs text-left text-body-sm text-ink-secondary hover:bg-canvas-soft"
+              type="button"
+              role="menuitem"
+              @click="handleLogout"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+
         <RouterLink v-else :to="{ name: 'login' }" class="btn-utility hidden sm:inline-flex">Log in</RouterLink>
 
         <button
@@ -99,13 +157,16 @@ async function handleLogout() {
           {{ link.label }}
         </RouterLink>
         <RouterLink
-          v-if="!auth.isLoggedIn"
+          v-if="auth.ready && !auth.isLoggedIn"
           :to="{ name: 'login' }"
           class="btn-utility"
           @click="mobileOpen = false"
         >
           Log in
         </RouterLink>
+        <button v-else-if="auth.ready" class="btn-utility" type="button" @click="handleLogout">
+          Log out
+        </button>
       </div>
     </div>
   </header>

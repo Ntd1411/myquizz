@@ -1,8 +1,17 @@
 import { http } from './http'
 import { unwrap } from './envelope'
 
-export async function getMe() {
-  const res = await http.get('/users/me')
+/**
+ * Reads the current session from the backend.
+ *
+ * `/users/me` is the only source of truth for the login state: the tokens live in
+ * HttpOnly cookies, so JavaScript can never inspect them directly.
+ *
+ * Pass `{ probe: true }` for the app-start check. A 401 then means "guest" and
+ * must not run the refresh-and-retry cycle nor raise the session-expired event.
+ */
+export async function getMe({ probe = false } = {}) {
+  const res = await http.get('/users/me', { skipAuthHandling: probe })
   return unwrap(res.data).user
 }
 
