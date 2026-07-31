@@ -5,6 +5,7 @@ import { useQuery, keepPreviousData } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
+import { mockCategories } from '@/api/mock.api'
 import { revealOnScroll } from '@/composables/useMotion'
 
 const route = useRoute()
@@ -17,15 +18,8 @@ const page = ref(Number(route.query.page ?? 1))
 // Backend caps limit at 20.
 const LIMIT = 12
 
-// Sticker swatches are decoration only, matching the home rails.
-const CATEGORIES = [
-  { name: 'General', color: '#615d59' },
-  { name: 'Science', color: '#2a9d99' },
-  { name: 'Geography', color: '#1aae39' },
-  { name: 'Movies', color: '#dd5b00' },
-  { name: 'Sports', color: '#ff64c8' },
-  { name: 'Music', color: '#391c57' },
-]
+// Same category list and sticker swatches as the home rails.
+const CATEGORIES = mockCategories
 
 const gridEl = ref(null)
 

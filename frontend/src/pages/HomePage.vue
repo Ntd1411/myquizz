@@ -3,29 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import QuizRail from '@/components/quiz/QuizRail.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
+import { mockCategories, mockModes } from '@/api/mock.api'
 import { revealOnScroll } from '@/composables/useMotion'
 
 // The page opens directly on Trending. There is no hero band on purpose.
 const POOL_LIMIT = 20
 
-// Category swatches come from the decorative sticker palette. Decoration only:
-// they never paint a CTA or a structural fill.
-const CATEGORIES = [
-  { name: 'General', color: '#615d59' },
-  { name: 'Science', color: '#2a9d99' },
-  { name: 'Geography', color: '#1aae39' },
-  { name: 'Movies', color: '#dd5b00' },
-  { name: 'Sports', color: '#ff64c8' },
-  { name: 'Music', color: '#391c57' },
-]
-
-const GAME_MODES = [
-  { name: 'Classic', desc: 'Host-paced, whole room in lockstep. Everyone answers the same question at once.' },
-  { name: 'Solo', desc: 'Self-paced. Play the whole set at your own speed and compare scores at the end.' },
-  { name: 'Survival', desc: 'Three lives. A wrong answer or a timeout costs a life - last player standing wins.' },
-  { name: 'Marathon', desc: 'Beat the clock. Loop the question bank until the total time budget runs out.' },
-  { name: 'Practice', desc: 'No pressure, no score. Instant answers and review to actually learn.' },
-]
+// Category swatches and mode blurbs live in src/mocks/mock.json for now.
+// Decoration only: a swatch never paints a CTA or a structural fill.
+const CATEGORIES = mockCategories
+const GAME_MODES = mockModes
 
 const pageEl = ref(null)
 const staticEl = ref(null)
