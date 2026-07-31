@@ -78,6 +78,25 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value
   }
 
+  /**
+   * Replaces the cached user with the row the backend just returned, e.g. after
+   * PATCH /users/me. Keeps the header and every other consumer in sync without a
+   * second round trip.
+   */
+  function setUser(next) {
+    user.value = next ?? null
+    ready.value = true
+  }
+
+  /**
+   * Merges a few fields into the cached user. Used by endpoints that answer with a
+   * single value instead of the whole row, such as PATCH /users/me/avatar.
+   */
+  function patchUser(partial) {
+    if (!user.value) return
+    user.value = { ...user.value, ...partial }
+  }
+
   async function logout() {
     try {
       // POST /auth/logout requires a valid access token. If it is already gone the
@@ -109,6 +128,8 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     refresh,
+    setUser,
+    patchUser,
     logout,
     clear,
   }

@@ -37,6 +37,15 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  // Account settings, backed by the user module: profile fields, avatar, password,
+  // and account deactivation.
+  {
+    path: '/settings/profile',
+    name: 'profile',
+    component: () => import('@/pages/ProfilePage.vue'),
+    meta: { requiresAuth: true },
+  },
+
   // Creation is a two-step flow: pick a method, then land in the editor. Importers
   // convert and validate on the first step and hand the draft over to the editor.
   {

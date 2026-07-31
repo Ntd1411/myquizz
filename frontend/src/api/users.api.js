@@ -15,6 +15,11 @@ export async function getMe({ probe = false } = {}) {
   return unwrap(res.data).user
 }
 
+/**
+ * PATCH /users/me. The backend schema accepts fullname, email, phone and
+ * description, all optional, and rejects an email or phone already taken by
+ * another account with a 400.
+ */
 export async function updateMe(patch) {
   const res = await http.patch('/users/me', patch)
   return unwrap(res.data).user
@@ -32,6 +37,15 @@ export async function changePassword({ oldPassword, newPassword }) {
 export async function updateAvatar(fileUrl) {
   const res = await http.patch('/users/me/avatar', { fileUrl })
   return unwrap(res.data).avatarUrl
+}
+
+/**
+ * DELETE /users/me soft-deletes (deactivates) the account and requires the current
+ * password in the body, so it is sent through the `data` option of axios.
+ */
+export async function deactivateAccount(password) {
+  const res = await http.delete('/users/me', { data: { password } })
+  return unwrap(res.data)
 }
 
 export async function getPublicUser(userId) {

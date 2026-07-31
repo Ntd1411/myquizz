@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -14,11 +14,18 @@ const menuOpen = ref(false)
 const keyword = ref('')
 
 // Labels are English only, matching the home_myquizz.html demo navigation.
+// Create is a plain nav item like the others; only its session requirement differs.
 const navLinks = [
-  { label: 'Home', to: { name: 'home' } },
+  // Home matches "/", which prefixes every route, so it needs exact matching.
+  { label: 'Home', to: { name: 'home' }, exact: true },
   { label: 'Discover', to: { name: 'discover' } },
   { label: 'My library', to: { name: 'library' } },
+  { label: 'Create', to: { name: 'create-start' }, requiresAuth: true },
 ]
+
+const visibleNavLinks = computed(() =>
+  navLinks.filter((link) => !link.requiresAuth || (auth.ready && auth.isLoggedIn)),
+)
 
 function submitSearch() {
   router.push({ name: 'discover', query: keyword.value ? { keyword: keyword.value } : {} })
@@ -45,22 +52,14 @@ async function handleLogout() {
       <!-- Primary navigation lives on the left, next to the logo. -->
       <nav class="hidden items-center gap-xxs md:flex">
         <RouterLink
-          v-for="link in navLinks"
+          v-for="link in visibleNavLinks"
           :key="link.label"
           :to="link.to"
-          class="rounded-md px-sm py-[7px] text-body-sm font-medium text-ink-muted transition-colors duration-150 hover:text-ink"
-          active-class="font-semibold text-ink"
+          class="nav-link"
+          :active-class="link.exact ? '' : 'nav-link-active'"
+          exact-active-class="nav-link-active"
         >
           {{ link.label }}
-        </RouterLink>
-
-        <!-- Creating requires a session, so the entry point only shows when signed in. -->
-        <RouterLink
-          v-if="auth.ready && auth.isLoggedIn"
-          :to="{ name: 'create-start' }"
-          class="btn-utility ml-xxs"
-        >
-          Create
         </RouterLink>
       </nav>
 
@@ -135,6 +134,14 @@ async function handleLogout() {
             >
               My library
             </RouterLink>
+            <RouterLink
+              :to="{ name: 'profile' }"
+              class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
+              role="menuitem"
+              @click="menuOpen = false"
+            >
+              Edit profile
+            </RouterLink>
             <button
               class="block w-full rounded-md px-sm py-xs text-left text-body-sm text-ink-secondary hover:bg-canvas-soft"
               type="button"
@@ -167,21 +174,15 @@ async function handleLogout() {
           <input v-model="keyword" class="field" type="search" placeholder="Search quizzes…" />
         </form>
         <RouterLink
-          v-for="link in navLinks"
+          v-for="link in visibleNavLinks"
           :key="link.label"
           :to="link.to"
-          class="rounded-md px-sm py-xs text-body-md text-ink-secondary"
+          class="nav-link nav-link-block"
+          :active-class="link.exact ? '' : 'nav-link-active'"
+          exact-active-class="nav-link-active"
           @click="mobileOpen = false"
         >
           {{ link.label }}
-        </RouterLink>
-        <RouterLink
-          v-if="auth.ready && auth.isLoggedIn"
-          :to="{ name: 'create-start' }"
-          class="rounded-md px-sm py-xs text-body-md text-ink-secondary"
-          @click="mobileOpen = false"
-        >
-          Create a quiz
         </RouterLink>
         <RouterLink
           v-if="auth.ready && !auth.isLoggedIn"
@@ -198,3 +199,38 @@ async function handleLogout() {
     </div>
   </header>
 </template>
+
+<style scoped>
+/* One shared shape for every navigation entry, Create included. */
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.nav-link:hover {
+  color: var(--ink);
+  background-color: var(--canvas-soft);
+}
+
+.nav-link-block {
+  display: block;
+  font-size: 16px;
+}
+
+/* Active state: no pill and no outline, just full-strength ink and heavier weight. */
+.nav-link-active,
+.nav-link-active:hover {
+  color: var(--ink);
+  font-weight: 700;
+  background-color: transparent;
+}
+</style>

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import QuizCard from './QuizCard.vue'
 import SeeAllCard from './SeeAllCard.vue'
-import { gsap, Flip, prefersReducedMotion } from '@/composables/useMotion'
+import { gsap, Flip, prefersReducedMotion, revealGroup } from '@/composables/useMotion'
 
 /**
  * Bounded "caterpillar" carousel, ported one-to-one from the home_myquizz.html demo.
@@ -35,6 +35,7 @@ const SWIPE_THRESHOLD = 40
 const railEl = ref(null)
 const viewportEl = ref(null)
 const trackEl = ref(null)
+const headerEl = ref(null)
 
 const index = ref(0)
 const perView = ref(4)
@@ -80,6 +81,25 @@ function measure() {
 
   // Clamp after a resize so a shrinking window never leaves a gap on the right.
   if (index.value > maxIndex.value) index.value = maxIndex.value
+}
+
+// Entrance animation: the title and the cards currently in the window lift into
+// place the first time this rail reaches the viewport. It runs once per data set,
+// and never while a carousel step is mid-flight.
+let killReveal = null
+let revealed = false
+
+function playReveal() {
+  if (revealed || prefersReducedMotion()) return
+  const track = trackEl.value
+  if (!track || !railEl.value) return
+
+  const cards = gsap.utils.toArray('.rail-item:not(.is-hidden)', track)
+  if (!cards.length) return
+
+  revealed = true
+  const targets = headerEl.value ? [headerEl.value, ...cards] : cards
+  killReveal = revealGroup(railEl.value, targets, { y: 26, stagger: 0.08, start: 'top 92%' })
 }
 
 async function step(forward) {
@@ -187,14 +207,17 @@ function onResize() {
   resizeTimer = window.setTimeout(measure, 120)
 }
 
-onMounted(() => {
+onMounted(async () => {
   measure()
+  await nextTick()
+  playReveal()
   window.addEventListener('resize', onResize)
 })
 
 onBeforeUnmount(() => {
   window.clearTimeout(resizeTimer)
   window.removeEventListener('resize', onResize)
+  killReveal?.()
 })
 
 // Reset to the start whenever the underlying data set changes.
@@ -204,13 +227,21 @@ watch(
     index.value = 0
     await nextTick()
     measure()
+    // Rails render empty while the pool request is in flight, so the first real
+    // data set is what actually gets the entrance animation.
+    killReveal?.()
+    revealed = false
+    playReveal()
   },
 )
 </script>
 
 <template>
   <section class="py-lg">
-    <div class="container-page mb-[20px] flex items-baseline justify-between gap-sm">
+    <div
+      ref="headerEl"
+      class="container-page mb-[20px] flex items-baseline justify-between gap-sm"
+    >
       <h2 class="section-title">
         <span
           v-if="swatchColor"

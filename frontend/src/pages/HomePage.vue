@@ -64,6 +64,8 @@ function scrollToTopic(name) {
 }
 
 onMounted(() => {
+  // Rails animate their own title and cards, so this only covers the static
+  // sections (topic chips, game modes) further down the page.
   revealOnScroll(pageEl.value, '[data-reveal]')
   revealOnScroll(staticEl.value, '[data-reveal-static]', { y: 20, stagger: 0.06 })
 })
@@ -71,25 +73,21 @@ onMounted(() => {
 
 <template>
   <div ref="pageEl" class="pb-xxl pt-md">
-    <div data-reveal>
-      <QuizRail
-        title="Trending quizzes"
-        :items="trending"
-        :loading="pool.isLoading.value"
-        :see-all-to="{ name: 'discover' }"
-        see-all-label="See all"
-      />
-    </div>
+    <QuizRail
+      title="Trending quizzes"
+      :items="trending"
+      :loading="pool.isLoading.value"
+      :see-all-to="{ name: 'discover' }"
+      see-all-label="See all"
+    />
 
-    <div data-reveal>
-      <QuizRail
-        title="Newest quizzes"
-        :items="newest"
-        :loading="pool.isLoading.value"
-        :see-all-to="{ name: 'discover', query: { sort: 'newest' } }"
-        see-all-label="See all"
-      />
-    </div>
+    <QuizRail
+      title="Newest quizzes"
+      :items="newest"
+      :loading="pool.isLoading.value"
+      :see-all-to="{ name: 'discover', query: { sort: 'newest' } }"
+      see-all-label="See all"
+    />
 
     <section ref="staticEl" class="container-page py-lg">
       <h2 class="section-title mb-[20px]" data-reveal-static>Trending topics</h2>
@@ -108,7 +106,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <div v-for="topic in topicRails" :id="topicId(topic.name)" :key="topic.name" data-reveal>
+    <div v-for="topic in topicRails" :id="topicId(topic.name)" :key="topic.name">
       <QuizRail
         :title="topic.name"
         :swatch-color="topic.color"
