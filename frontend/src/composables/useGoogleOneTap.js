@@ -43,7 +43,8 @@ function loadGsi() {
 
 /**
  * @param {object} options
- * @param {import('vue').Ref<HTMLElement|null>} [options.buttonEl] Container for the rendered "Sign in with Google" button.
+ * @param {import('vue').Ref<HTMLElement|null>} [options.buttonEl] Container for the rendered
+ *   "Sign in with Google" button.
  * @param {boolean} [options.prompt] Whether to also show the One Tap prompt.
  * @param {boolean} [options.enabled] Skip entirely when the user is already signed in.
  * @param {(user: object) => void} [options.onSuccess]

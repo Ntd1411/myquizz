@@ -71,13 +71,27 @@ async function submit() {
 <template>
   <div class="container-page flex justify-center py-xxl">
     <div class="card-surface w-full max-w-md p-lg">
-      <h1 class="text-heading-2 text-ink">Create account</h1>
+      <h1 class="text-heading-2 text-ink">
+        Create account
+      </h1>
 
       <form class="mt-lg flex flex-col gap-sm" @submit.prevent="submit">
         <BaseField v-model="fullname" label="Full name" autocomplete="name" required />
-        <BaseField v-model="email" label="Email" type="email" autocomplete="email" required />
+        <BaseField
+          v-model="email"
+          label="Email"
+          type="email"
+          autocomplete="email"
+          required
+        />
         <BaseField v-model="phone" label="Phone number (optional)" type="tel" autocomplete="tel" />
-        <BaseField v-model="password" label="Password" type="password" autocomplete="new-password" required />
+        <BaseField
+          v-model="password"
+          label="Password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
         <BaseField
           v-model="confirmPassword"
           label="Confirm password"
@@ -86,7 +100,9 @@ async function submit() {
           required
         />
 
-        <p v-if="formError" class="text-caption text-sticker-orange-deep">{{ formError }}</p>
+        <p v-if="formError" class="text-caption text-sticker-orange-deep">
+          {{ formError }}
+        </p>
 
         <button class="btn-primary mt-xs" type="submit" :disabled="auth.pending">
           <BaseSpinner v-if="auth.pending" />
@@ -96,7 +112,9 @@ async function submit() {
 
       <p class="mt-md text-caption text-ink-muted">
         Already have an account?
-        <RouterLink :to="{ name: 'login' }" class="text-primary hover:text-primary-active">Log in</RouterLink>
+        <RouterLink :to="{ name: 'login' }" class="text-primary hover:text-primary-active">
+          Log in
+        </RouterLink>
       </p>
     </div>
   </div>

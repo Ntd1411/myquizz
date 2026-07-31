@@ -272,8 +272,12 @@ async function confirmDeactivate() {
 <template>
   <div ref="pageEl" class="container-page max-w-[760px] pb-xxl pt-lg">
     <div data-enter>
-      <p class="eyebrow-label">Account</p>
-      <h1 class="mt-xxs text-heading-1 text-ink">Edit your profile</h1>
+      <p class="eyebrow-label">
+        Account
+      </p>
+      <h1 class="mt-xxs text-heading-1 text-ink">
+        Edit your profile
+      </h1>
       <p class="mt-xs text-body-sm text-ink-muted">
         Your name, avatar and intro are shown on every quiz you publish.
       </p>
@@ -281,7 +285,9 @@ async function confirmDeactivate() {
 
     <!-- Avatar -->
     <section class="card-surface mt-lg p-lg" data-enter>
-      <h2 class="text-title text-ink">Avatar</h2>
+      <h2 class="text-title text-ink">
+        Avatar
+      </h2>
       <div class="mt-md flex items-center gap-md">
         <div class="grid h-[72px] w-[72px] shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-hairline">
           <img
@@ -289,7 +295,7 @@ async function confirmDeactivate() {
             :src="auth.avatarUrl"
             :alt="auth.displayName"
             class="h-full w-full object-cover"
-          />
+          >
           <span v-else class="grid h-full w-full place-items-center bg-primary text-title font-semibold text-white">
             {{ auth.initials }}
           </span>
@@ -305,9 +311,11 @@ async function confirmDeactivate() {
               accept="image/*"
               :disabled="avatarUploading"
               @change="onAvatarPicked"
-            />
+            >
           </label>
-          <p class="mt-xs text-caption text-ink-faint">JPG or PNG, up to 2MB.</p>
+          <p class="mt-xs text-caption text-ink-faint">
+            JPG or PNG, up to 2MB.
+          </p>
         </div>
       </div>
     </section>
@@ -315,7 +323,9 @@ async function confirmDeactivate() {
     <!-- Profile fields: read-only summary until Edit is pressed -->
     <section class="card-surface mt-md p-lg" data-enter>
       <div class="flex items-center justify-between gap-sm">
-        <h2 class="text-title text-ink">Profile details</h2>
+        <h2 class="text-title text-ink">
+          Profile details
+        </h2>
         <button v-if="!editingProfile" class="btn-utility" type="button" @click="startEditProfile">
           Edit
         </button>
@@ -327,7 +337,9 @@ async function confirmDeactivate() {
           :key="row.label"
           class="grid gap-xxs py-sm sm:grid-cols-[180px_1fr] sm:gap-sm sm:py-xs"
         >
-          <dt class="text-body-sm text-ink-muted">{{ row.label }}</dt>
+          <dt class="text-body-sm text-ink-muted">
+            {{ row.label }}
+          </dt>
           <dd class="text-body-sm text-ink" :class="row.value ? '' : 'text-ink-faint'">
             {{ row.value || 'Not set' }}
           </dd>
@@ -344,7 +356,7 @@ async function confirmDeactivate() {
             autocomplete="name"
             :maxlength="LIMITS.nameMax"
             placeholder="Your name"
-          />
+          >
         </label>
 
         <label class="block">
@@ -355,7 +367,7 @@ async function confirmDeactivate() {
             type="email"
             autocomplete="email"
             placeholder="you@example.com"
-          />
+          >
         </label>
 
         <label class="block">
@@ -366,7 +378,7 @@ async function confirmDeactivate() {
             type="tel"
             autocomplete="tel"
             placeholder="+84901234567"
-          />
+          >
           <span class="mt-xxs block text-caption text-ink-faint">7 to 15 digits, an optional leading +.</span>
         </label>
 
@@ -377,14 +389,16 @@ async function confirmDeactivate() {
             class="field min-h-[96px] resize-y"
             :maxlength="LIMITS.descriptionMax"
             placeholder="Introduce yourself: who you are and what you like to quiz about."
-          ></textarea>
+          />
           <span class="mt-xxs block text-caption text-ink-faint">
             A short self-introduction shown on your public profile.
             {{ profile.description.length }} / {{ LIMITS.descriptionMax }}
           </span>
         </label>
 
-        <p v-if="profileError" class="text-body-sm text-sticker-orange-deep">{{ profileError }}</p>
+        <p v-if="profileError" class="text-body-sm text-sticker-orange-deep">
+          {{ profileError }}
+        </p>
 
         <div class="flex items-center gap-xs">
           <button class="btn-primary" type="submit" :disabled="savingProfile || !hasProfileChanges">
@@ -399,7 +413,9 @@ async function confirmDeactivate() {
 
     <!-- Password: two entry points, nothing expanded by default -->
     <section class="card-surface mt-md p-lg" data-enter>
-      <h2 class="text-title text-ink">Password</h2>
+      <h2 class="text-title text-ink">
+        Password
+      </h2>
 
       <p v-if="isGoogleAccount" class="mt-xs text-body-sm text-ink-muted">
         This account signs in with Google, so it has no password to change.
@@ -446,7 +462,7 @@ async function confirmDeactivate() {
               class="field"
               type="password"
               autocomplete="current-password"
-            />
+            >
           </label>
 
           <label class="block">
@@ -456,7 +472,7 @@ async function confirmDeactivate() {
               class="field"
               type="password"
               autocomplete="new-password"
-            />
+            >
             <span class="mt-xxs block text-caption text-ink-faint">At least {{ LIMITS.passwordMin }} characters.</span>
           </label>
 
@@ -467,10 +483,12 @@ async function confirmDeactivate() {
               class="field"
               type="password"
               autocomplete="new-password"
-            />
+            >
           </label>
 
-          <p v-if="passwordError" class="text-body-sm text-sticker-orange-deep">{{ passwordError }}</p>
+          <p v-if="passwordError" class="text-body-sm text-sticker-orange-deep">
+            {{ passwordError }}
+          </p>
 
           <div class="flex items-center gap-xs">
             <button
@@ -492,7 +510,9 @@ async function confirmDeactivate() {
             screen asks for that code and your new password.
           </p>
 
-          <p v-if="passwordError" class="mt-xs text-body-sm text-sticker-orange-deep">{{ passwordError }}</p>
+          <p v-if="passwordError" class="mt-xs text-body-sm text-sticker-orange-deep">
+            {{ passwordError }}
+          </p>
 
           <div class="mt-md flex items-center gap-xs">
             <button class="btn-primary" type="button" :disabled="sendingReset" @click="sendResetCode">
@@ -508,7 +528,9 @@ async function confirmDeactivate() {
 
     <!-- Deactivate -->
     <section class="card-surface mt-md p-lg" data-enter>
-      <h2 class="text-title text-ink">Deactivate account</h2>
+      <h2 class="text-title text-ink">
+        Deactivate account
+      </h2>
       <p class="mt-xs text-body-sm text-ink-muted">
         Your quizzes stop being playable and you are signed out everywhere. Support can
         restore the account later.
@@ -528,10 +550,12 @@ async function confirmDeactivate() {
             class="field"
             type="password"
             autocomplete="current-password"
-          />
+          >
         </label>
 
-        <p v-if="dangerError" class="text-body-sm text-sticker-orange-deep">{{ dangerError }}</p>
+        <p v-if="dangerError" class="text-body-sm text-sticker-orange-deep">
+          {{ dangerError }}
+        </p>
 
         <div class="flex items-center gap-xs">
           <button class="btn-utility" type="submit" :disabled="deactivating">

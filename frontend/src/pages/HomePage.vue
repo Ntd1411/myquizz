@@ -90,7 +90,9 @@ onMounted(() => {
     />
 
     <section ref="staticEl" class="container-page py-lg">
-      <h2 class="section-title mb-[20px]" data-reveal-static>Trending topics</h2>
+      <h2 class="section-title mb-[20px]" data-reveal-static>
+        Trending topics
+      </h2>
       <div class="flex flex-wrap gap-[10px]" data-reveal-static>
         <button
           v-for="category in CATEGORIES"
@@ -99,7 +101,7 @@ onMounted(() => {
           class="chip"
           @click="scrollToTopic(category.name)"
         >
-          <span class="h-[9px] w-[9px] rounded-full" :style="{ backgroundColor: category.color }"></span>
+          <span class="h-[9px] w-[9px] rounded-full" :style="{ backgroundColor: category.color }" />
           {{ category.name }}
           <span class="text-[13px] text-ink-faint">{{ countFor(category.name) }}</span>
         </button>
@@ -117,15 +119,21 @@ onMounted(() => {
     </div>
 
     <section class="container-page py-lg" data-reveal>
-      <h2 class="section-title mb-[20px]">Game modes</h2>
+      <h2 class="section-title mb-[20px]">
+        Game modes
+      </h2>
       <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
         <article
           v-for="mode in GAME_MODES"
           :key="mode.name"
           class="card-surface px-lg py-[22px]"
         >
-          <h3 class="text-title text-ink">{{ mode.name }}</h3>
-          <p class="mt-xxs text-body-sm text-ink-muted">{{ mode.desc }}</p>
+          <h3 class="text-title text-ink">
+            {{ mode.name }}
+          </h3>
+          <p class="mt-xxs text-body-sm text-ink-muted">
+            {{ mode.desc }}
+          </p>
         </article>
       </div>
     </section>

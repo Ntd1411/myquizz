@@ -159,13 +159,19 @@ watch(
     </div>
 
     <div v-else-if="query.isError.value" class="card-surface mt-lg p-xl">
-      <h1 class="text-heading-3 text-ink">This quiz is not available</h1>
+      <h1 class="text-heading-3 text-ink">
+        This quiz is not available
+      </h1>
       <p class="mt-xs text-body-sm text-ink-muted">
         {{ toErrorMessage(query.error.value, 'It may have been deleted or made private.') }}
       </p>
       <div class="mt-md flex items-center gap-xs">
-        <button class="btn-utility" type="button" @click="query.refetch()">Try again</button>
-        <RouterLink :to="{ name: 'discover' }" class="btn-ghost">Browse quizzes</RouterLink>
+        <button class="btn-utility" type="button" @click="query.refetch()">
+          Try again
+        </button>
+        <RouterLink :to="{ name: 'discover' }" class="btn-ghost">
+          Browse quizzes
+        </RouterLink>
       </div>
     </div>
 
@@ -174,8 +180,12 @@ watch(
         <!-- Main column -->
         <div class="lg:w-2/3">
           <div data-enter>
-            <p v-if="quiz.category" class="eyebrow-label">{{ quiz.category }}</p>
-            <h1 class="mt-xxs text-heading-1 text-ink">{{ quiz.title }}</h1>
+            <p v-if="quiz.category" class="eyebrow-label">
+              {{ quiz.category }}
+            </p>
+            <h1 class="mt-xxs text-heading-1 text-ink">
+              {{ quiz.title }}
+            </h1>
             <p v-if="quiz.description" class="mt-sm text-body-md text-ink-secondary">
               {{ quiz.description }}
             </p>
@@ -191,10 +201,16 @@ watch(
           </div>
 
           <div class="mt-lg flex items-center justify-between gap-sm" data-enter>
-            <h2 class="text-heading-3 text-ink">Questions</h2>
+            <h2 class="text-heading-3 text-ink">
+              Questions
+            </h2>
             <div v-if="questions.length" class="flex items-center gap-xs">
-              <button class="btn-ghost" type="button" @click="expandAll">Expand all</button>
-              <button class="btn-ghost" type="button" @click="collapseAll">Collapse all</button>
+              <button class="btn-ghost" type="button" @click="expandAll">
+                Expand all
+              </button>
+              <button class="btn-ghost" type="button" @click="collapseAll">
+                Collapse all
+              </button>
             </div>
           </div>
 
@@ -257,7 +273,9 @@ watch(
                 </ul>
 
                 <div v-else class="rounded-md border border-hairline bg-canvas-soft p-sm">
-                  <p class="text-caption text-ink-muted">Players type their answer.</p>
+                  <p class="text-caption text-ink-muted">
+                    Players type their answer.
+                  </p>
                   <p v-if="isOwner && correctText(question)" class="mt-xxs text-body-sm text-ink">
                     Expected answer: {{ correctText(question) }}
                   </p>
@@ -279,24 +297,40 @@ watch(
               :src="quiz.image"
               :alt="quiz.title"
               class="mb-md h-[140px] w-full rounded-md object-cover"
-            />
+            >
 
             <dl class="grid gap-xs">
               <div class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">Questions</dt>
-                <dd class="text-body-sm text-ink">{{ questions.length }}</dd>
+                <dt class="text-caption text-ink-muted">
+                  Questions
+                </dt>
+                <dd class="text-body-sm text-ink">
+                  {{ questions.length }}
+                </dd>
               </div>
               <div class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">Total time</dt>
-                <dd class="text-body-sm text-ink">{{ totalTimeLabel }}</dd>
+                <dt class="text-caption text-ink-muted">
+                  Total time
+                </dt>
+                <dd class="text-body-sm text-ink">
+                  {{ totalTimeLabel }}
+                </dd>
               </div>
               <div v-if="quiz.language" class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">Language</dt>
-                <dd class="text-body-sm text-ink">{{ quiz.language }}</dd>
+                <dt class="text-caption text-ink-muted">
+                  Language
+                </dt>
+                <dd class="text-body-sm text-ink">
+                  {{ quiz.language }}
+                </dd>
               </div>
               <div v-if="quiz.playCount != null" class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">Plays</dt>
-                <dd class="text-body-sm text-ink">{{ quiz.playCount }}</dd>
+                <dt class="text-caption text-ink-muted">
+                  Plays
+                </dt>
+                <dd class="text-body-sm text-ink">
+                  {{ quiz.playCount }}
+                </dd>
               </div>
             </dl>
 
@@ -307,8 +341,12 @@ watch(
             </div>
 
             <div class="mt-md grid gap-xs">
-              <button class="btn-primary w-full" type="button" @click="hostGame">Host a game</button>
-              <button class="btn-utility w-full" type="button" @click="goPlay">Join with a code</button>
+              <button class="btn-primary w-full" type="button" @click="hostGame">
+                Host a game
+              </button>
+              <button class="btn-utility w-full" type="button" @click="goPlay">
+                Join with a code
+              </button>
               <button v-if="isOwner" class="btn-ghost w-full" type="button" @click="goEdit">
                 Edit this quiz
               </button>

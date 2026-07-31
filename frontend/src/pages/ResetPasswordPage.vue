@@ -42,12 +42,26 @@ async function submit() {
 <template>
   <div class="container-page flex justify-center py-xxl">
     <div class="card-surface w-full max-w-md p-lg">
-      <h1 class="text-heading-2 text-ink">Reset password</h1>
+      <h1 class="text-heading-2 text-ink">
+        Reset password
+      </h1>
 
       <form class="mt-lg flex flex-col gap-sm" @submit.prevent="submit">
-        <BaseField v-model="email" label="Email" type="email" autocomplete="email" required />
+        <BaseField
+          v-model="email"
+          label="Email"
+          type="email"
+          autocomplete="email"
+          required
+        />
         <BaseField v-model="otp" label="Verification code" autocomplete="one-time-code" required />
-        <BaseField v-model="newPassword" label="New password" type="password" autocomplete="new-password" required />
+        <BaseField
+          v-model="newPassword"
+          label="New password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
         <BaseField
           v-model="confirmPassword"
           label="Confirm new password"
@@ -56,7 +70,9 @@ async function submit() {
           required
         />
 
-        <p v-if="formError" class="text-caption text-sticker-orange-deep">{{ formError }}</p>
+        <p v-if="formError" class="text-caption text-sticker-orange-deep">
+          {{ formError }}
+        </p>
 
         <button class="btn-primary mt-xs" type="submit" :disabled="pending">
           <BaseSpinner v-if="pending" />

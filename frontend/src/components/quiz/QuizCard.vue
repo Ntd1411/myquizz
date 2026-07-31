@@ -85,7 +85,7 @@ const playLabel = computed(() =>
         class="quiz-card-cover pointer-events-none h-full w-full object-cover"
         draggable="false"
         loading="lazy"
-      />
+      >
       <template v-else>
         <span class="pointer-events-none absolute left-[7%] top-[18%] text-[54px] font-bold leading-none text-white/90">
           {{ initials }}
@@ -98,7 +98,7 @@ const playLabel = computed(() =>
 
     <div class="flex flex-1 flex-col gap-[8px] px-[20px] pb-[18px] pt-[16px]">
       <span v-if="quiz.category" class="inline-flex items-center gap-xs text-[13px] text-ink-muted">
-        <span class="h-[9px] w-[9px] rounded-xs" :style="{ backgroundColor: coverColor }"></span>
+        <span class="h-[9px] w-[9px] rounded-xs" :style="{ backgroundColor: coverColor }" />
         {{ quiz.category }}
       </span>
 
@@ -123,7 +123,7 @@ const playLabel = computed(() =>
       <div class="mt-auto flex items-center gap-xs pt-xxs text-[13px] text-ink-faint">
         <span class="font-medium text-ink-muted">{{ questionCount }} Q</span>
         <template v-if="playLabel">
-          <span class="h-[3px] w-[3px] rounded-full bg-ink-faint"></span>
+          <span class="h-[3px] w-[3px] rounded-full bg-ink-faint" />
           <span>{{ playLabel }}</span>
         </template>
         <span class="ml-auto flex min-w-0 items-center gap-xxs" :title="authorName">
@@ -135,7 +135,7 @@ const playLabel = computed(() =>
               class="h-full w-full object-cover"
               draggable="false"
               loading="lazy"
-            />
+            >
             <span
               v-else
               class="grid h-full w-full place-items-center text-[10px] font-semibold text-white"

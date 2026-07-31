@@ -18,7 +18,9 @@ const year = new Date().getFullYear()
         </div>
 
         <div>
-          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">Product</h5>
+          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">
+            Product
+          </h5>
           <RouterLink :to="{ name: 'discover' }" class="block py-[5px] text-caption text-ink-secondary hover:text-ink">
             Discover
           </RouterLink>
@@ -31,14 +33,18 @@ const year = new Date().getFullYear()
         </div>
 
         <div>
-          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">Company</h5>
+          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">
+            Company
+          </h5>
           <span class="block py-[5px] text-caption text-ink-secondary">About</span>
           <span class="block py-[5px] text-caption text-ink-secondary">Blog</span>
           <span class="block py-[5px] text-caption text-ink-secondary">Careers</span>
         </div>
 
         <div>
-          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">Resources</h5>
+          <h5 class="mb-sm text-eyebrow uppercase tracking-[0.5px] text-ink-faint">
+            Resources
+          </h5>
           <span class="block py-[5px] text-caption text-ink-secondary">Help center</span>
           <span class="block py-[5px] text-caption text-ink-secondary">Privacy</span>
           <span class="block py-[5px] text-caption text-ink-secondary">Terms</span>

@@ -52,10 +52,14 @@ async function submit(payload) {
 
 <template>
   <div class="container-page py-xl">
-    <p v-if="loading" class="text-body-sm text-ink-muted">Loading the quiz…</p>
+    <p v-if="loading" class="text-body-sm text-ink-muted">
+      Loading the quiz…
+    </p>
 
     <div v-else-if="loadError" class="card-surface p-lg">
-      <p class="text-body-sm text-red-600">{{ loadError }}</p>
+      <p class="text-body-sm text-red-600">
+        {{ loadError }}
+      </p>
       <button type="button" class="btn btn-utility mt-md" @click="router.push({ name: 'library' })">
         Back to my library
       </button>

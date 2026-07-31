@@ -30,7 +30,7 @@ defineEmits(['update:modelValue'])
       :required="required"
       v-bind="$attrs"
       @input="$emit('update:modelValue', $event.target.value)"
-    />
+    >
     <span v-if="error" class="mt-xxs block text-caption text-sticker-orange-deep">{{ error }}</span>
   </label>
 </template>

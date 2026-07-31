@@ -202,8 +202,12 @@ watch(
 
     <!-- Step 1: room code -->
     <section v-if="step === 'code'" class="card-surface mt-lg p-xl text-center" data-enter data-enter-step>
-      <h1 class="text-heading-2 text-ink">Join a game</h1>
-      <p class="mt-xs text-body-sm text-ink-muted">Enter the code shown on the host screen.</p>
+      <h1 class="text-heading-2 text-ink">
+        Join a game
+      </h1>
+      <p class="mt-xs text-body-sm text-ink-muted">
+        Enter the code shown on the host screen.
+      </p>
 
       <form class="mt-lg grid gap-md" @submit.prevent="checkCode">
         <input
@@ -218,9 +222,11 @@ watch(
           placeholder="CODE"
           aria-label="Room code"
           @input="onCodeInput"
-        />
+        >
 
-        <p v-if="error" class="text-body-sm text-sticker-orange-deep">{{ error }}</p>
+        <p v-if="error" class="text-body-sm text-sticker-orange-deep">
+          {{ error }}
+        </p>
 
         <button class="btn-primary w-full justify-center" type="submit" :disabled="checking">
           {{ checking ? 'Checking…' : 'Continue' }}
@@ -229,16 +235,24 @@ watch(
 
       <p v-if="!auth.isLoggedIn" class="mt-md text-caption text-ink-faint">
         You can play as a guest, or
-        <RouterLink :to="{ name: 'login', query: { redirect: '/join' } }" class="section-link">log in</RouterLink>
+        <RouterLink :to="{ name: 'login', query: { redirect: '/join' } }" class="section-link">
+          log in
+        </RouterLink>
         to keep your scores.
       </p>
     </section>
 
     <!-- Step 2: nickname (guests only) -->
     <section v-else-if="step === 'name'" class="card-surface mt-lg p-xl" data-enter data-enter-step>
-      <p class="eyebrow-label">Room {{ code }}</p>
-      <h1 class="mt-xxs text-heading-2 text-ink">{{ quizTitle }}</h1>
-      <p class="mt-xs text-body-sm text-ink-muted">Hosted by {{ hostName }}</p>
+      <p class="eyebrow-label">
+        Room {{ code }}
+      </p>
+      <h1 class="mt-xxs text-heading-2 text-ink">
+        {{ quizTitle }}
+      </h1>
+      <p class="mt-xs text-body-sm text-ink-muted">
+        Hosted by {{ hostName }}
+      </p>
 
       <form class="mt-lg grid gap-md" @submit.prevent="submitJoin">
         <label class="block">
@@ -250,10 +264,12 @@ watch(
             :maxlength="NAME_MAX"
             placeholder="Everyone will see this"
             autocomplete="nickname"
-          />
+          >
         </label>
 
-        <p v-if="error" class="text-body-sm text-sticker-orange-deep">{{ error }}</p>
+        <p v-if="error" class="text-body-sm text-sticker-orange-deep">
+          {{ error }}
+        </p>
 
         <div class="flex items-center gap-xs">
           <button class="btn-primary" type="submit" :disabled="joining || !playerName.trim()">
@@ -270,9 +286,15 @@ watch(
     <section v-else class="card-surface mt-lg p-xl" data-enter data-enter-step>
       <div class="flex items-start justify-between gap-sm">
         <div>
-          <p class="eyebrow-label">Room {{ code }}</p>
-          <h1 class="mt-xxs text-heading-2 text-ink">{{ quizTitle }}</h1>
-          <p class="mt-xs text-body-sm text-ink-muted">Hosted by {{ hostName }}</p>
+          <p class="eyebrow-label">
+            Room {{ code }}
+          </p>
+          <h1 class="mt-xxs text-heading-2 text-ink">
+            {{ quizTitle }}
+          </h1>
+          <p class="mt-xs text-body-sm text-ink-muted">
+            Hosted by {{ hostName }}
+          </p>
         </div>
         <span class="chip whitespace-nowrap">{{ playerCount }} in room</span>
       </div>
@@ -297,8 +319,12 @@ watch(
       </ul>
 
       <div class="mt-lg flex items-center gap-xs">
-        <button class="btn-utility" type="button" @click="refreshRoom">Refresh</button>
-        <button class="btn-ghost" type="button" @click="leaveLobby">Leave</button>
+        <button class="btn-utility" type="button" @click="refreshRoom">
+          Refresh
+        </button>
+        <button class="btn-ghost" type="button" @click="leaveLobby">
+          Leave
+        </button>
         <button class="btn-ghost ml-auto" type="button" @click="router.push({ name: 'home' })">
           Back to home
         </button>

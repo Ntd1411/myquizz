@@ -15,7 +15,13 @@ defineProps({
   >
     <span class="flex flex-col items-center gap-sm p-lg">
       <span class="grid h-[52px] w-[52px] place-items-center rounded-full bg-primary text-white shadow-[0_6px_16px_rgba(0,117,222,0.28)]">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
           <path
             d="M5 12h14M13 6l6 6-6 6"
             stroke="currentColor"

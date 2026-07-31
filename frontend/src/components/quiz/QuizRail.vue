@@ -148,7 +148,7 @@ watch(
           v-if="swatchColor"
           class="h-[14px] w-[14px] shrink-0 rounded-xs"
           :style="{ backgroundColor: swatchColor }"
-        ></span>
+        />
         {{ title }}
       </h2>
       <RouterLink v-if="seeAllTo" :to="seeAllTo" class="section-link whitespace-nowrap">
@@ -166,8 +166,20 @@ watch(
           aria-label="Previous"
           @click="page(false)"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M15 6l-6 6 6 6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </button>
 
@@ -178,8 +190,20 @@ watch(
           aria-label="Next"
           @click="page(true)"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M9 6l6 6-6 6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </button>
 
@@ -189,10 +213,12 @@ watch(
             :key="`skeleton-${n}`"
             class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
             :style="{ flex: `0 0 ${cardWidth}px`, width: `${cardWidth}px` }"
-          ></div>
+          />
         </div>
 
-        <p v-else-if="!total" class="py-lg text-body-sm text-ink-faint">No quizzes in this section yet.</p>
+        <p v-else-if="!total" class="py-lg text-body-sm text-ink-faint">
+          No quizzes in this section yet.
+        </p>
 
         <!--
           Native scroller: swipe, wheel, trackpad and keyboard all work. tabindex makes

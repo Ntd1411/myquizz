@@ -159,8 +159,12 @@ async function onFilePicked(event) {
 <template>
   <div ref="pageEl" class="container-page py-xl">
     <header class="mb-lg" data-enter>
-      <p class="eyebrow-label">Create</p>
-      <h1 class="text-heading-1 text-ink">How do you want to build it?</h1>
+      <p class="eyebrow-label">
+        Create
+      </p>
+      <h1 class="text-heading-1 text-ink">
+        How do you want to build it?
+      </h1>
       <p class="mt-xxs text-body-sm text-ink-muted">
         Every method ends in the same editor, so you can always review and edit before publishing.
       </p>
@@ -196,7 +200,9 @@ async function onFilePicked(event) {
         The input could not be converted{{ fileName ? ` (${fileName})` : '' }}
       </p>
       <ul class="mt-xs list-disc space-y-[2px] pl-lg text-body-sm text-red-600">
-        <li v-for="(issue, index) in issues.slice(0, 10)" :key="index">{{ issue }}</li>
+        <li v-for="(issue, index) in issues.slice(0, 10)" :key="index">
+          {{ issue }}
+        </li>
       </ul>
       <p v-if="issues.length > 10" class="mt-xs text-caption text-red-600">
         and {{ issues.length - 10 }} more
@@ -205,7 +211,9 @@ async function onFilePicked(event) {
 
     <!-- Manual -->
     <section v-if="method === 'manual'" class="card-surface p-lg" data-enter>
-      <h2 class="text-heading-3 text-ink">Start from scratch</h2>
+      <h2 class="text-heading-3 text-ink">
+        Start from scratch
+      </h2>
       <p class="mt-xxs text-body-sm text-ink-muted">
         You get an empty quiz with one question ready to fill in.
       </p>
@@ -218,7 +226,9 @@ async function onFilePicked(event) {
     <section v-else-if="method === 'text'" class="card-surface p-lg" data-enter>
       <div class="flex flex-wrap items-start justify-between gap-sm">
         <div>
-          <h2 class="text-heading-3 text-ink">Paste your questions</h2>
+          <h2 class="text-heading-3 text-ink">
+            Paste your questions
+          </h2>
           <p class="mt-xxs text-body-sm text-ink-muted">
             One blank line between questions. <code class="text-ink">-</code> for an option,
             <code class="text-ink">*</code> for a correct option, <code class="text-ink">=</code> for
@@ -245,13 +255,17 @@ async function onFilePicked(event) {
         >
           {{ working ? 'Converting…' : 'Validate and continue' }}
         </button>
-        <button type="button" class="btn btn-ghost" @click="insertTextSample">Insert sample</button>
+        <button type="button" class="btn btn-ghost" @click="insertTextSample">
+          Insert sample
+        </button>
       </div>
     </section>
 
     <!-- File import -->
     <section v-else-if="method === 'file'" class="card-surface p-lg" data-enter>
-      <h2 class="text-heading-3 text-ink">Import a file</h2>
+      <h2 class="text-heading-3 text-ink">
+        Import a file
+      </h2>
       <p class="mt-xxs text-body-sm text-ink-muted">
         CSV and XLSX use the columns
         <code class="text-ink">{{ TABLE_COLUMNS.join(', ') }}</code>, where
@@ -268,13 +282,15 @@ async function onFilePicked(event) {
             accept=".csv,.xlsx,.xls,.json,.txt,text/csv,application/json"
             class="hidden"
             @change="onFilePicked"
-          />
+          >
         </label>
         <span v-if="fileName" class="text-caption text-ink-muted">{{ fileName }}</span>
       </div>
 
       <div class="mt-lg border-t border-hairline pt-md">
-        <p class="mb-xs text-caption text-ink-secondary">Templates</p>
+        <p class="mb-xs text-caption text-ink-secondary">
+          Templates
+        </p>
         <div class="flex flex-wrap gap-sm">
           <button type="button" class="btn btn-utility" @click="onDownloadTemplate('csv')">
             Download .csv
@@ -295,11 +311,17 @@ async function onFilePicked(event) {
 
     <!-- AI, not implemented yet -->
     <section v-else-if="method === 'ai'" class="card-surface p-lg" data-enter>
-      <h2 class="text-heading-3 text-ink">Generate with AI</h2>
-      <p class="mt-xxs text-body-sm text-ink-muted">This method is not available yet.</p>
+      <h2 class="text-heading-3 text-ink">
+        Generate with AI
+      </h2>
+      <p class="mt-xxs text-body-sm text-ink-muted">
+        This method is not available yet.
+      </p>
     </section>
 
-    <p class="mt-lg text-caption text-ink-faint">Selected method: {{ selected?.title }}</p>
+    <p class="mt-lg text-caption text-ink-faint">
+      Selected method: {{ selected?.title }}
+    </p>
   </div>
 </template>
 

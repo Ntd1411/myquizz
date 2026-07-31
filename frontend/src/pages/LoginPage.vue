@@ -56,14 +56,32 @@ const { available: oneTapAvailable } = useGoogleOneTap({
   <div class="container-page flex justify-center py-xxl">
     <div class="card-surface w-full max-w-md p-lg">
       <BrandLogo class="mb-md" :size="24" />
-      <h1 class="text-heading-2 text-ink">Log in</h1>
-      <p class="mt-xxs text-body-sm text-ink-muted">Continue with your MyQuizz account.</p>
+      <h1 class="text-heading-2 text-ink">
+        Log in
+      </h1>
+      <p class="mt-xxs text-body-sm text-ink-muted">
+        Continue with your MyQuizz account.
+      </p>
 
       <form class="mt-lg flex flex-col gap-sm" @submit.prevent="submit">
-        <BaseField v-model="email" label="Email" type="email" autocomplete="email" required />
-        <BaseField v-model="password" label="Password" type="password" autocomplete="current-password" required />
+        <BaseField
+          v-model="email"
+          label="Email"
+          type="email"
+          autocomplete="email"
+          required
+        />
+        <BaseField
+          v-model="password"
+          label="Password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
 
-        <p v-if="formError" class="text-caption text-sticker-orange-deep">{{ formError }}</p>
+        <p v-if="formError" class="text-caption text-sticker-orange-deep">
+          {{ formError }}
+        </p>
 
         <button class="btn-primary mt-xs" type="submit" :disabled="auth.pending">
           <BaseSpinner v-if="auth.pending" />
@@ -72,13 +90,13 @@ const { available: oneTapAvailable } = useGoogleOneTap({
       </form>
 
       <div class="my-md flex items-center gap-xs text-caption text-ink-faint">
-        <span class="h-px flex-1 bg-hairline"></span>
+        <span class="h-px flex-1 bg-hairline" />
         <span>or</span>
-        <span class="h-px flex-1 bg-hairline"></span>
+        <span class="h-px flex-1 bg-hairline" />
       </div>
 
       <!-- Google Identity Services renders its own button here when a client id is set. -->
-      <div ref="googleButtonEl" class="flex justify-center"></div>
+      <div ref="googleButtonEl" class="flex justify-center" />
 
       <!-- Redirect flow: always available, and the only option without a client id. -->
       <button

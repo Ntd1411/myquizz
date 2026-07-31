@@ -33,6 +33,8 @@ onMounted(async () => {
 <template>
   <div class="container-page flex flex-col items-center gap-sm py-xxl text-ink-muted">
     <BaseSpinner />
-    <p class="text-body-sm">Finishing sign-in…</p>
+    <p class="text-body-sm">
+      Finishing sign-in…
+    </p>
   </div>
 </template>

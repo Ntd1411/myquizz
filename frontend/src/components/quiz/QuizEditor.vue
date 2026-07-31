@@ -155,15 +155,21 @@ defineExpose({ setError: (message) => (formError.value = message) })
   <div>
     <header class="mb-lg flex flex-wrap items-end justify-between gap-md">
       <div>
-        <p class="eyebrow-label">{{ eyebrow }}</p>
-        <h1 class="text-heading-1 text-ink">{{ heading }}</h1>
+        <p class="eyebrow-label">
+          {{ eyebrow }}
+        </p>
+        <h1 class="text-heading-1 text-ink">
+          {{ heading }}
+        </h1>
         <p class="mt-xxs text-body-sm text-ink-muted">
           {{ questionCount }} question{{ questionCount === 1 ? '' : 's' }} · about
           {{ totalDuration }} of play time
         </p>
       </div>
       <div class="flex items-center gap-sm">
-        <button type="button" class="btn btn-ghost" @click="emit('cancel')">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="emit('cancel')">
+          Cancel
+        </button>
         <button type="button" class="btn btn-primary" :disabled="busy" @click="submit">
           {{ busy ? busyLabel : submitLabel }}
         </button>
@@ -178,7 +184,9 @@ defineExpose({ setError: (message) => (formError.value = message) })
     <section class="card-surface mb-lg p-lg">
       <div class="mb-md flex items-center gap-sm">
         <BrandLogo variant="mark" :size="22" />
-        <h2 class="text-heading-3 text-ink">Quiz details</h2>
+        <h2 class="text-heading-3 text-ink">
+          Quiz details
+        </h2>
       </div>
 
       <div class="grid gap-md md:grid-cols-2">
@@ -190,7 +198,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
             type="text"
             :maxlength="LIMITS.nameMax"
             placeholder="e.g. World capitals in 60 seconds"
-          />
+          >
         </label>
 
         <label class="block md:col-span-2">
@@ -235,12 +243,12 @@ defineExpose({ setError: (message) => (formError.value = message) })
                 :src="draft.quiz_image"
                 alt="Quiz cover"
                 class="h-full w-full object-cover"
-              />
+              >
               <span v-else class="text-caption text-ink-faint">No image</span>
             </div>
             <label class="btn btn-utility cursor-pointer">
               {{ coverUploading ? 'Uploading…' : 'Upload image' }}
-              <input type="file" accept="image/*" class="hidden" @change="onCoverPicked" />
+              <input type="file" accept="image/*" class="hidden" @change="onCoverPicked">
             </label>
             <button
               v-if="draft.quiz_image"
@@ -255,7 +263,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
         </div>
 
         <label class="flex items-center gap-sm md:col-span-2">
-          <input v-model="draft.is_public" type="checkbox" class="h-4 w-4 accent-primary" />
+          <input v-model="draft.is_public" type="checkbox" class="h-4 w-4 accent-primary">
           <span class="text-body-sm text-ink-secondary">
             Public — anyone can find and play this quiz
           </span>
@@ -267,7 +275,9 @@ defineExpose({ setError: (message) => (formError.value = message) })
     <section class="space-y-md">
       <article v-for="(question, index) in items" :key="question.id" class="card-surface p-lg">
         <header class="mb-md flex flex-wrap items-center justify-between gap-sm">
-          <h3 class="text-title text-ink">Question {{ index + 1 }}</h3>
+          <h3 class="text-title text-ink">
+            Question {{ index + 1 }}
+          </h3>
           <div class="flex items-center gap-xxs">
             <button
               type="button"
@@ -276,7 +286,15 @@ defineExpose({ setError: (message) => (formError.value = message) })
               :disabled="index === 0"
               @click="moveQuestion(index, -1)"
             >
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <svg
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
                 <path d="M12 19V5M5 12l7-7 7 7" />
               </svg>
             </button>
@@ -287,7 +305,15 @@ defineExpose({ setError: (message) => (formError.value = message) })
               :disabled="index === items.length - 1"
               @click="moveQuestion(index, 1)"
             >
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <svg
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
                 <path d="M12 5v14M19 12l-7 7-7-7" />
               </svg>
             </button>
@@ -314,7 +340,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
               type="text"
               :maxlength="LIMITS.questionTextMax"
               placeholder="What do you want to ask?"
-            />
+            >
           </label>
 
           <label class="block">
@@ -343,7 +369,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
                 accept="image/*"
                 class="hidden"
                 @change="onQuestionImagePicked(question, $event)"
-              />
+              >
             </label>
             <button
               v-if="question.question_image"
@@ -361,7 +387,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
           :src="question.question_image"
           alt="Question illustration"
           class="mt-md h-[160px] w-full rounded-md object-cover ring-1 ring-hairline"
-        />
+        >
 
         <!-- Choice answers -->
         <div v-if="isChoice(question.question_type)" class="mt-md">
@@ -398,7 +424,7 @@ defineExpose({ setError: (message) => (formError.value = message) })
                 type="text"
                 :maxlength="LIMITS.optionMax"
                 :placeholder="`Option ${optionIndex + 1}${optionIndex < LIMITS.optionsMin ? '' : ' (optional)'}`"
-              />
+              >
             </div>
           </div>
         </div>
@@ -418,13 +444,15 @@ defineExpose({ setError: (message) => (formError.value = message) })
             class="field"
             type="text"
             placeholder="The answer players should write."
-          />
+          >
         </label>
       </article>
     </section>
 
     <div class="mt-lg flex flex-wrap items-center justify-between gap-md">
-      <button type="button" class="btn btn-utility" @click="addQuestion">+ Add question</button>
+      <button type="button" class="btn btn-utility" @click="addQuestion">
+        + Add question
+      </button>
       <button type="button" class="btn btn-primary" :disabled="busy" @click="submit">
         {{ busy ? busyLabel : submitLabel }}
       </button>

@@ -51,13 +51,19 @@ watch(quizzes, async (list) => {
   <div ref="pageEl" class="container-page pb-xxl pt-lg">
     <div class="flex flex-wrap items-end justify-between gap-sm" data-enter>
       <div>
-        <p class="eyebrow-label">Your work</p>
-        <h1 class="mt-xxs text-heading-1 text-ink">My library</h1>
+        <p class="eyebrow-label">
+          Your work
+        </p>
+        <h1 class="mt-xxs text-heading-1 text-ink">
+          My library
+        </h1>
         <p class="mt-xs text-body-sm text-ink-muted">
           {{ total }} {{ total === 1 ? 'quiz' : 'quizzes' }} you created.
         </p>
       </div>
-      <RouterLink :to="{ name: 'create-start' }" class="btn-primary">Create a quiz</RouterLink>
+      <RouterLink :to="{ name: 'create-start' }" class="btn-primary">
+        Create a quiz
+      </RouterLink>
     </div>
 
     <div
@@ -69,20 +75,28 @@ watch(quizzes, async (list) => {
         v-for="n in 8"
         :key="`skeleton-${n}`"
         class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
-      ></div>
+      />
     </div>
 
     <div v-else-if="errorMessage" class="card-surface mt-lg p-lg" data-enter>
-      <p class="text-body-sm text-ink">{{ errorMessage }}</p>
-      <button class="btn-utility mt-md" type="button" @click="query.refetch()">Try again</button>
+      <p class="text-body-sm text-ink">
+        {{ errorMessage }}
+      </p>
+      <button class="btn-utility mt-md" type="button" @click="query.refetch()">
+        Try again
+      </button>
     </div>
 
     <div v-else-if="!quizzes.length" class="card-surface mt-lg p-xl text-center" data-enter>
-      <p class="text-title text-ink">Nothing here yet</p>
+      <p class="text-title text-ink">
+        Nothing here yet
+      </p>
       <p class="mx-auto mt-xs max-w-[420px] text-body-sm text-ink-muted">
         Build your first quiz from scratch, or import questions from text, CSV or JSON.
       </p>
-      <RouterLink :to="{ name: 'create-start' }" class="btn-primary mt-md">Create a quiz</RouterLink>
+      <RouterLink :to="{ name: 'create-start' }" class="btn-primary mt-md">
+        Create a quiz
+      </RouterLink>
     </div>
 
     <div v-else ref="gridEl" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">

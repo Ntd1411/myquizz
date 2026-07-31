@@ -78,7 +78,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div id="scroll-progress"></div>
+  <div id="scroll-progress" />
   <TopBar />
   <main class="min-h-[60vh]">
     <RouterView />

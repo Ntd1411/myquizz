@@ -107,7 +107,15 @@ async function handleLogout() {
       <div class="ml-auto flex items-center gap-[10px]">
         <form class="hidden w-[220px] lg:block" @submit.prevent="submitSearch">
           <label class="field flex items-center gap-xs">
-            <svg class="h-[15px] w-[15px] shrink-0 text-ink-faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <svg
+              class="h-[15px] w-[15px] shrink-0 text-ink-faint"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
               <circle cx="11" cy="11" r="7" />
               <path d="m21 21-4.3-4.3" />
             </svg>
@@ -116,17 +124,19 @@ async function handleLogout() {
               class="w-full border-0 bg-transparent text-body-sm text-ink outline-none placeholder:text-ink-faint"
               type="search"
               placeholder="Search quizzes…"
-            />
+            >
           </label>
         </form>
 
-        <RouterLink :to="{ name: 'join-game' }" class="btn-primary hidden sm:inline-flex">Join game</RouterLink>
+        <RouterLink :to="{ name: 'join-game' }" class="btn-primary hidden sm:inline-flex">
+          Join game
+        </RouterLink>
 
         <!--
           The session is only known after the first /users/me probe. Until then no
           auth control is rendered at all, so the header never shows a wrong state.
         -->
-        <div v-if="!auth.ready" class="h-[34px] w-[34px] shrink-0 rounded-full bg-canvas-soft"></div>
+        <div v-if="!auth.ready" class="h-[34px] w-[34px] shrink-0 rounded-full bg-canvas-soft" />
 
         <!-- Signed in: avatar only. The name and email live inside the dropdown. -->
         <div
@@ -150,7 +160,7 @@ async function handleLogout() {
               :src="auth.avatarUrl"
               :alt="auth.displayName"
               class="h-full w-full object-cover"
-            />
+            >
             <span v-else class="grid h-full w-full place-items-center bg-primary text-[13px] font-semibold text-white">
               {{ auth.initials }}
             </span>
@@ -162,8 +172,12 @@ async function handleLogout() {
             role="menu"
           >
             <div class="px-sm py-xs">
-              <p class="truncate text-body-sm font-medium text-ink">{{ auth.displayName }}</p>
-              <p class="truncate text-caption text-ink-faint">{{ auth.user?.email }}</p>
+              <p class="truncate text-body-sm font-medium text-ink">
+                {{ auth.displayName }}
+              </p>
+              <p class="truncate text-caption text-ink-faint">
+                {{ auth.user?.email }}
+              </p>
             </div>
             <RouterLink
               :to="{ name: 'create-start' }"
@@ -200,7 +214,9 @@ async function handleLogout() {
           </div>
         </div>
 
-        <RouterLink v-else :to="{ name: 'login' }" class="btn-utility hidden sm:inline-flex">Log in</RouterLink>
+        <RouterLink v-else :to="{ name: 'login' }" class="btn-utility hidden sm:inline-flex">
+          Log in
+        </RouterLink>
 
         <button
           class="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-md border border-hairline bg-surface text-ink md:hidden"
@@ -208,7 +224,15 @@ async function handleLogout() {
           aria-label="Menu"
           @click="mobileOpen = !mobileOpen"
         >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <svg
+            class="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
             <path d="M3 6h18M3 12h18M3 18h18" />
           </svg>
         </button>
@@ -218,7 +242,7 @@ async function handleLogout() {
     <div v-if="mobileOpen" class="border-t border-hairline bg-surface md:hidden">
       <div class="container-page flex flex-col gap-xs py-sm">
         <form @submit.prevent="submitSearch">
-          <input v-model="keyword" class="field" type="search" placeholder="Search quizzes…" />
+          <input v-model="keyword" class="field" type="search" placeholder="Search quizzes…">
         </form>
         <RouterLink
           v-for="link in visibleNavLinks"

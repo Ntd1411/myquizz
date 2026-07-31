@@ -36,7 +36,13 @@ const props = defineProps({
         fill="var(--primary, #0075de)"
       />
       <!-- The Q ring: the quiz mark itself. -->
-      <circle cx="16" cy="14" r="5.9" stroke="#ffffff" stroke-width="2.6" />
+      <circle
+        cx="16"
+        cy="14"
+        r="5.9"
+        stroke="#ffffff"
+        stroke-width="2.6"
+      />
       <!-- Q tail, angled like a check to hint at the correct answer. -->
       <path
         d="M19.9 18.1 24 22.2"

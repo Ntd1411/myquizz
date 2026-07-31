@@ -3,7 +3,6 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, keepPreviousData } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
-import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
 import { mockCategories } from '@/api/mock.api'
 import { toErrorMessage } from '@/api/envelope'
@@ -102,8 +101,12 @@ watch(
 <template>
   <div ref="pageEl" class="container-page pb-xxl pt-lg">
     <div data-enter>
-      <p class="eyebrow-label">Browse</p>
-      <h1 class="mt-xxs text-heading-1 text-ink">Discover quizzes</h1>
+      <p class="eyebrow-label">
+        Browse
+      </p>
+      <h1 class="mt-xxs text-heading-1 text-ink">
+        Discover quizzes
+      </h1>
       <p class="mt-xs text-body-sm text-ink-muted">
         Search by keyword or filter by category.
       </p>
@@ -115,7 +118,7 @@ watch(
         class="field max-w-md"
         type="search"
         placeholder="Search by keyword…"
-      />
+      >
 
       <div class="flex flex-wrap gap-[10px]">
         <button
@@ -127,19 +130,25 @@ watch(
           :aria-pressed="category === item.name"
           @click="selectCategory(item.name)"
         >
-          <span class="h-[9px] w-[9px] shrink-0 rounded-full" :style="{ backgroundColor: item.color }"></span>
+          <span class="h-[9px] w-[9px] shrink-0 rounded-full" :style="{ backgroundColor: item.color }" />
           {{ item.name }}
         </button>
 
-        <button v-if="hasFilters" class="btn-ghost" type="button" @click="clearFilters">Clear</button>
+        <button v-if="hasFilters" class="btn-ghost" type="button" @click="clearFilters">
+          Clear
+        </button>
       </div>
     </div>
 
     <div ref="resultsEl" class="mt-lg scroll-mt-[88px]" data-enter>
       <div class="flex items-center justify-between gap-sm">
         <p class="text-body-sm text-ink-muted">
-          <template v-if="pagination">{{ pagination.total }} quizzes found</template>
-          <template v-else>Results</template>
+          <template v-if="pagination">
+            {{ pagination.total }} quizzes found
+          </template>
+          <template v-else>
+            Results
+          </template>
         </p>
         <!-- Refetching a cached page keeps the old cards on screen, so it needs its own hint. -->
         <span v-if="query.isFetching.value && !query.isLoading.value" class="text-caption text-ink-faint">
@@ -152,19 +161,25 @@ watch(
           v-for="n in 8"
           :key="`skeleton-${n}`"
           class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
-        ></div>
+        />
       </div>
 
       <div v-else-if="query.isError.value" class="card-surface mt-md p-xl">
         <p class="text-body-sm text-sticker-orange-deep">
           {{ toErrorMessage(query.error.value, 'Could not load quizzes.') }}
         </p>
-        <button class="btn-utility mt-md" type="button" @click="query.refetch()">Try again</button>
+        <button class="btn-utility mt-md" type="button" @click="query.refetch()">
+          Try again
+        </button>
       </div>
 
       <div v-else-if="!quizzes.length" class="card-surface mt-md p-xl text-center">
-        <p class="text-body-md text-ink">No quizzes match these filters.</p>
-        <p class="mt-xxs text-body-sm text-ink-muted">Try a different keyword or clear the category.</p>
+        <p class="text-body-md text-ink">
+          No quizzes match these filters.
+        </p>
+        <p class="mt-xxs text-body-sm text-ink-muted">
+          Try a different keyword or clear the category.
+        </p>
         <button v-if="hasFilters" class="btn-utility mt-md" type="button" @click="clearFilters">
           Clear filters
         </button>

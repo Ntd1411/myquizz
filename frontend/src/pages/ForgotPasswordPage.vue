@@ -127,7 +127,9 @@ onBeforeUnmount(stopCountdown)
     <div class="card-surface w-full max-w-md p-lg">
       <BrandLogo class="mb-md" :size="24" />
 
-      <h1 class="text-heading-2 text-ink">Forgot password</h1>
+      <h1 class="text-heading-2 text-ink">
+        Forgot password
+      </h1>
 
       <!-- Step 1: ask for the account email. -->
       <template v-if="step === 'request'">
@@ -136,9 +138,17 @@ onBeforeUnmount(stopCountdown)
         </p>
 
         <form class="mt-lg flex flex-col gap-sm" @submit.prevent="sendCode">
-          <BaseField v-model="email" label="Email" type="email" autocomplete="email" required />
+          <BaseField
+            v-model="email"
+            label="Email"
+            type="email"
+            autocomplete="email"
+            required
+          />
 
-          <p v-if="formError" class="text-caption text-sticker-orange-deep">{{ formError }}</p>
+          <p v-if="formError" class="text-caption text-sticker-orange-deep">
+            {{ formError }}
+          </p>
 
           <button class="btn-primary mt-xs" type="submit" :disabled="sending">
             <BaseSpinner v-if="sending" />
@@ -196,14 +206,18 @@ onBeforeUnmount(stopCountdown)
             </button>
           </div>
 
-          <p v-if="formError" class="text-caption text-sticker-orange-deep">{{ formError }}</p>
+          <p v-if="formError" class="text-caption text-sticker-orange-deep">
+            {{ formError }}
+          </p>
 
           <button class="btn-primary mt-xs" type="submit" :disabled="resetting">
             <BaseSpinner v-if="resetting" />
             <span>Reset password</span>
           </button>
 
-          <button class="btn-ghost" type="button" @click="backToEmail">Use another email</button>
+          <button class="btn-ghost" type="button" @click="backToEmail">
+            Use another email
+          </button>
         </form>
       </template>
 
