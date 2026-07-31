@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens mirror the home_myquizz.html demo one-to-one so the Vue app and
+   the static demo render identically. Structural accent = primary blue only. */
+:root {
+  --ink: rgba(0, 0, 0, 0.95);
+  --ink-secondary: #31302e;
+  --ink-muted: #615d59;
+  --ink-faint: #a39e98;
+  --canvas-soft: #f6f5f4;
+  --surface: #ffffff;
+  --hairline: #e6e6e6;
+  --primary: #0075de;
+  --primary-active: #005bab;
+  --on-primary: #ffffff;
+  --r-xs: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-full: 9999px;
+  --shadow-1: rgba(0, 0, 0, 0.01) 0 0.175px 1.041px, rgba(0, 0, 0, 0.02) 0 0.8px 2.925px,
+    rgba(0, 0, 0, 0.027) 0 2.025px 7.847px, rgba(0, 0, 0, 0.04) 0 4px 18px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-canvas-soft font-sans text-ink;
+    margin: 0;
+    font-feature-settings: 'lnum' 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme('colors.primary.DEFAULT');
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-container px-[20px] md:px-[32px];
+  }
+
+  /* One structural accent only. Primary blue is reserved for the main action. */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-xs text-body-sm font-medium leading-none transition-[background-color,transform,border-color] duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Marketing CTA: fully pill shaped, with the demo's short press transform. */
+  .btn-primary {
+    @apply btn rounded-full border border-primary bg-primary px-[18px] py-[10px] text-white hover:border-primary-active hover:bg-primary-active active:scale-[0.97];
+  }
+
+  /* Utility / nav button: tighter 8px radius, never a pill. */
+  .btn-utility {
+    @apply btn rounded-md border border-hairline bg-surface px-[14px] py-[9px] text-ink hover:bg-canvas-soft;
+  }
+
+  .btn-ghost {
+    @apply btn rounded-md px-sm py-xs text-ink-secondary hover:bg-canvas-soft;
+  }
+
+  /* Form fields stay square-ish (4px) - pill radii are for CTAs only. */
+  .field {
+    @apply w-full rounded-xs border border-hairline bg-surface px-sm py-[8px] text-body-sm text-ink placeholder:text-ink-faint focus:outline-none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .field:focus,
+  .field:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 117, 222, 0.14);
+  }
+
+  .card-surface {
+    @apply rounded-lg border border-hairline bg-surface;
+  }
+
+  /* Section header: 40px / -1px tracking, tightening down on small screens. */
+  .section-title {
+    @apply flex items-center gap-sm text-[30px] font-bold leading-[1.1] tracking-[-0.75px] text-ink md:text-heading-1;
+  }
+
+  .section-link {
+    @apply text-body-sm text-primary hover:underline;
+  }
+
+  .eyebrow-label {
+    @apply text-eyebrow uppercase text-ink-muted;
+  }
+
+  /* Topic chip used by the category rail on the home page. */
+  .chip {
+    @apply inline-flex items-center gap-xs rounded-full border border-hairline bg-surface px-[15px] py-xs text-body-sm text-ink transition-colors duration-150 hover:border-ink-faint;
+  }
+
+  /* Rail control: 40px circle, hairline + barely-there layered shadow. */
+  .rail-arrow {
+    @apply absolute z-20 grid h-10 w-10 place-items-center rounded-full border border-hairline bg-surface text-ink shadow-soft transition-[opacity,background-color] duration-200 hover:bg-canvas-soft;
+    top: 40%;
+  }
+}
+
+/* Scroll progress bar rendered at the very top of the viewport. */
+#scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--primary);
+  z-index: 60;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Lenis recommended CSS (vertical page smoothing only). */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: clip;
+}
