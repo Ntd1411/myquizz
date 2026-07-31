@@ -37,6 +37,27 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  // Creation is a two-step flow: pick a method, then land in the editor. Importers
+  // convert and validate on the first step and hand the draft over to the editor.
+  {
+    path: '/create',
+    name: 'create-start',
+    component: () => import('@/pages/CreateStartPage.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/create/quiz',
+    name: 'create-quiz',
+    component: () => import('@/pages/CreateQuizPage.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/quizzes/:id/edit',
+    name: 'edit-quiz',
+    component: () => import('@/pages/EditQuizPage.vue'),
+    meta: { requiresAuth: true },
+  },
+
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/pages/NotFoundPage.vue') },
 ]
 

@@ -18,7 +18,7 @@ export async function presignUpload({ contentType, folder, fileSize }) {
  */
 export async function uploadImage(file, folder) {
   if (file.size > MAX_FILE_SIZE) {
-    throw new Error('Ảnh vượt quá 2MB.')
+    throw new Error('The image exceeds the 2MB limit.')
   }
 
   const { uploadUrl, publicUrl } = await presignUpload({

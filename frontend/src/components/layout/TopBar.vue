@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
+import BrandLogo from '@/components/base/BrandLogo.vue'
 
 const auth = useAuthStore()
 const ui = useUiStore()
@@ -14,6 +15,7 @@ const keyword = ref('')
 
 // Labels are English only, matching the home_myquizz.html demo navigation.
 const navLinks = [
+  { label: 'Home', to: { name: 'home' } },
   { label: 'Discover', to: { name: 'discover' } },
   { label: 'My library', to: { name: 'library' } },
 ]
@@ -36,11 +38,11 @@ async function handleLogout() {
   <!-- Translucent sticky bar with the demo's saturated backdrop blur. -->
   <header class="sticky top-0 z-50 border-b border-hairline bg-white/[0.86] backdrop-blur-[10px] backdrop-saturate-[180%]">
     <div class="container-page flex h-16 items-center gap-md">
-      <RouterLink :to="{ name: 'home' }" class="flex shrink-0 items-center gap-[9px]">
-        <span class="h-[18px] w-[18px] rounded-[6px] bg-primary"></span>
-        <span class="text-[18px] font-bold tracking-[-0.4px] text-ink">MyQuizz</span>
+      <RouterLink :to="{ name: 'home' }" class="flex shrink-0 items-center" aria-label="MyQuizz home">
+        <BrandLogo :size="22" />
       </RouterLink>
 
+      <!-- Primary navigation lives on the left, next to the logo. -->
       <nav class="hidden items-center gap-xxs md:flex">
         <RouterLink
           v-for="link in navLinks"
@@ -50,6 +52,15 @@ async function handleLogout() {
           active-class="font-semibold text-ink"
         >
           {{ link.label }}
+        </RouterLink>
+
+        <!-- Creating requires a session, so the entry point only shows when signed in. -->
+        <RouterLink
+          v-if="auth.ready && auth.isLoggedIn"
+          :to="{ name: 'create-start' }"
+          class="btn-utility ml-xxs"
+        >
+          Create
         </RouterLink>
       </nav>
 
@@ -109,6 +120,14 @@ async function handleLogout() {
               <p class="truncate text-caption text-ink-faint">{{ auth.user?.email }}</p>
             </div>
             <RouterLink
+              :to="{ name: 'create-start' }"
+              class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
+              role="menuitem"
+              @click="menuOpen = false"
+            >
+              Create a quiz
+            </RouterLink>
+            <RouterLink
               :to="{ name: 'library' }"
               class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
               role="menuitem"
@@ -155,6 +174,14 @@ async function handleLogout() {
           @click="mobileOpen = false"
         >
           {{ link.label }}
+        </RouterLink>
+        <RouterLink
+          v-if="auth.ready && auth.isLoggedIn"
+          :to="{ name: 'create-start' }"
+          class="rounded-md px-sm py-xs text-body-md text-ink-secondary"
+          @click="mobileOpen = false"
+        >
+          Create a quiz
         </RouterLink>
         <RouterLink
           v-if="auth.ready && !auth.isLoggedIn"

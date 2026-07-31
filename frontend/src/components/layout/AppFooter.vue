@@ -1,6 +1,8 @@
 <script setup>
 // Warm canvas-soft footer band with a multi-column link directory, mirroring
 // the home_myquizz.html demo footer.
+import BrandLogo from '@/components/base/BrandLogo.vue'
+
 const year = new Date().getFullYear()
 </script>
 
@@ -9,10 +11,7 @@ const year = new Date().getFullYear()
     <div class="container-page pb-lg pt-[48px]">
       <div class="grid grid-cols-2 gap-xxl md:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
         <div class="col-span-2 lg:col-span-1">
-          <div class="flex items-center gap-[9px]">
-            <span class="h-[18px] w-[18px] rounded-[6px] bg-primary"></span>
-            <span class="text-[16px] font-bold tracking-[-0.4px] text-ink">MyQuizz</span>
-          </div>
+          <BrandLogo :size="20" />
           <p class="mt-sm max-w-[280px] text-caption text-ink-muted">
             A calmer place to learn and play quizzes together — real-time or solo, at your own pace.
           </p>

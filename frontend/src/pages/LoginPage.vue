@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
+import BrandLogo from '@/components/base/BrandLogo.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { startGoogleLogin } from '@/api/auth.api'
@@ -54,6 +55,7 @@ const { available: oneTapAvailable } = useGoogleOneTap({
 <template>
   <div class="container-page flex justify-center py-xxl">
     <div class="card-surface w-full max-w-md p-lg">
+      <BrandLogo class="mb-md" :size="24" />
       <h1 class="text-heading-2 text-ink">Log in</h1>
       <p class="mt-xxs text-body-sm text-ink-muted">Continue with your MyQuizz account.</p>
 
