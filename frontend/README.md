@@ -1,162 +1,93 @@
-# MyQuizz Frontend
+# MyQuizz Frontend (Vue 3 + Vite)
 
-Nền tảng quiz gamified - Frontend application được xây dựng với React, Vite và TypeScript.
+Giao dien nguoi dung cho MyQuizz. Giai doan hien tai: **M0 (nen mong) + M1 (xac thuc) + M2 (duyet quiz)**.
 
-## Tech Stack
+## Stack
 
-- **React 18.3+** - UI framework
-- **Vite 5.x** - Build tool và dev server
-- **TypeScript 5.x** - Type safety
-- **React Router 6.x** - Routing
-- **TanStack Query 5.x** - Server state management
-- **Zustand 4.x** - Client state management
-- **Tailwind CSS 3.x** - Styling
-- **Framer Motion 10.x** - Animations
-- **React Hook Form 7.x** - Form handling
-- **Zod 3.x** - Schema validation
-- **Axios 1.6+** - HTTP client
-- **Socket.IO Client 4.7+** - Real-time communication
+| Lop | Cong nghe |
+| --- | --- |
+| Framework | Vue 3 (Composition API, `<script setup>`), JavaScript |
+| Build | Vite 5 |
+| Router | Vue Router 4 |
+| State | Pinia |
+| Data fetching | TanStack Query (vue-query) |
+| HTTP | axios (`withCredentials: true`) |
+| Realtime | socket.io-client (chuan bi cho M3) |
+| Style | Tailwind CSS voi token MyQuizz |
+| Motion | GSAP (Flip, ScrollTrigger) + Lenis |
 
-## Prerequisites
-
-- Node.js >= 18.x
-- npm >= 9.x
-
-## Getting Started
-
-### 1. Cài đặt dependencies
+## Chay du an
 
 ```bash
+cp .env.example .env      # sua VITE_API_BASE_URL cho dung backend
 npm install
+npm run dev               # http://localhost:5173
 ```
 
-### 2. Cấu hình environment variables
+> Backend phai liet ke `http://localhost:5173` trong `FRONTEND_URL` / `ALLOW_ORIGIN`,
+> neu khong trinh duyet se chan cookie va moi request deu la khach.
 
-Sao chép file `.env.example` thành `.env.development`:
-
-```bash
-cp .env.example .env.development
-```
-
-Chỉnh sửa các giá trị trong `.env.development` nếu cần:
-
-```env
-VITE_API_BASE_URL=http://localhost:3000/api/v1
-VITE_SOCKET_URL=http://localhost:3000
-VITE_APP_NAME=MyQuizz Dev
-```
-
-### 3. Chạy development server
-
-```bash
-npm run dev
-```
-
-Ứng dụng sẽ chạy tại `http://localhost:5173/`
-
-## Available Scripts
-
-- `npm run dev` - Chạy development server với HMR
-- `npm run build` - Build production bundle
-- `npm run preview` - Preview production build
-- `npm run lint` - Chạy ESLint
-- `npm run format` - Format code với Prettier
-- `npm run type-check` - Kiểm tra TypeScript type errors
-
-## Project Structure
+## Cau truc thu muc
 
 ```
-frontend/
-├── public/              # Static assets
-├── src/
-│   ├── app/            # App setup (routes, providers)
-│   ├── assets/         # Images, styles, fonts
-│   ├── components/     # Shared components
-│   │   ├── ui/        # Design system components
-│   │   ├── layout/    # Layout components (Navbar, Footer)
-│   │   └── shared/    # Other shared components
-│   ├── features/       # Feature modules (auth, quiz, game, etc.)
-│   ├── hooks/          # Custom React hooks
-│   ├── layouts/        # Page layouts
-│   ├── lib/            # Third-party library configs
-│   ├── pages/          # Route pages
-│   ├── stores/         # Zustand stores
-│   ├── types/          # TypeScript types
-│   └── utils/          # Utility functions
-├── .env.example        # Environment variables template
-├── .eslintrc.js        # ESLint configuration
-├── .prettierrc         # Prettier configuration
-├── index.html          # HTML entry point
-├── package.json        # Dependencies
-├── postcss.config.js   # PostCSS configuration
-├── tailwind.config.ts  # Tailwind CSS configuration
-├── tsconfig.json       # TypeScript configuration
-└── vite.config.ts      # Vite configuration
+src/
+  api/          # Lop goi REST. Moi file map 1 nhom endpoint.
+    http.js       # axios instance + interceptor tu dong refresh 401
+    envelope.js   # boc/mo envelope { success, data, error, meta }
+  stores/       # Pinia: auth, ui (toast)
+  composables/  # useMotion (GSAP/Lenis), useGuestId
+  components/
+    base/         # BaseField, BaseSpinner, ToastHost
+    layout/       # TopBar, AppFooter
+    quiz/         # QuizCard, SeeAllCard, QuizRail (carousel caterpillar)
+  pages/        # Mot file cho moi route
+  router/       # Bang route + guard
 ```
 
-## Design System
+## Quy uoc quan trong
 
-Project sử dụng design tokens được định nghĩa trong `src/assets/styles/tokens.css` với OKLCH color space để đảm bảo consistent theming và accessibility.
+### 1. Envelope
 
-### Theme
+Moi response deu co dang `{ success, data, error, meta }`. **Khong bao gio** doc thang
+`res.data`; luon di qua `unwrap()`. Danh sach nam duoi `data.<collection>`, phan trang
+nam duoi `meta.pagination`.
 
-- Light mode (default)
-- Dark mode
-- System preference
+### 2. Xac thuc bang cookie HttpOnly
 
-Toggle theme với Zustand store: `useThemeStore`
+Backend luu `accessToken` / `refreshToken` trong cookie HttpOnly. JavaScript **khong doc duoc**
+token. Vi vay:
 
-## Code Style
+- moi request phai co `withCredentials: true`;
+- khong luu token vao `localStorage`;
+- khi gap `401`, interceptor tu goi `POST /auth/refresh` mot lan duy nhat (single-flight)
+  roi thu lai request goc;
+- neu refresh that bai, app phat su kien `myquizz:auth-expired`, xoa session va dieu huong ve `/login`.
 
-- ESLint cho code quality
-- Prettier cho code formatting
-- Path aliases: `@/` maps to `src/`
+### 3. Bao mat khi choi
 
-## Development Guidelines
+Dap an dung khong bao gio duoc gui xuong client khi cau hoi con mo. Trang chi tiet quiz
+cung khong render `correct_answer`. Dong ho phai tinh tu `serverTime` / `endsAt` cua server,
+khong dung dong ho may khach.
 
-1. Tuân theo folder structure đã định nghĩa
-2. Sử dụng TypeScript cho tất cả code
-3. Components dùng named exports
-4. Hooks prefix với `use`
-5. Types/Interfaces suffix với type mô tả
-6. Utilities trong `utils/` folder
-7. Feature-specific code trong `features/` folder
+### 4. QuizRail (carousel caterpillar)
 
-## Build
+- Cua so co dinh N the (desktop 4, tablet 3/2, mobile 1).
+- Bam tien: the trai cung thu nho + mo dan ve phia trai, cac the giua truot sang,
+  the moi hien ra ben phai.
+- **Khong loop vo han**: `index` bi kep trong `[0, total - perView]`, mui ten khong con
+  huong nao thi bien mat han.
+- The cuoi cung cua moi hang la the **"Xem tat ca"** thuc su, truot cung nhip voi cac the khac.
+- Moi the luon nam trong DOM, chi bi `display: none` khi ra khoi cua so, de GSAP Flip
+  xu ly on dinh.
+- Ton trong `prefers-reduced-motion`: khi bat, chi doi cua so, khong chay animation.
 
-Build production bundle:
+## Buoc tiep theo (chua lam)
 
-```bash
-npm run build
-```
+- M3: tao / sua quiz (upload anh qua `/storage/presign`).
+- M4: lobby + Socket.IO namespace `/game`.
+- M5: man hinh choi (host + player), dong bo dong ho server.
+- M6: bang xep hang va ket qua.
+- M7: ho so nguoi dung, doi avatar, doi mat khau.
 
-Output sẽ được tạo trong folder `dist/`
-
-Preview production build:
-
-```bash
-npm run preview
-```
-
-## Milestone 1: Foundation - Completed
-
-- ✓ Vite + React + TypeScript project initialized
-- ✓ Core dependencies installed
-- ✓ Folder structure setup
-- ✓ Design tokens và theme system
-- ✓ ESLint và Prettier configured
-- ✓ Path aliases configured (@/)
-- ✓ Basic routing setup
-- ✓ Layout shell (Navbar, RootLayout, AppLayout)
-- ✓ Build verification passed
-- ✓ Dev server running successfully
-
-## Next Steps
-
-- Milestone 2: Design System - Implement UI components
-- Milestone 3: Core Components - Build shared components
-- Milestone 4+: Feature implementation theo roadmap
-
-## License
-
-Private project
+> Form cau hinh che do choi phai render tu `GET /games/game-modes` (`editable` / `locked`),
+> tuyet doi khong hardcode. Che do `team` hien dang an.
