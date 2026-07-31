@@ -30,6 +30,10 @@ const routes = [
   // Landing route the backend redirects to after Google OAuth sets the cookies.
   { path: '/auth/callback', name: 'auth-callback', component: () => import('@/pages/AuthCallbackPage.vue') },
 
+  // Joining a live room is public: guests play with a nickname, signed-in users with
+  // their account. A shared link can prefill the code with /join?code=ABC123.
+  { path: '/join', name: 'join-game', component: () => import('@/pages/JoinGamePage.vue') },
+
   {
     path: '/library',
     name: 'library',

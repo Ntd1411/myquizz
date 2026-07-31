@@ -6,6 +6,9 @@ import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
+import { uploadImage } from '@/api/storage.api'
+import { updateAvatar } from '@/api/users.api'
+import { createDefaultAvatarFile } from '@/utils/defaultAvatar'
 
 const auth = useAuthStore()
 const ui = useUiStore()
@@ -17,6 +20,24 @@ const phone = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const formError = ref('')
+
+/**
+ * Gives the brand-new account a real avatar image: first letter of the name on a
+ * random palette colour, uploaded through /storage/presign and stored with
+ * PATCH /users/me/avatar. Failures are swallowed on purpose - the account already
+ * exists at this point and a missing decoration must not look like a signup error.
+ */
+async function attachDefaultAvatar(name) {
+  try {
+    const file = await createDefaultAvatarFile(name)
+    if (!file) return
+    const publicUrl = await uploadImage(file, 'avatars')
+    const stored = await updateAvatar(publicUrl)
+    auth.patchUser({ avatar: stored || publicUrl })
+  } catch {
+    // Ignored: the UI falls back to the initial-based placeholder.
+  }
+}
 
 async function submit() {
   formError.value = ''
@@ -33,6 +54,12 @@ async function submit() {
       phone: phone.value || undefined,
       password: password.value,
     })
+
+    // Register already sets the session cookies, so the avatar call is authenticated.
+    if (auth.isLoggedIn) {
+      await attachDefaultAvatar(fullname.value || email.value)
+    }
+
     ui.toast('Account created successfully.')
     router.push({ name: auth.isLoggedIn ? 'home' : 'login' })
   } catch (error) {

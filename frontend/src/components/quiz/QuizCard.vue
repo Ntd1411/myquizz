@@ -39,7 +39,6 @@ const initials = computed(() =>
     .toUpperCase(),
 )
 
-// Inline SVG placeholder cover, identical in spirit to the demo's coverSvg().
 const coverGradient = computed(
   () => `linear-gradient(135deg, ${coverColor.value}, ${lighten(coverColor.value, 0.4)})`,
 )
@@ -53,28 +52,37 @@ const playCount = computed(() =>
   typeof props.quiz.playCount === 'number' ? props.quiz.playCount : null,
 )
 
-const authorName = computed(() => {
-  const owner = props.quiz.owner
-  if (!owner) return 'MyQuizz'
-  return owner.fullname || owner.username || 'MyQuizz'
-})
+const description = computed(() => props.quiz.description || props.quiz.quiz_description || '')
+
+const owner = computed(() => props.quiz.owner ?? null)
+
+const authorName = computed(() => owner.value?.fullname || owner.value?.username || 'MyQuizz')
+
+const authorAvatar = computed(() => owner.value?.avatar || null)
+
+const authorInitial = computed(() => (authorName.value.trim()[0] || 'M').toUpperCase())
+
+// "1000" stays readable as "1,000"; nothing is abbreviated so the number never lies.
+const playLabel = computed(() =>
+  playCount.value === null ? null : playCount.value.toLocaleString('en-US'),
+)
 </script>
 
 <template>
-  <!-- Flat card: hairline border only, no hover lift. Motion belongs to the rail. -->
+  <!-- The whole card is the link. Hover lifts it slightly and zooms the cover. -->
   <RouterLink
     :to="{ name: 'quiz-detail', params: { id: quiz.id } }"
-    class="card-surface flex h-full select-none flex-col overflow-hidden"
+    class="quiz-card card-surface flex h-full select-none flex-col overflow-hidden"
   >
     <div
-      class="relative aspect-[16/9] w-full border-b border-hairline"
+      class="relative aspect-[16/9] w-full overflow-hidden border-b border-hairline"
       :style="{ background: coverGradient }"
     >
       <img
         v-if="quiz.imageUrl"
         :src="quiz.imageUrl"
         :alt="quiz.title"
-        class="pointer-events-none h-full w-full object-cover"
+        class="quiz-card-cover pointer-events-none h-full w-full object-cover"
         draggable="false"
         loading="lazy"
       />
@@ -88,32 +96,99 @@ const authorName = computed(() => {
       </template>
     </div>
 
-    <div class="flex flex-1 flex-col gap-[10px] px-[20px] pb-[20px] pt-[18px]">
-      <div class="flex items-center justify-between gap-[10px]">
-        <span v-if="quiz.category" class="inline-flex items-center gap-xs text-[13px] text-ink-muted">
-          <span class="h-[9px] w-[9px] rounded-xs" :style="{ backgroundColor: coverColor }"></span>
-          {{ quiz.category }}
-        </span>
-        <span
-          v-if="quiz.mode"
-          class="whitespace-nowrap rounded-full border border-hairline px-[10px] py-[3px] text-eyebrow text-ink-muted"
-        >
-          {{ quiz.mode }}
-        </span>
-      </div>
+    <div class="flex flex-1 flex-col gap-[8px] px-[20px] pb-[18px] pt-[16px]">
+      <span v-if="quiz.category" class="inline-flex items-center gap-xs text-[13px] text-ink-muted">
+        <span class="h-[9px] w-[9px] rounded-xs" :style="{ backgroundColor: coverColor }"></span>
+        {{ quiz.category }}
+      </span>
 
-      <!-- Clamped to exactly two lines so every card in a rail has the same height. -->
-      <h3 class="line-clamp-2 min-h-[2.54em] text-heading-3 text-ink">{{ quiz.title }}</h3>
+      <!--
+        Two lines max. The native title attribute shows the full text on hover, which
+        also works for keyboard and screen-reader users without extra markup.
+      -->
+      <h3 class="line-clamp-2 min-h-[2.54em] text-heading-3 text-ink" :title="quiz.title">
+        {{ quiz.title }}
+      </h3>
 
-      <div class="mt-auto flex items-center gap-xs text-[13px] text-ink-faint">
-        <span>{{ questionCount }} questions</span>
-        <template v-if="playCount !== null">
+      <!-- Description: smaller and fainter than the title, clipped to two lines. -->
+      <p
+        v-if="description"
+        class="line-clamp-2 text-caption text-ink-faint"
+        :title="description"
+      >
+        {{ description }}
+      </p>
+
+      <!-- Last line: question count, play count, then the author's avatar and name. -->
+      <div class="mt-auto flex items-center gap-xs pt-xxs text-[13px] text-ink-faint">
+        <span class="font-medium text-ink-muted">{{ questionCount }} Q</span>
+        <template v-if="playLabel">
           <span class="h-[3px] w-[3px] rounded-full bg-ink-faint"></span>
-          <span>{{ playCount.toLocaleString('en-US') }} plays</span>
+          <span>{{ playLabel }}</span>
         </template>
-        <span class="h-[3px] w-[3px] rounded-full bg-ink-faint"></span>
-        <span>by {{ authorName }}</span>
+        <span class="ml-auto flex min-w-0 items-center gap-xxs" :title="authorName">
+          <span class="grid h-[20px] w-[20px] shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-hairline">
+            <img
+              v-if="authorAvatar"
+              :src="authorAvatar"
+              :alt="authorName"
+              class="h-full w-full object-cover"
+              draggable="false"
+              loading="lazy"
+            />
+            <span
+              v-else
+              class="grid h-full w-full place-items-center text-[10px] font-semibold text-white"
+              :style="{ backgroundColor: coverColor }"
+            >
+              {{ authorInitial }}
+            </span>
+          </span>
+          <span class="truncate">{{ authorName }}</span>
+        </span>
       </div>
     </div>
   </RouterLink>
 </template>
+
+<style scoped>
+.quiz-card {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.quiz-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
+}
+
+.quiz-card:active {
+  transform: translateY(-1px);
+}
+
+.quiz-card-cover {
+  transition: transform 320ms ease;
+}
+
+.quiz-card:hover .quiz-card-cover {
+  transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-card,
+  .quiz-card-cover {
+    transition: none;
+  }
+
+  .quiz-card:hover {
+    transform: none;
+  }
+
+  .quiz-card:hover .quiz-card-cover {
+    transform: none;
+  }
+}
+</style>

@@ -4,11 +4,12 @@
  * the importers validate the input here and only hand a clean draft over to the
  * editor page, so the editor never has to deal with malformed files.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toErrorMessage } from '@/api/envelope'
 import { useUiStore } from '@/stores/ui.store'
 import { setPendingDraft } from '@/composables/useQuizDraft'
+import { revealOnEnter } from '@/composables/useMotion'
 import {
   TABLE_COLUMNS,
   TEXT_TEMPLATE,
@@ -51,6 +52,7 @@ const METHODS = [
 const router = useRouter()
 const ui = useUiStore()
 
+const pageEl = ref(null)
 const method = ref('manual')
 const pastedText = ref('')
 const working = ref(false)
@@ -58,6 +60,8 @@ const issues = ref([])
 const fileName = ref('')
 
 const selected = computed(() => METHODS.find((item) => item.value === method.value))
+
+onMounted(() => revealOnEnter(pageEl.value))
 
 function selectMethod(item) {
   if (item.disabled) {
@@ -153,8 +157,8 @@ async function onFilePicked(event) {
 </script>
 
 <template>
-  <div class="container-page py-xl">
-    <header class="mb-lg">
+  <div ref="pageEl" class="container-page py-xl">
+    <header class="mb-lg" data-enter>
       <p class="eyebrow-label">Create</p>
       <h1 class="text-heading-1 text-ink">How do you want to build it?</h1>
       <p class="mt-xxs text-body-sm text-ink-muted">
@@ -163,15 +167,15 @@ async function onFilePicked(event) {
     </header>
 
     <!-- Method picker -->
-    <section class="mb-lg grid gap-sm sm:grid-cols-2 lg:grid-cols-4">
+    <section class="mb-lg grid gap-sm sm:grid-cols-2 lg:grid-cols-4" data-enter>
       <button
         v-for="item in METHODS"
         :key="item.value"
         type="button"
-        class="card-surface p-md text-left transition-[border-color,box-shadow] duration-150"
+        class="method-card card-surface p-md text-left"
         :class="[
-          method === item.value ? 'border-primary shadow-soft' : 'hover:border-ink-faint',
-          item.disabled ? 'cursor-not-allowed opacity-60' : '',
+          method === item.value ? 'is-selected' : '',
+          item.disabled ? 'is-disabled' : '',
         ]"
         :aria-pressed="method === item.value"
         @click="selectMethod(item)"
@@ -200,7 +204,7 @@ async function onFilePicked(event) {
     </section>
 
     <!-- Manual -->
-    <section v-if="method === 'manual'" class="card-surface p-lg">
+    <section v-if="method === 'manual'" class="card-surface p-lg" data-enter>
       <h2 class="text-heading-3 text-ink">Start from scratch</h2>
       <p class="mt-xxs text-body-sm text-ink-muted">
         You get an empty quiz with one question ready to fill in.
@@ -211,7 +215,7 @@ async function onFilePicked(event) {
     </section>
 
     <!-- Paste text -->
-    <section v-else-if="method === 'text'" class="card-surface p-lg">
+    <section v-else-if="method === 'text'" class="card-surface p-lg" data-enter>
       <div class="flex flex-wrap items-start justify-between gap-sm">
         <div>
           <h2 class="text-heading-3 text-ink">Paste your questions</h2>
@@ -246,7 +250,7 @@ async function onFilePicked(event) {
     </section>
 
     <!-- File import -->
-    <section v-else-if="method === 'file'" class="card-surface p-lg">
+    <section v-else-if="method === 'file'" class="card-surface p-lg" data-enter>
       <h2 class="text-heading-3 text-ink">Import a file</h2>
       <p class="mt-xxs text-body-sm text-ink-muted">
         CSV and XLSX use the columns
@@ -290,7 +294,7 @@ async function onFilePicked(event) {
     </section>
 
     <!-- AI, not implemented yet -->
-    <section v-else-if="method === 'ai'" class="card-surface p-lg">
+    <section v-else-if="method === 'ai'" class="card-surface p-lg" data-enter>
       <h2 class="text-heading-3 text-ink">Generate with AI</h2>
       <p class="mt-xxs text-body-sm text-ink-muted">This method is not available yet.</p>
     </section>
@@ -298,3 +302,50 @@ async function onFilePicked(event) {
     <p class="mt-lg text-caption text-ink-faint">Selected method: {{ selected?.title }}</p>
   </div>
 </template>
+
+<style scoped>
+/*
+  Method cards are radio-like buttons, so they need press feedback and a clear selected
+  state that matches the chips used elsewhere: dark border, no loud fill.
+*/
+.method-card {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.method-card:hover {
+  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-1);
+}
+
+.method-card:active {
+  transform: scale(0.99);
+}
+
+.method-card.is-selected {
+  border-color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+
+.method-card.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.method-card.is-disabled:hover {
+  border-color: var(--hairline);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .method-card {
+    transition: none;
+  }
+
+  .method-card:active {
+    transform: none;
+  }
+}
+</style>

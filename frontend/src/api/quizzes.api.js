@@ -3,7 +3,6 @@ import { unwrap, readPagination } from './envelope'
 import {
   USE_MOCK,
   mockSearchQuizzes,
-  mockGetQuizzesByOwner,
   mockGetQuizById,
 } from './mock.api'
 
@@ -12,8 +11,8 @@ import {
  * The backend caps `limit` at 20.
  * Returns both the items and the meta.pagination block.
  *
- * While `VITE_USE_MOCK` is not set to "false", reads are served from
- * `src/mocks/mock.json` so the UI can be developed without a running backend.
+ * While `VITE_USE_MOCK` is not set to "false", browse reads are served from
+ * `src/mocks/mock.json` so the public pages can be developed without a backend.
  */
 export async function searchQuizzes({ keyword, language, category, page = 1, limit = 12 } = {}) {
   if (USE_MOCK) return mockSearchQuizzes({ keyword, language, category, page, limit })
@@ -33,10 +32,15 @@ export async function searchQuizzes({ keyword, language, category, page = 1, lim
   }
 }
 
+/**
+ * Quizzes owned by one user. This is never mocked: "My library" must show the rows
+ * that really exist for the signed-in account, otherwise a freshly created quiz
+ * would be missing from it.
+ */
 export async function getQuizzesByOwner(ownerId, { page = 1, limit = 12 } = {}) {
-  if (USE_MOCK) return mockGetQuizzesByOwner(ownerId, { page, limit })
-
-  const res = await http.get(`/quizzes/users/id/${ownerId}`, { params: { page, limit } })
+  const res = await http.get(`/quizzes/users/id/${ownerId}`, {
+    params: { page, limit: Math.min(limit, 20) },
+  })
   return {
     quizzes: unwrap(res.data).quizzes ?? [],
     pagination: readPagination(res.data),

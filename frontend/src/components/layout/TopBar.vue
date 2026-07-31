@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -12,6 +12,7 @@ const router = useRouter()
 const mobileOpen = ref(false)
 const menuOpen = ref(false)
 const keyword = ref('')
+const menuRoot = ref(null)
 
 // Labels are English only, matching the home_myquizz.html demo navigation.
 // Create is a plain nav item like the others; only its session requirement differs.
@@ -26,6 +27,46 @@ const navLinks = [
 const visibleNavLinks = computed(() =>
   navLinks.filter((link) => !link.requiresAuth || (auth.ready && auth.isLoggedIn)),
 )
+
+/**
+ * The avatar dropdown closes on any interaction outside of it: a click or tap
+ * elsewhere, page scrolling, focus moving away with the tab key, or Escape.
+ * The listeners only exist while the menu is open.
+ */
+function onDocumentPointerDown(event) {
+  if (!menuRoot.value?.contains(event.target)) menuOpen.value = false
+}
+
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function onMenuFocusOut(event) {
+  // relatedTarget is the element about to receive focus; null means focus left the page.
+  const next = event.relatedTarget
+  if (!next || !menuRoot.value?.contains(next)) menuOpen.value = false
+}
+
+function bindMenuDismissers() {
+  // Capture phase, so the menu still closes if an inner handler stops propagation.
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  // Lenis scrolls the window itself, so the plain scroll event still fires here.
+  window.addEventListener('scroll', closeMenu, { passive: true })
+  window.addEventListener('blur', closeMenu)
+}
+
+function unbindMenuDismissers() {
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  window.removeEventListener('scroll', closeMenu)
+  window.removeEventListener('blur', closeMenu)
+}
+
+watch(menuOpen, (open) => {
+  if (open) bindMenuDismissers()
+  else unbindMenuDismissers()
+})
+
+onBeforeUnmount(unbindMenuDismissers)
 
 function submitSearch() {
   router.push({ name: 'discover', query: keyword.value ? { keyword: keyword.value } : {} })
@@ -79,7 +120,7 @@ async function handleLogout() {
           </label>
         </form>
 
-        <RouterLink :to="{ name: 'discover' }" class="btn-primary hidden sm:inline-flex">Join game</RouterLink>
+        <RouterLink :to="{ name: 'join-game' }" class="btn-primary hidden sm:inline-flex">Join game</RouterLink>
 
         <!--
           The session is only known after the first /users/me probe. Until then no
@@ -88,7 +129,13 @@ async function handleLogout() {
         <div v-if="!auth.ready" class="h-[34px] w-[34px] shrink-0 rounded-full bg-canvas-soft"></div>
 
         <!-- Signed in: avatar only. The name and email live inside the dropdown. -->
-        <div v-else-if="auth.isLoggedIn" class="relative">
+        <div
+          v-else-if="auth.isLoggedIn"
+          ref="menuRoot"
+          class="relative"
+          @focusout="onMenuFocusOut"
+          @keydown.esc="menuOpen = false"
+        >
           <button
             class="grid h-[34px] w-[34px] shrink-0 place-items-center overflow-hidden rounded-full ring-1 ring-hairline transition-shadow duration-150 hover:ring-ink-faint"
             type="button"
