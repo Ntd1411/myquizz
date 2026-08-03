@@ -4,11 +4,8 @@ on:
   push:
     branches:
       - main
-  # Allows re-running a deploy from the Actions tab without pushing a commit.
   workflow_dispatch:
 
-# Never let two deploys touch the server at the same time. A queued deploy waits
-# for the running one instead of interleaving git pull, build and pm2 reload.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -25,7 +22,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -57,7 +54,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

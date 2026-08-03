@@ -1,3 +1,6 @@
+packages:
+  - '.'
+
 allowBuilds:
   '@scarf/scarf': true
   bcrypt: true
