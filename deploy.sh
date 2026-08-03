@@ -5,12 +5,24 @@ set -euo pipefail
 APP_DIR=/var/www/myquizz
 WEB_ROOT=/var/www/myquizz-web
 
-cd "$APP_DIR"
-echo "==> Pulling latest code"
-git pull origin main
+# Stage 1: refresh the repository, then hand over to the version of this script
+# that was just pulled.
+#
+# Bash reads a script incrementally while running it, so a git pull that
+# rewrites this very file mid-run can make bash resume at a wrong byte offset
+# and execute garbage. Re-exec after pulling avoids that entirely and also
+# means every deploy uses the newest deploy logic, not the one from last week.
+if [ "${MYQUIZZ_DEPLOY_STAGE:-}" != "run" ]; then
+  cd "$APP_DIR"
+  echo "==> Pulling latest code"
+  git pull origin main
 
-# Build both sides BEFORE touching production. A failed frontend build must not
-# leave a reloaded backend running against a stale frontend.
+  export MYQUIZZ_DEPLOY_STAGE=run
+  exec bash "$APP_DIR/deploy.sh" "$@"
+fi
+
+# Stage 2: build everything BEFORE touching production. A failed frontend build
+# must not leave a reloaded backend running against a stale frontend.
 echo "==> Building backend"
 cd "$APP_DIR/backend"
 pnpm install --frozen-lockfile
