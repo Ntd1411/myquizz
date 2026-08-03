@@ -15,7 +15,7 @@ const servers = [
 
 if (env.API_PUBLIC_URL) {
   servers.push({
-    url: `${env.API_PUBLIC_URL}/v1`,
+    url: `${env.API_PUBLIC_URL}`,
     description: 'Production server'
   })
 }
