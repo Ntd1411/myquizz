@@ -224,5 +224,5 @@
  *       properties:
  *         uploadUrl: { type: string, description: PUT the binary here within 5 minutes }
  *         publicUrl: { type: string }
- *         key: { type: string, description: object key, format {folder}/{userId}/{uuid} }
+ *         key: { type: string, description: "object key, format {folder}/{userId}/{uuid}" }
  */

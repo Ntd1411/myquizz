@@ -51,8 +51,12 @@ echo "==> Running database migrations"
 cd "$APP_DIR/backend"
 pnpm db:migrate
 
-echo "==> Reloading API"
-pm2 reload myquizz-api --update-env
+# startOrReload keeps the very first deploy working: plain reload fails when the
+# process does not exist yet, while start fails when it already does.
+echo "==> Starting or reloading API"
+pm2 startOrReload "$APP_DIR/ecosystem.config.cjs" --update-env
+# Persist the process list so pm2 resurrects the app after a server reboot.
+pm2 save
 
 echo "==> Publishing frontend"
 rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_ROOT/"

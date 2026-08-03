@@ -46,7 +46,7 @@ authRouter.post('/google/one-tap', authRateLimiter, googleOneTap)
  *               email: { type: string, format: email }
  *               password: { type: string, format: password, minLength: 8 }
  *               fullname: { type: string, minLength: 2, maxLength: 100 }
- *               phone: { type: string, description: optional, 7-15 digits (regex ^\+?[0-9]{7,15}$) }
+ *               phone: { type: string, description: "optional, 7-15 digits (regex ^\\+?[0-9]{7,15}$)" }
  *     responses:
  *       201:
  *         description: Registered. Sets accessToken and refreshToken HttpOnly cookies.
