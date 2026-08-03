@@ -1,76 +1,81 @@
 name: Build and Test
 
+# CI for every branch except main. Pushes to main are handled by
+# build_and_deploy.yml, which builds and then deploys.
 on:
   push:
     branches-ignore:
       - main
   pull_request:
-    branches-ignore:
+    branches:
       - main
+
+# A new push to the same branch cancels the previous, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-backend:
     name: Build Backend
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Cache backend dependencies
-        uses: actions/cache@v3
-        with:
-          path: backend/node_modules
-          key: ${{ runner.os }}-backend-npm-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-npm-
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: ./backend
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         working-directory: ./backend
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
         working-directory: ./backend
-        run: npm run build
+        run: pnpm build
 
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v3
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-frontend-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-frontend-npm-
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         working-directory: ./frontend
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
         working-directory: ./frontend
-        run: npm run build
+        run: pnpm build

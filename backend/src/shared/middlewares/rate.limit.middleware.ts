@@ -16,6 +16,10 @@ interface RateLimitOptions {
 /**
  * Rate limit middleware using Redis
  * Limit the number of requests per userId and/or IP within a time window
+ *
+ * Fails open: when Redis is unreachable the request is allowed through instead
+ * of returning 500. Losing rate limiting for a few minutes is cheaper than
+ * taking the whole API down, since this middleware runs on every request.
  */
 export function createRateLimiter(options: RateLimitOptions) {
   const {
@@ -91,7 +95,10 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       // Set headers
       res.setHeader('X-RateLimit-Limit', maxRequests.toString())
-      res.setHeader('X-RateLimit-Remaining', (maxRequests - current).toString())
+      res.setHeader(
+        'X-RateLimit-Remaining',
+        Math.max(0, maxRequests - current).toString()
+      )
       res.setHeader('X-RateLimit-Reset', (windowStart + windowMs).toString())
 
       // If need to rollback when request fails/succeeds
@@ -117,7 +124,16 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       next()
     } catch (error) {
-      next(error)
+      // Business decisions of this middleware (401 Unauthorized, 429 Too Many
+      // Requests) must still reach the client.
+      if (error instanceof AppError) {
+        return next(error)
+      }
+
+      // Anything else means Redis itself is unavailable. Let the request
+      // through unlimited rather than failing every single call.
+      console.error('Rate limiter unavailable, allowing request through:', error)
+      next()
     }
   }
 }

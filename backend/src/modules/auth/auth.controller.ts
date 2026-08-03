@@ -14,8 +14,9 @@ import crypto from 'crypto'
 import { AppError } from '../../shared/errors/AppError.js'
 import { generateTokens, hashToken } from './auth.util.js'
 import { authRepository } from './auth.repository.js'
-import { STATE_COOKIE, STATE_TTL_MS, type AuthRequest } from './auth.type.js'
+import { STATE_COOKIE, type AuthRequest } from './auth.type.js'
 import { success } from '../../shared/utils/response.js'
+import { accessCookieOptions, clearCookieOptions, refreshCookieOptions, stateCookieOptions } from '../../shared/utils/cookie.js'
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
@@ -30,19 +31,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const result = await loginService(email, password, deviceName, ipAddress)
 
     // Set HttpOnly cookies
-    res.cookie('accessToken', result.accessToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('accessToken', result.accessToken, accessCookieOptions)
 
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('refreshToken', result.refreshToken, refreshCookieOptions)
 
     return success(res, { user: result.user })
   } catch (error) {
@@ -93,21 +84,11 @@ export async function refreshToken(
 
     const tokens = await refreshTokenService(refreshToken)
 
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('accessToken', tokens.accessToken, accessCookieOptions)
 
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('refreshToken', tokens.refreshToken, refreshCookieOptions)
 
-    return success(res, { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
+    return success(res, { message: 'Tokens refreshed successfully' })
   } catch (error) {
     next(error)
   }
@@ -129,17 +110,9 @@ export async function logout(
 
     await logoutService(userId, accessToken, refreshToken)
 
-    res.clearCookie('accessToken', {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.clearCookie('accessToken', clearCookieOptions)
 
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.clearCookie('refreshToken', clearCookieOptions)
 
     return success(res, { message: 'Logged out successfully' })
   } catch (error) {
@@ -150,12 +123,7 @@ export async function logout(
 export function googleRedirect(_req: Request, res: Response) {
   const state = crypto.randomBytes(16).toString('hex')
 
-  res.cookie(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: STATE_TTL_MS
-  })
+  res.cookie(STATE_COOKIE, state, stateCookieOptions)
 
   res.redirect(getGoogleAuthUrl(state))
 }
@@ -181,15 +149,11 @@ export async function googleCallback(
     }
 
     // Validate anti-CSRF state against the cookie set in googleRedirect
-    const cookieState = req.cookies?.g_oauth_state as string | undefined
+    const cookieState = req.cookies?.[STATE_COOKIE] as string | undefined
     if (!cookieState || cookieState !== state) {
       throw new AppError(401, 'Invalid OAuth state')
     }
-    res.clearCookie(STATE_COOKIE, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.clearCookie(STATE_COOKIE, clearCookieOptions)
 
     // Resolve or create the user
     const user = await loginWithGoogle(code)
@@ -209,19 +173,9 @@ export async function googleCallback(
     )
 
     // Same cookies as the normal login flow
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('accessToken', tokens.accessToken, accessCookieOptions)
 
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('refreshToken', tokens.refreshToken, refreshCookieOptions)
 
     // Browser came here via a top-level redirect, so send it back to the app
     res.redirect(`${env.FRONTEND_URL}/auth/callback`)
@@ -257,18 +211,8 @@ export async function googleOneTap(
       new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue))
     )
 
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      maxAge: ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue),
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax'
-    })
+    res.cookie('accessToken', tokens.accessToken, accessCookieOptions)
+    res.cookie('refreshToken', tokens.refreshToken, refreshCookieOptions)
 
     const { password: _pw, deleted_at: _deletedAt, ...userData } = user
 

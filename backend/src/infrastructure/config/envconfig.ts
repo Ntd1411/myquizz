@@ -13,6 +13,9 @@ const envSchema = z.object({
   SOCKET_TOKEN_TTL: z.string(),
   ALLOW_ORIGIN: z.string(),
   FRONTEND_URL: z.url(),
+  // Public origin of this API, e.g. https://api.example.com (no trailing slash).
+  // Optional so local development keeps working without it.
+  API_PUBLIC_URL: z.string().url().optional(),
   DB_USER: z.string(),
   DB_PASSWORD: z.string(),
   DB_HOST: z.string(),

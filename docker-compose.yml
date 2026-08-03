@@ -66,7 +66,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3001:3001"
+      - "5173:5173"
     networks:
       - app-network
 

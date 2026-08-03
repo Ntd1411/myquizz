@@ -1,4 +1,20 @@
 import swaggerJsdoc from 'swagger-jsdoc'
+import { env } from '../infrastructure/config/envconfig.js'
+
+// Routes are mounted under /v1, so every documented path is relative to it.
+const servers = [
+  {
+    url: `http://localhost:${env.PORT}/v1`,
+    description: 'Development server'
+  }
+]
+
+if (env.API_PUBLIC_URL) {
+  servers.push({
+    url: `${env.API_PUBLIC_URL}/v1`,
+    description: 'Production server'
+  })
+}
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -12,22 +28,14 @@ const options: swaggerJsdoc.Options = {
         email: 'support@myquizz.com'
       }
     },
-    servers: [
-      {
-        url: 'http://localhost:3000/api/v1',
-        description: 'Development server'
-      },
-      {
-        url: 'https://myquizz.dpdns.org/api/v1',
-        description: 'Production server'
-      }
-    ],
+    servers,
     components: {
       securitySchemes: {
         cookieAuth: {
           type: 'apiKey',
           in: 'cookie',
-          name: 'access_token',
+          // Must match the cookie name set in auth.controller.ts
+          name: 'accessToken',
           description: 'Authentication sử dụng HTTP-only cookie. Token được tự động gửi sau khi đăng nhập thành công.'
         }
       }

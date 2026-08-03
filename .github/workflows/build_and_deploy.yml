@@ -4,125 +4,114 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-    types:
-      - closed
+  # Allows re-running a deploy from the Actions tab without pushing a commit.
+  workflow_dispatch:
+
+# Never let two deploys touch the server at the same time. A queued deploy waits
+# for the running one instead of interleaving git pull, build and pm2 reload.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
   build-backend:
     name: Build Backend
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Cache backend dependencies
-        uses: actions/cache@v3
-        with:
-          path: backend/node_modules
-          key: ${{ runner.os }}-backend-npm-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-npm-
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: ./backend
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         working-directory: ./backend
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
         working-directory: ./backend
-        run: npm run build
+        run: pnpm build
 
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v3
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-frontend-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-frontend-npm-
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         working-directory: ./frontend
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
         working-directory: ./frontend
-        run: npm run build
+        run: pnpm build
 
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [build-backend, build-frontend]
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-    
+
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
+    steps:
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.8.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
       - name: Add VPS to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy to VPS
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
-            cd ${{ env.VPS_DEPLOY_PATH }}
-            git pull origin main
-            docker compose down
-            docker compose up -d --build
-          ENDSSH
+          ssh "$VPS_USER@$VPS_HOST" "cd '$VPS_DEPLOY_PATH' && ./deploy.sh"
 
-      - name: Check deployment status
+      - name: Verify service health
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} << 'ENDSSH'
-            cd ${{ env.VPS_DEPLOY_PATH }}
-            docker compose ps
+          ssh "$VPS_USER@$VPS_HOST" bash -s << 'ENDSSH'
+          set -euo pipefail
+          # Give pm2 a moment to finish reloading before probing.
+          sleep 5
+          echo "--- pm2 status ---"
+          pm2 list
+          echo "--- health check ---"
+          curl -fsS http://127.0.0.1:3000/health
           ENDSSH
-
-      - name: Notify deployment result
-        if: always()
-        run: |
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "Deploy thanh cong den VPS"
-          else
-            echo "Deploy that bai"
-          fi
