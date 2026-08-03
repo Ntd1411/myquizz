@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - main
+  # Allows re-running a deploy from the Actions tab without pushing a commit.
   workflow_dispatch:
 
+# Never let two deploys touch the server at the same time. A queued deploy waits
+# for the running one instead of interleaving git pull, build and pm2 reload.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -97,9 +100,11 @@ jobs:
           chmod 700 ~/.ssh
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
+      # Invoked through bash on purpose: the deploy still works even if the
+      # executable bit on deploy.sh is missing on the server.
       - name: Deploy to VPS
         run: |
-          ssh "$VPS_USER@$VPS_HOST" "cd '$VPS_DEPLOY_PATH' && ./deploy.sh"
+          ssh "$VPS_USER@$VPS_HOST" "cd '$VPS_DEPLOY_PATH' && bash deploy.sh"
 
       - name: Verify service health
         run: |

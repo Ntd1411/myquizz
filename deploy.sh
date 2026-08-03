@@ -1,21 +1,34 @@
 #!/usr/bin/env bash
-# Deploy MyQuizz on the VPS. Run it as: /var/www/myquizz/deploy.sh
+# Deploy MyQuizz on the VPS. Run it as: bash /var/www/myquizz/deploy.sh
 set -euo pipefail
 
 APP_DIR=/var/www/myquizz
 WEB_ROOT=/var/www/myquizz-web
+BRANCH=main
 
-# Stage 1: refresh the repository, then hand over to the version of this script
-# that was just pulled.
+# Stage 1: force the working tree to match origin, then hand over to the version
+# of this script that was just fetched.
 #
-# Bash reads a script incrementally while running it, so a git pull that
-# rewrites this very file mid-run can make bash resume at a wrong byte offset
-# and execute garbage. Re-exec after pulling avoids that entirely and also
-# means every deploy uses the newest deploy logic, not the one from last week.
+# git reset --hard is used instead of git pull on purpose. The server working
+# tree is disposable: git is the only source of truth here, so a stray local
+# edit (even something as small as a changed file mode) must never be able to
+# abort an automated deploy. Anything not committed is discarded.
+#
+# Bash also reads a script incrementally while running it, so rewriting this
+# very file mid-run can make bash resume at a wrong byte offset. Re-exec after
+# syncing avoids that and guarantees the newest deploy logic is the one used.
 if [ "${MYQUIZZ_DEPLOY_STAGE:-}" != "run" ]; then
   cd "$APP_DIR"
-  echo "==> Pulling latest code"
-  git pull origin main
+  echo "==> Syncing with origin/$BRANCH"
+  git fetch origin "$BRANCH"
+
+  if ! git diff --quiet HEAD || ! git diff --cached --quiet; then
+    echo "    Local modifications found, discarding them:"
+    git status --porcelain
+  fi
+
+  git reset --hard "origin/$BRANCH"
+  echo "    Now at $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
 
   export MYQUIZZ_DEPLOY_STAGE=run
   exec bash "$APP_DIR/deploy.sh" "$@"
