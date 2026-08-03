@@ -7,6 +7,12 @@ module.exports = {
       exec_mode: 'fork',
       instances: 1,
       max_memory_restart: '600M',
+      // A process must stay alive 10s to count as a successful start. After 10
+      // consecutive fast crashes PM2 gives up and marks the app 'errored'
+      // instead of hiding a crash loop behind an 'online' status.
+      min_uptime: '10s',
+      max_restarts: 10,
+      restart_delay: 3000,
       env: { NODE_ENV: 'production' },
       error_file: '/var/log/myquizz/api-error.log',
       out_file: '/var/log/myquizz/api-out.log',
