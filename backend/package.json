@@ -11,7 +11,10 @@
     "lint:fix": "eslint . --fix",
     "db:migrate": "tsx src/infrastructure/database/migrate.ts migrate",
     "db:seed": "tsx src/infrastructure/database/migrate.ts seed",
-    "db:migrate:seed": "tsx src/infrastructure/database/migrate.ts migrate:seed"
+    "db:seed:demo": "tsx src/infrastructure/database/seed.demo.ts",
+    "db:score": "tsx src/infrastructure/jobs/scoring.cli.ts",
+    "db:migrate:prod": "node dist/infrastructure/database/migrate.js migrate",
+    "db:score:prod": "node dist/infrastructure/jobs/scoring.cli.js"
   },
   "repository": {
     "type": "git",

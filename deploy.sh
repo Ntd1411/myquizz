@@ -38,18 +38,35 @@ fi
 # must not leave a reloaded backend running against a stale frontend.
 echo "==> Building backend"
 cd "$APP_DIR/backend"
-pnpm install --frozen-lockfile
+# --prod=false is required rather than cosmetic: NODE_ENV is production on this
+# box, so a plain install resolves to dependencies only and typescript is a
+# devDependency. Without this flag the build below dies with "tsc: not found".
+pnpm install --frozen-lockfile --prod=false
 pnpm build
 
 echo "==> Building frontend"
 cd "$APP_DIR/frontend"
-pnpm install --frozen-lockfile
+# Same reason: the frontend build tooling also lives in devDependencies.
+pnpm install --frozen-lockfile --prod=false
 NODE_OPTIONS=--max-old-space-size=1024 pnpm build
 
 # Both builds succeeded: now publish.
+#
+# Migrations run from the compiled output, never through tsx. tsx is a
+# devDependency, so keeping it out of the production run path means a future
+# production-only install cannot break the deploy.
 echo "==> Running database migrations"
 cd "$APP_DIR/backend"
-pnpm db:migrate
+pnpm db:migrate:prod
+
+# Give the ranking columns a value before traffic arrives. The backfill in
+# migration 005 fills question_count and play_count but deliberately not
+# hot_score, so without this step the feed sorts by "hot_score desc, id desc"
+# while every score is still 0, which silently degrades to newest-first. The
+# in-app scheduler repairs it seconds after boot, but not when
+# SCORING_INTERVAL_MINUTES=0.
+echo "==> Scoring quizzes"
+pnpm db:score:prod
 
 # startOrReload keeps the very first deploy working: plain reload fails when the
 # process does not exist yet, while start fails when it already does.
