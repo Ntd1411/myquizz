@@ -29,6 +29,12 @@ const isCompiled = currentDir.includes(`${path.sep}dist${path.sep}`)
 const rootDir = path.resolve(currentDir, '..')
 const extension = isCompiled ? 'js' : 'ts'
 
+// glob treats a backslash as an escape character, so a Windows path built with
+// path.join never matches any file and the spec ends up with no paths at all.
+// Always hand glob forward slashes, on every platform.
+const toGlob = (...parts: string[]): string =>
+  path.join(...parts).split(path.sep).join('/')
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
@@ -55,8 +61,8 @@ const options: swaggerJsdoc.Options = {
     }
   },
   apis: [
-    path.join(rootDir, 'modules', '**', `*.route.${extension}`),
-    path.join(rootDir, 'swagger', `*.${extension}`)
+    toGlob(rootDir, 'modules', '**', `*.route.${extension}`),
+    toGlob(rootDir, 'swagger', `*.${extension}`)
   ]
 }
 
