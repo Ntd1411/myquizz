@@ -18,6 +18,7 @@ import { bootstrapEngine } from './modules/game/engine/index.js'
 import { storageRouter } from './modules/storage/storage.route.js'
 import { apiRateLimiter, globalRateLimiter } from './shared/middlewares/rate.limit.middleware.js'
 import { pool } from './infrastructure/database/connection.js'
+import { startScoringScheduler } from './infrastructure/jobs/scoring.job.js'
 
 bootstrapEngine()
 
@@ -98,4 +99,8 @@ app.use(errorHandler)
 httpServer.listen(port, () => {
   console.log(`App listening on port ${port}`)
   console.log('Socket.IO server ready')
+
+  // Started after the server is listening so a slow first scoring pass never
+  // delays readiness. Failures are logged inside the job, not fatal.
+  startScoringScheduler()
 })
