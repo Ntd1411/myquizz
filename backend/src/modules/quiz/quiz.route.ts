@@ -8,17 +8,23 @@ import {
 } from '../../shared/validators/validator.js'
 import {
   createQuizSchema,
+  feedQuerySchema,
   listQuizzesSchema,
   searchQuizzesSchema,
   updateQuizSchema
 } from './quiz.schema.js'
 import { optionalAuthMiddleware } from '../../shared/middlewares/optional.auth.js'
+import * as homeController from './home.controller.js'
 
 export const quizRouter: Router = Router()
 
 quizRouter.post( '/', authMiddleware, validateBody(createQuizSchema), quizController.createQuiz)
 
 quizRouter.get( '/search', optionalAuthMiddleware, validateQuery(searchQuizzesSchema), quizController.searchQuizzes)
+
+quizRouter.get('/home', optionalAuthMiddleware, homeController.getHome)
+
+quizRouter.get('/feed', optionalAuthMiddleware, validateQuery(feedQuerySchema), homeController.getFeed)
 
 quizRouter.get( '/users/id/:ownerId', optionalAuthMiddleware, validateQuery(listQuizzesSchema), quizController.listQuizzes)
 
