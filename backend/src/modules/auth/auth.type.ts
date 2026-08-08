@@ -15,6 +15,7 @@ export interface AuthRequest extends Request {
   user?: User | null
   token?: string
   validatedQuery?: unknown
+  validatedParams?: unknown
   data?: unknown
 }
 

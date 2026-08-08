@@ -85,6 +85,10 @@ type SeedUser = {
   email: string
   role: 'admin' | 'moderator' | 'user'
   provider: 'local' | 'google'
+  // Set only on the accounts the listing endpoints are tested against:
+  //  - no_public: exists, but owns nothing a public profile may show
+  //  - deleted: soft deleted, so its public profile must answer 404
+  kind?: 'no_public' | 'deleted'
 }
 
 const USERS: readonly SeedUser[] = [
@@ -100,7 +104,11 @@ const USERS: readonly SeedUser[] = [
   { fullname: 'Bui Kim Chi', email: 'kimchi@example.com', role: 'user', provider: 'local' },
   // OAuth-only accounts: no local password at all.
   { fullname: 'Google Tester One', email: 'gtester1@gmail.com', role: 'user', provider: 'google' },
-  { fullname: 'Google Tester Two', email: 'gtester2@gmail.com', role: 'user', provider: 'google' }
+  { fullname: 'Google Tester Two', email: 'gtester2@gmail.com', role: 'user', provider: 'google' },
+  // Listing edge cases. Both are kept out of the random author pool so their
+  // quizzes stay exactly as seedListingEdgeCases creates them.
+  { fullname: 'Nguyen Kho Trong', email: 'quiet@example.com', role: 'user', provider: 'local', kind: 'no_public' },
+  { fullname: 'Tran Da Xoa', email: 'removed@example.com', role: 'user', provider: 'local', kind: 'deleted' }
 ]
 
 const CATEGORIES = [
@@ -253,8 +261,8 @@ async function seedUsers(client: PoolClient): Promise<number[]> {
     const result = await client.query<{ id: number }>(
       `insert into users
          (fullname, email, phone, password, role, avatar, description,
-          google_id, auth_provider, created_at, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+          google_id, auth_provider, deleted_at, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
        returning id`,
       [
         user.fullname,
@@ -267,6 +275,8 @@ async function seedUsers(client: PoolClient): Promise<number[]> {
         `Demo ${user.role} account`,
         isGoogle ? `google-oauth-${index}` : null,
         user.provider,
+        // One account is soft deleted so its public profile must answer 404.
+        user.kind === 'deleted' ? daysAgo(randInt(1, 30)) : null,
         daysAgo(randInt(120, 200))
       ]
     )
@@ -291,8 +301,9 @@ type SeededQuiz = {
 
 async function seedQuizzes(client: PoolClient, userIds: number[]): Promise<SeededQuiz[]> {
   const quizzes: SeededQuiz[] = []
-  // Authors only: skip admin and moderator so ownership looks realistic.
-  const authorIds = userIds.slice(2)
+  // Authors only: skip admin and moderator so ownership looks realistic, and skip
+  // the listing edge case accounts, whose quizzes are created explicitly later.
+  const authorIds = userIds.filter((_, index) => index >= 2 && USERS[index]?.kind === undefined)
 
   let counter = 0
 
@@ -531,6 +542,183 @@ async function seedSnapshotsAndSessions(
 }
 
 // ---------------------------------------------------------------------------
+// Listing edge cases (search, public profile, /quizzes/me)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inserts one quiz plus its questions and returns the new quiz id.
+ *
+ * Unlike the bulk seed, created_at comes from the caller instead of a random
+ * offset: the listing tests need dates they can predict and compare.
+ */
+async function insertListingQuiz(
+  client: PoolClient,
+  quiz: {
+    ownerId: number
+    name: string
+    category: Category
+    language: string
+    isPublic: boolean
+    createdAt: Date
+    questionCount: number
+  }
+): Promise<number> {
+  const quizResult = await client.query<{ id: number }>(
+    `insert into quizzes
+       (quiz_owner, quiz_name, quiz_description, quiz_language, quiz_image,
+        quiz_category, is_public, is_featured, deleted_at, created_at, updated_at)
+     values ($1, $2, $3, $4, null, $5, $6, false, null, $7, $7)
+     returning id`,
+    [
+      quiz.ownerId,
+      quiz.name,
+      `Listing edge case: ${quiz.name}.`,
+      quiz.language,
+      quiz.category,
+      quiz.isPublic,
+      quiz.createdAt
+    ]
+  )
+
+  const quizId = firstRow(quizResult, 'insert listing quiz').id
+
+  for (let i = 1; i <= quiz.questionCount; i += 1) {
+    const question = buildQuestion(quiz.category, i)
+
+    await client.query(
+      `insert into questions
+         (quiz_id, question_type, question_text, question_image, time_limit,
+          answer_options, correct_answer, question_hint, explanation,
+          created_at, updated_at)
+       values ($1, $2, $3, null, $4, $5, $6, $7, $8, $9, $9)`,
+      [
+        quizId,
+        question.question_type,
+        question.question_text,
+        question.time_limit,
+        question.answer_options ? JSON.stringify(question.answer_options) : null,
+        JSON.stringify(question.correct_answer),
+        question.question_hint,
+        question.explanation,
+        quiz.createdAt
+      ]
+    )
+  }
+
+  return quizId
+}
+
+/** Finds the id of the demo user seeded for a given listing edge case. */
+function edgeCaseUserId(userIds: number[], kind: NonNullable<SeedUser['kind']>): number {
+  const index = USERS.findIndex((user) => user.kind === kind)
+  const id = index === -1 ? undefined : userIds[index]
+
+  if (id === undefined) {
+    throw new Error(`Missing demo user for listing edge case: ${kind}`)
+  }
+
+  return id
+}
+
+/**
+ * Rows that exist only to make the listing endpoints testable by hand:
+ *  - an account whose public profile is empty although the account exists
+ *  - a soft deleted account that still owns a public quiz (profile must 404)
+ *  - titles starting with digits, lowercase letters and Vietnamese diacritics
+ *  - created_at spread across roughly a year for created_from / created_to
+ *  - two quizzes sharing created_at to the second, so paging needs the id
+ *
+ * Returns how many quizzes were inserted.
+ */
+async function seedListingEdgeCases(client: PoolClient, userIds: number[]): Promise<number> {
+  const quietOwnerId = edgeCaseUserId(userIds, 'no_public')
+  const removedOwnerId = edgeCaseUserId(userIds, 'deleted')
+  // A normal author owns the ordering and date samples so they show up in search.
+  const authorId = userIds[2] ?? quietOwnerId
+
+  let inserted = 0
+
+  // The quiet author exists but owns nothing a public profile may show: the
+  // private quizzes are hidden by is_public, the last one by question_count.
+  const quietQuizzes = [
+    { name: 'Bản Nháp Riêng Tư 1', isPublic: false, questionCount: 6, days: 40 },
+    { name: 'Bản Nháp Riêng Tư 2', isPublic: false, questionCount: 5, days: 25 },
+    { name: 'Quiz Công Khai Chưa Có Câu Hỏi', isPublic: true, questionCount: 0, days: 12 }
+  ] as const
+
+  for (const quiz of quietQuizzes) {
+    await insertListingQuiz(client, {
+      ownerId: quietOwnerId,
+      name: quiz.name,
+      category: 'Programming',
+      language: 'vi',
+      isPublic: quiz.isPublic,
+      createdAt: daysAgo(quiz.days),
+      questionCount: quiz.questionCount
+    })
+    inserted += 1
+  }
+
+  // The removed account owns a perfectly valid public quiz. Its profile must
+  // still answer 404, which proves the user check runs before the quiz query.
+  await insertListingQuiz(client, {
+    ownerId: removedOwnerId,
+    name: 'Quiz Của Tài Khoản Đã Xoá',
+    category: 'History',
+    language: 'vi',
+    isPublic: true,
+    createdAt: daysAgo(60),
+    questionCount: 7
+  })
+  inserted += 1
+
+  // Ordering and date filters. Titles cover digits, diacritics and casing;
+  // created_at ranges from about ten months ago to last week.
+  const catalogue = [
+    { name: '007 Spy Movie Trivia', days: 300, category: 'Movies', language: 'en' },
+    { name: '100 Cau Hoi Khong Dau', days: 250, category: 'History', language: 'vi' },
+    { name: '42 Thử Thách Toán Học', days: 205, category: 'Math', language: 'vi' },
+    { name: 'Ánh Sáng và Âm Thanh', days: 170, category: 'Science', language: 'vi' },
+    { name: 'Đại Số Cơ Bản', days: 135, category: 'Math', language: 'vi' },
+    { name: 'Ôn Tập Địa Lý Việt Nam', days: 95, category: 'Geography', language: 'vi' },
+    { name: 'zebra facts for night owls', days: 33, category: 'Science', language: 'en' },
+    { name: 'Zebra Facts Advanced', days: 7, category: 'Science', language: 'en' }
+  ] as const
+
+  for (const quiz of catalogue) {
+    await insertListingQuiz(client, {
+      ownerId: authorId,
+      name: quiz.name,
+      category: quiz.category,
+      language: quiz.language,
+      isPublic: true,
+      createdAt: daysAgo(quiz.days),
+      questionCount: randInt(5, 8)
+    })
+    inserted += 1
+  }
+
+  // Same created_at down to the second, on purpose: with sort=newest the cursor
+  // has to fall back to the id, otherwise one of the two is skipped or repeated.
+  const twinCreatedAt = daysAgo(50)
+
+  for (const name of ['Twin Quiz Alpha', 'Twin Quiz Beta']) {
+    await insertListingQuiz(client, {
+      ownerId: authorId,
+      name,
+      category: 'Movies',
+      language: 'en',
+      isPublic: true,
+      createdAt: twinCreatedAt,
+      questionCount: 5
+    })
+    inserted += 1
+  }
+
+  return inserted
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -553,7 +741,12 @@ async function seedDemoData() {
     console.log(`  Game sessions: ${counts.sessions}`)
     console.log(`  Player sessions: ${counts.players}`)
 
-    return { userIds, quizzes, questionCount, ...counts }
+    // Runs last: these rows are never played, so they must not disturb the
+    // ranking data the feed and the scoring job rely on.
+    const listingEdgeCases = await seedListingEdgeCases(client, userIds)
+    console.log(`  Listing edge case quizzes: ${listingEdgeCases}`)
+
+    return { userIds, quizzes, questionCount, listingEdgeCases, ...counts }
   })
 
   const publicPlayable = summary.quizzes.filter((q) => q.isPublic && q.questionIds.length > 0).length
@@ -565,6 +758,13 @@ async function seedDemoData() {
   console.log(`  Private quizzes (must never appear): ${privateCount}`)
   console.log(`  Quizzes without questions (must never appear): ${emptyCount}`)
   console.log('  Soft deleted quizzes (must never appear): 2')
+
+  console.log(`\nEdge cases seeded for the listing endpoints: ${summary.listingEdgeCases} quizzes`)
+  console.log('  quiet@example.com owns only private and empty quizzes: its public profile is 200 with []')
+  console.log('  removed@example.com is soft deleted: its public profile is 404 despite owning a public quiz')
+  console.log('  Titles starting with digits and Vietnamese diacritics exercise name_asc and name_desc')
+  console.log('  created_at spans about a year, so created_from and created_to select real subsets')
+  console.log('  Twin Quiz Alpha and Twin Quiz Beta share created_at: paging must fall back to id')
 
   console.log(`\nAll local accounts use the password: ${DEMO_PASSWORD}`)
   console.log('  admin@myquizz.dev (admin), mod@myquizz.dev (moderator)')

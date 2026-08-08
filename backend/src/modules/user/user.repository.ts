@@ -66,6 +66,16 @@ export class UserRepository {
     return result.rows[0] || null
   }
 
+  // Check a user exists and has not been soft-deleted. Cheaper than findById
+  // when only existence matters, e.g. before listing a public profile.
+  async existsById(id: number): Promise<boolean> {
+    const result = await pool.query(
+      'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    )
+    return result.rowCount !== null && result.rowCount > 0
+  }
+
   // Find user by email
   async findByEmail(email: string): Promise<User | null> {
     const result = await pool.query<User>('SELECT * FROM users WHERE email = $1', [

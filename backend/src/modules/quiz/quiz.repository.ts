@@ -55,30 +55,6 @@ export class QuizRepository {
     return insertedQuestions
   }
 
-  async countQuizzesByOwner(ownerId: number): Promise<number> {
-    const result = await pool.query<{ count: number }>(
-      `SELECT COUNT(*) as count
-      FROM quizzes
-      WHERE quiz_owner = $1 AND deleted_at IS NULL`,
-      [ownerId]
-    )
-    return Number(result.rows[0]?.count) || 0
-  }
-
-  async getListQuizzes(userId: number, offset: number, limit: number): Promise<Quiz[]> {
-    const result = await pool.query<Quiz>(
-      `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
-      quiz_image, quiz_category, is_public, created_at, updated_at
-      FROM quizzes
-      WHERE quiz_owner = $1 AND deleted_at IS NULL
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
-    )
-
-    return result.rows
-  }
-
   async getQuizById(quizId: number): Promise<Quiz | null> {
     const quiz = await pool.query<Quiz>(
       `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
@@ -200,62 +176,6 @@ export class QuizRepository {
       [quizId]
     )
     return result.rows[0] || null
-  }
-
-  async searchQuizzes(
-    offset: number,
-    limit: number,
-    keyword?: string,
-    language?: string,
-    category?: string
-  ): Promise<{ data: Quiz[], total: number }> {
-    const fields: string[] = []
-    const values: (string | number)[] = []
-    let paramIndex = 1
-
-    if (keyword) {
-      fields.push(`(quiz_name ILIKE $${paramIndex} OR quiz_description ILIKE $${paramIndex})`)
-      values.push(`%${keyword}%`)
-      paramIndex++
-    }
-
-    if (language) {
-      fields.push(`quiz_language = $${paramIndex}`)
-      values.push(language)
-      paramIndex++
-    }
-
-    if (category) {
-      fields.push(`quiz_category = $${paramIndex}`)
-      values.push(category)
-      paramIndex++
-    }
-
-    const whereClause = fields.length > 0 ?
-      `deleted_at IS NULL AND ${fields.join(' AND ')}` : 'deleted_at IS NULL'
-
-    // Get total count first
-    const countResult = await pool.query<{ count: number }>(
-      `SELECT COUNT(*) as count
-      FROM quizzes
-      WHERE ${whereClause}`,
-      values
-    )
-    const total = Number(countResult.rows[0]?.count) || 0
-
-    // Get paginated data
-    values.push(limit)
-    values.push(offset)
-    const result = await pool.query<Quiz>(
-      `SELECT id, quiz_owner, quiz_name, quiz_description, quiz_language,
-      quiz_image, quiz_category, is_public, created_at, updated_at
-      FROM quizzes
-      WHERE ${whereClause}
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      values
-    )
-
-    return { data: result.rows, total }
   }
 }
 export const quizRepository = new QuizRepository()

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LIST_SORTS, VISIBILITY_FILTERS } from './listing.type.js'
 
 export const createQuestionSchema = z.object({
   question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
@@ -23,29 +24,57 @@ export const createQuizSchema = z.object({
   questions: z.array(createQuestionSchema).min(1, 'Quiz must have at least 1 question')
 })
 
-export const searchQuizzesSchema = z.object({
-  keyword: z.string().trim().max(200).optional(),
-  language: z.string().trim().max(50).optional(),
-  category: z.string().trim().max(50).optional(),
-  page: z.string().regex(/^\d+$/).transform(Number)
-    .pipe(z.number().int().min(1)).default(1),
-  limit: z.string().regex(/^\d+$/).transform(Number)
-    .pipe(z.number().int().min(1).max(20)).default(10)
-})
+export const updateQuizSchema = createQuizSchema.partial()
 
-export const listQuizzesSchema = z.object({
-  page: z.string().regex(/^\d+$/).transform(Number)
-    .pipe(z.number().int().min(1)).default(1),
-  limit: z.string().regex(/^\d+$/).transform(Number)
-    .pipe(z.number().int().min(1).max(20)).default(10)
-})
+/*
+ * Shared building blocks for the listing endpoints.
+ *
+ * Everything in req.query is a string, so each parameter is validated as text
+ * first and only then converted. A missing parameter means "no filter"; an
+ * unparsable one is a 400 here rather than a NaN or a driver error deeper down.
+ */
+
+/** Largest integer a query parameter may carry, used where there is no natural cap. */
+const MAX_INT = Number.MAX_SAFE_INTEGER
+
+function intQuery(min: number, max: number = MAX_INT) {
+  return z.string().regex(/^\d+$/, 'Must be a non-negative integer')
+    .transform(Number)
+    .pipe(z.number().int().min(min).max(max))
+}
+
+// Only the literal strings are accepted: 'yes', '1' or '' would each be a
+// different guess about intent, and guessing here hides client bugs.
+const boolQuery = z.enum(['true', 'false']).transform((value) => value === 'true')
+
+const dateOnlyQuery = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a YYYY-MM-DD date')
+
+/**
+ * Listing cursor. It stays opaque to the client, so it is only length-capped
+ * here; its contents are validated when decoded in listing.cursor.ts, which
+ * turns anything malformed or replayed into a 400 instead of a 500.
+ */
+const cursorQuery = z.string().trim().min(1).max(300)
+
+const limitQuery = intQuery(1, 24)
+
+const keywordQuery = z.string().trim().max(200)
+
+// Sorts accepted per endpoint. Subsets of LIST_SORTS, referenced through it so a
+// renamed sort fails to compile instead of silently becoming invalid at runtime.
+export const SEARCH_SORTS = LIST_SORTS.filter(
+  (sort) => sort !== 'recently_updated'
+)
+
+export const OWNER_PROFILE_SORTS = ['newest', 'oldest', 'most_played', 'name_asc'] as const
+
+export const MY_QUIZZES_SORTS = ['recently_updated', 'newest', 'oldest', 'name_asc'] as const
 
 /**
  * Query for the cursor-based home feed.
  *
- * The cursor stays opaque to the client, so it is only length-capped here; its
- * contents are validated when decoded in feed.cursor.ts, which turns anything
- * malformed into a 400 instead of a driver-level 500.
+ * Kept on its own cursor format and its own parameter names; merging it into the
+ * listing schemas is a later cleanup, not part of this change.
  */
 export const feedQuerySchema = z.object({
   topic: z.string().trim().max(50).optional(),
@@ -54,9 +83,73 @@ export const feedQuerySchema = z.object({
     .pipe(z.number().int().min(1).max(24)).default(12)
 })
 
-export const updateQuizSchema = createQuizSchema.partial()
+/**
+ * Query for GET /quizzes/search.
+ *
+ * sort has no default here on purpose: the service picks relevance when a
+ * keyword is present and newest otherwise, which a schema-level default cannot
+ * express. mine is not checked against the session here either, because a schema
+ * cannot see req.user; the service rejects mine=true for anonymous callers.
+ */
+export const searchQuizzesSchema = z.object({
+  keyword: keywordQuery.optional(),
+  language: z.string().trim().max(50).optional(),
+  category: z.string().trim().max(100).optional(),
+  // Dates widen to the full day so an inclusive range reads naturally: from the
+  // first microsecond of created_from to the last one of created_to.
+  created_from: dateOnlyQuery.transform((day) => `${day}T00:00:00.000000Z`).optional(),
+  created_to: dateOnlyQuery.transform((day) => `${day}T23:59:59.999999Z`).optional(),
+  min_questions: intQuery(0).optional(),
+  min_plays: intQuery(0).optional(),
+  owner_id: intQuery(1).optional(),
+  mine: boolQuery.default(false),
+  sort: z.enum(SEARCH_SORTS).optional(),
+  cursor: cursorQuery.optional(),
+  limit: limitQuery.default(12),
+  include_total: boolQuery.default(false)
+}).refine(
+  (query) =>
+    !query.created_from || !query.created_to || query.created_from <= query.created_to,
+  {
+    // Caught here rather than left to the query, where an inverted range would
+    // return an empty page that looks like "no results" instead of a mistake.
+    message: 'created_from must not be after created_to',
+    path: ['created_from']
+  }
+)
+
+/** Query for GET /quizzes/users/id/:ownerId. No visibility parameter: the endpoint is always public-only. */
+export const ownerQuizzesQuerySchema = z.object({
+  sort: z.enum(OWNER_PROFILE_SORTS).default('newest'),
+  cursor: cursorQuery.optional(),
+  limit: limitQuery.default(12),
+  include_total: boolQuery.default(false)
+})
+
+/** Query for GET /quizzes/me. */
+export const myQuizzesQuerySchema = z.object({
+  visibility: z.enum(VISIBILITY_FILTERS).default('all'),
+  keyword: keywordQuery.optional(),
+  sort: z.enum(MY_QUIZZES_SORTS).default('recently_updated'),
+  cursor: cursorQuery.optional(),
+  limit: limitQuery.default(12),
+  include_total: boolQuery.default(false)
+})
+
+export const quizIdParamSchema = z.object({
+  quizId: intQuery(1)
+})
+
+export const ownerIdParamSchema = z.object({
+  ownerId: intQuery(1)
+})
 
 export type UpdateQuizRequest = z.infer<typeof updateQuizSchema>
 export type CreateQuizRequest = z.infer<typeof createQuizSchema>
 export type CreateQuestionRequest = z.infer<typeof createQuestionSchema>
 export type FeedQuery = z.infer<typeof feedQuerySchema>
+export type SearchQuizzesQuery = z.infer<typeof searchQuizzesSchema>
+export type OwnerQuizzesQuery = z.infer<typeof ownerQuizzesQuerySchema>
+export type MyQuizzesQuery = z.infer<typeof myQuizzesQuerySchema>
+export type QuizIdParams = z.infer<typeof quizIdParamSchema>
+export type OwnerIdParams = z.infer<typeof ownerIdParamSchema>
