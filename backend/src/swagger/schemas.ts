@@ -12,7 +12,11 @@
  *       type: object
  *       properties:
  *         timestamp: { type: string, format: date-time }
- *         pagination: { $ref: '#/components/schemas/Pagination' }
+ *         pagination:
+ *           oneOf:
+ *             - $ref: '#/components/schemas/Pagination'
+ *             - $ref: '#/components/schemas/CursorPagination'
+ *         cached: { type: boolean }
  *     Pagination:
  *       type: object
  *       properties:
@@ -22,6 +26,12 @@
  *         totalPages: { type: integer, example: 5 }
  *         hasPreviousPage: { type: boolean }
  *         hasNextPage: { type: boolean }
+ *     CursorPagination:
+ *       type: object
+ *       properties:
+ *         limit: { type: integer, example: 12 }
+ *         nextCursor: { type: string, nullable: true, example: MC45ODc2fDEyMw }
+ *         hasMore: { type: boolean, example: true }
  *     SuccessEnvelope:
  *       type: object
  *       properties:
@@ -60,6 +70,51 @@
  *         email: { type: string }
  *         avatar: { type: string, nullable: true }
  *         description: { type: string, nullable: true }
+ *     QuestionInput:
+ *       type: object
+ *       required: [question_type, question_text, correct_answer]
+ *       properties:
+ *         question_type: { type: string, enum: [multiple_choice, multiple_select, short_answer, long_answer] }
+ *         question_text: { type: string, minLength: 1, maxLength: 200 }
+ *         time_limit: { type: number, minimum: 0, default: 30 }
+ *         question_image: { type: string, format: uri }
+ *         answer_options:
+ *           type: array
+ *           minItems: 2
+ *           maxItems: 4
+ *           items: { type: string, minLength: 1, maxLength: 100 }
+ *         correct_answer:
+ *           oneOf:
+ *             - { type: array, items: { type: integer, minimum: 0 }, minItems: 1 }
+ *             - { type: string, minLength: 1 }
+ *     CreateQuizRequest:
+ *       type: object
+ *       required: [quiz_name, quiz_language, is_public, questions]
+ *       properties:
+ *         quiz_name: { type: string, minLength: 3, maxLength: 100 }
+ *         quiz_description: { type: string, maxLength: 500 }
+ *         quiz_language: { type: string, minLength: 1 }
+ *         quiz_image: { type: string, format: uri }
+ *         quiz_category: { type: string, maxLength: 50 }
+ *         is_public: { type: boolean }
+ *         questions:
+ *           type: array
+ *           minItems: 1
+ *           items: { $ref: '#/components/schemas/QuestionInput' }
+ *     UpdateQuizRequest:
+ *       type: object
+ *       description: Partial quiz update. At least one property should be provided.
+ *       properties:
+ *         quiz_name: { type: string, minLength: 3, maxLength: 100 }
+ *         quiz_description: { type: string, maxLength: 500 }
+ *         quiz_language: { type: string, minLength: 1 }
+ *         quiz_image: { type: string, format: uri }
+ *         quiz_category: { type: string, maxLength: 50 }
+ *         is_public: { type: boolean }
+ *         questions:
+ *           type: array
+ *           minItems: 1
+ *           items: { $ref: '#/components/schemas/QuestionInput' }
  *     Quiz:
  *       type: object
  *       properties:
@@ -71,12 +126,45 @@
  *         quiz_image: { type: string, nullable: true }
  *         quiz_category: { type: string, nullable: true }
  *         is_public: { type: boolean }
+ *         question_count: { type: integer, example: 8 }
+ *         play_count: { type: integer, example: 120 }
+ *         completion_rate: { type: number, format: float, minimum: 0, maximum: 1, example: 0.66 }
+ *         hot_score: { type: number, format: double, example: 18.42 }
+ *         scored_at: { type: string, format: date-time, nullable: true }
+ *         is_featured: { type: boolean, example: false }
  *         deleted_at: { type: string, format: date-time, nullable: true }
  *         created_at: { type: string, format: date-time }
  *         updated_at: { type: string, format: date-time }
  *         questions:
  *           type: array
  *           items: { $ref: '#/components/schemas/Question' }
+ *     QuizCard:
+ *       type: object
+ *       description: Compact quiz shape used by home sections and feed cards.
+ *       properties:
+ *         id: { type: integer }
+ *         quiz_name: { type: string }
+ *         quiz_description: { type: string, nullable: true }
+ *         quiz_image: { type: string, nullable: true }
+ *         quiz_category: { type: string, nullable: true }
+ *         quiz_language: { type: string }
+ *         quiz_owner: { type: integer }
+ *         question_count: { type: integer, example: 8 }
+ *         play_count: { type: integer, example: 120 }
+ *         completion_rate: { type: number, format: float, minimum: 0, maximum: 1, example: 0.66 }
+ *         created_at: { type: string, format: date-time }
+ *     HomeSectionType:
+ *       type: string
+ *       enum: [featured, continue, trending, newest, category]
+ *     HomeSection:
+ *       type: object
+ *       properties:
+ *         section_key: { type: string, example: featured }
+ *         title: { type: string, example: Staff picks }
+ *         section_type: { $ref: '#/components/schemas/HomeSectionType' }
+ *         items:
+ *           type: array
+ *           items: { $ref: '#/components/schemas/QuizCard' }
  *     Question:
  *       type: object
  *       properties:
