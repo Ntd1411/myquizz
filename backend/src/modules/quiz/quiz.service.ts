@@ -1,7 +1,13 @@
-import type { PaginatedResponse, Quiz } from './quiz.type.js'
+import type { Quiz } from './quiz.type.js'
 import { quizRepository } from './quiz.repository.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { CreateQuizRequest } from './quiz.schema.js'
+
+/*
+ * Quiz CRUD rules. Listing and search moved to listing.service.ts, where every
+ * visibility condition is part of the SQL query instead of a filter applied to
+ * an already paginated result set.
+ */
 
 export async function createQuizService(
   userId: number,
@@ -32,30 +38,6 @@ export async function createQuizService(
   }
 
   return { ...createdQuiz, questions: createdQuestions }
-}
-
-export async function listQuizzesService(
-  userId: number,
-  ownerId: number,
-  pagination: { page: number; limit: number }
-): Promise<PaginatedResponse<Quiz>> {
-  const offset = (pagination.page - 1) * pagination.limit
-  const total = await quizRepository.countQuizzesByOwner(ownerId)
-  const result = await quizRepository.getListQuizzes(ownerId, offset, pagination.limit)
-
-  const results: PaginatedResponse<Quiz> = {
-    data: result.filter((quiz) => quiz.is_public || quiz.quiz_owner === userId),
-    pagination: {
-      page: pagination.page,
-      limit: pagination.limit,
-      total: total,
-      totalPages: Math.ceil(total / pagination.limit),
-      hasPreviousPage: pagination.page > 1,
-      hasNextPage: offset + pagination.limit < total
-    }
-  }
-
-  return results
 }
 
 export async function getQuizService(
@@ -154,43 +136,4 @@ export async function deleteQuizService(
   }
 
   return deletedQuiz
-}
-
-export async function searchQuizzesService(
-  userId: number,
-  query: {
-    keyword?: string | undefined;
-    language?: string | undefined;
-    category?: string | undefined;
-    page: number;
-    limit: number;
-  }
-): Promise<PaginatedResponse<Quiz>> {
-  try {
-    const offset = (query.page - 1) * query.limit
-
-    const { data, total } = await quizRepository.searchQuizzes(
-      offset,
-      query.limit,
-      query.keyword,
-      query.language,
-      query.category
-    )
-
-    const results: PaginatedResponse<Quiz> = {
-      data: data.filter((quiz) => quiz.is_public || quiz.quiz_owner === userId),
-      pagination: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-        hasPreviousPage: query.page > 1,
-        hasNextPage: offset + query.limit < total
-      }
-    }
-
-    return results
-  } catch (error) {
-    throw new AppError(500, 'Failed to search quizzes', error)
-  }
 }

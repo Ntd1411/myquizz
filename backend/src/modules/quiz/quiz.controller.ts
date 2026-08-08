@@ -5,6 +5,11 @@ import type { CreateQuizRequest } from './quiz.schema.js'
 import type { AuthRequest } from '../auth/auth.type.js'
 import { success } from '../../shared/utils/response.js'
 
+/*
+ * Quiz CRUD. The listing endpoints (search, public profile, /quizzes/me) live in
+ * listing.controller.ts so this file stays on the write path.
+ */
+
 export async function createQuiz(
   req: AuthRequest,
   res: Response,
@@ -31,24 +36,6 @@ export async function getQuiz(req: AuthRequest, res: Response, next: NextFunctio
     const quiz = await quizService.getQuizService(userId, quizId)
 
     return success(res, { quiz })
-  } catch (error) {
-    next(error)
-  }
-}
-
-export async function listQuizzes(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const userId = req.user?.id as number
-    const ownerId = Number(req.params?.ownerId)
-    const { page, limit } = req.validatedQuery as { page: number; limit: number }
-
-    const { data, pagination } = await quizService.listQuizzesService(userId, ownerId, { page, limit })
-
-    return success(res, { quizzes: data }, 200, { pagination })
   } catch (error) {
     next(error)
   }
@@ -84,35 +71,6 @@ export async function deleteQuiz(
     const deletedQuiz = await quizService.deleteQuizService(userId, quizId)
 
     return success(res, { quiz: deletedQuiz })
-  } catch (error) {
-    next(error)
-  }
-}
-
-export async function searchQuizzes(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const userId = req.user?.id as number
-    const { keyword, language, category, page, limit } = req.validatedQuery as {
-      keyword?: string
-      language?: string
-      category?: string
-      page: number
-      limit: number
-    }
-
-    const { data, pagination } = await quizService.searchQuizzesService(userId, {
-      keyword,
-      language,
-      category,
-      page,
-      limit
-    })
-
-    return success(res, { quizzes: data }, 200, { pagination })
   } catch (error) {
     next(error)
   }
