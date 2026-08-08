@@ -24,6 +24,9 @@ const envSchema = z.object({
   DB_POOL_MAX: z.string().transform(Number),
   DB_IDLE_TIMEOUT: z.string().transform(Number),
   DB_CONNECTION_TIMEOUT: z.string().transform(Number),
+  // Minutes between two runs of the quiz scoring job. Optional so existing .env
+  // files keep working; set to 0 to disable the scheduler entirely.
+  SCORING_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(30),
   REDIS_HOST: z.string(),
   REDIS_PORT: z.string().transform(Number),
   REDIS_PASSWORD: z.string(),

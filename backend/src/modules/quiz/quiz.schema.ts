@@ -40,8 +40,23 @@ export const listQuizzesSchema = z.object({
     .pipe(z.number().int().min(1).max(20)).default(10)
 })
 
+/**
+ * Query for the cursor-based home feed.
+ *
+ * The cursor stays opaque to the client, so it is only length-capped here; its
+ * contents are validated when decoded in feed.cursor.ts, which turns anything
+ * malformed into a 400 instead of a driver-level 500.
+ */
+export const feedQuerySchema = z.object({
+  topic: z.string().trim().max(50).optional(),
+  cursor: z.string().trim().max(200).optional(),
+  limit: z.string().regex(/^\d+$/).transform(Number)
+    .pipe(z.number().int().min(1).max(24)).default(12)
+})
+
 export const updateQuizSchema = createQuizSchema.partial()
 
 export type UpdateQuizRequest = z.infer<typeof updateQuizSchema>
 export type CreateQuizRequest = z.infer<typeof createQuizSchema>
 export type CreateQuestionRequest = z.infer<typeof createQuestionSchema>
+export type FeedQuery = z.infer<typeof feedQuerySchema>
