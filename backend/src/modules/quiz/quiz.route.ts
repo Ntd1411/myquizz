@@ -14,6 +14,7 @@ import {
   myQuizzesQuerySchema,
   ownerIdParamSchema,
   ownerQuizzesQuerySchema,
+  quizIdParamSchema,
   searchQuizzesSchema,
   updateQuizSchema
 } from './quiz.schema.js'
@@ -38,11 +39,11 @@ quizRouter.get('/feed', optionalAuthMiddleware, validateQuery(feedQuerySchema), 
 // including the owner, who uses GET /quizzes/me to manage their own quizzes.
 quizRouter.get('/users/id/:ownerId', validateParams(ownerIdParamSchema), validateQuery(ownerQuizzesQuerySchema), listingController.getQuizzesByOwner)
 
-quizRouter.get('/id/:quizId', optionalAuthMiddleware, quizController.getQuiz)
+quizRouter.get('/id/:quizId', optionalAuthMiddleware, validateParams(quizIdParamSchema), quizController.getQuiz)
 
-quizRouter.patch( '/id/:quizId', authMiddleware, validateBody(updateQuizSchema), quizController.updateQuiz)
+quizRouter.patch( '/id/:quizId', authMiddleware, validateParams(quizIdParamSchema), validateBody(updateQuizSchema), quizController.updateQuiz)
 
-quizRouter.delete('/id/:quizId', authMiddleware, quizController.deleteQuiz)
+quizRouter.delete('/id/:quizId', authMiddleware, validateParams(quizIdParamSchema), quizController.deleteQuiz)
 
 /**
  * @openapi
