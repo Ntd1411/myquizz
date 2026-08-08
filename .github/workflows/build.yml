@@ -4,9 +4,6 @@ on:
   push:
     branches-ignore:
       - main
-  pull_request:
-    branches:
-      - main
 
 # A new push to the same branch cancels the previous, still-running check.
 concurrency:
