@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
-import { CATEGORIES } from '@/constants/quizMeta'
+import { CATEGORIES, LANGUAGES, SEARCH_SORTS } from '@/constants/quizMeta'
 import { useCursorList } from '@/composables/useCursorList'
 import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
@@ -14,41 +14,65 @@ import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useM
  * "Load more" using the cursor the backend returns. A cursor is only valid for the
  * sort and filters it was issued for, so every filter change restarts from page one,
  * which useCursorList takes care of.
+ *
+ * The whole filter set lives in the query string, so a search is shareable and
+ * survives a reload. `include_total` is asked for on the first page only, which is
+ * where the result count is rendered.
  */
 const route = useRoute()
 const router = useRouter()
 
-// Sorts accepted by the endpoint. Without a keyword the backend defaults to newest,
-// with one it defaults to relevance, so "Best match" is sent as an empty sort.
-const SORTS = [
-  { value: '', label: 'Best match' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'most_played', label: 'Most played' },
-  { value: 'trending', label: 'Trending' },
-  { value: 'name_asc', label: 'Name A–Z' },
-  { value: 'name_desc', label: 'Name Z–A' },
-]
-
 const PAGE_SIZE = 24
+const KEYWORD_DEBOUNCE = 350
 
-const keyword = ref(route.query.keyword ?? '')
-const category = ref(route.query.category ?? '')
-const sort = ref(SORTS.some((item) => item.value === route.query.sort) ? route.query.sort : '')
+function queryText(value) {
+  return typeof value === 'string' ? value : ''
+}
 
-// Category chips use the same static list and swatches as the home rails.
+/** Keeps a sort from the URL only when the endpoint actually accepts it. */
+function querySort(value) {
+  return SEARCH_SORTS.some((item) => item.value === value) ? value : ''
+}
+
+// Filter state, seeded from the URL so a shared link opens on the same result set.
+const keywordInput = ref(queryText(route.query.keyword))
+const keyword = ref(keywordInput.value)
+const language = ref(queryText(route.query.language))
+const category = ref(queryText(route.query.category))
+const createdFrom = ref(queryText(route.query.created_from))
+const createdTo = ref(queryText(route.query.created_to))
+const minQuestions = ref(queryText(route.query.min_questions))
+const minPlays = ref(queryText(route.query.min_plays))
+const sort = ref(querySort(route.query.sort))
 
 const pageEl = ref(null)
 const gridEl = ref(null)
-const resultsEl = ref(null)
 
 let gridReveal = null
+
+// Typing must not fire a request per keystroke; the committed keyword is what the
+// list watches, so the cursor only resets once the user pauses.
+let keywordTimer = null
+
+watch(keywordInput, (value) => {
+  window.clearTimeout(keywordTimer)
+  keywordTimer = window.setTimeout(() => {
+    keyword.value = value
+  }, KEYWORD_DEBOUNCE)
+})
+
+onBeforeUnmount(() => window.clearTimeout(keywordTimer))
 
 const list = useCursorList(
   (params) => searchQuizzes(params),
   () => ({
     keyword: keyword.value,
+    language: language.value,
     category: category.value,
+    createdFrom: createdFrom.value,
+    createdTo: createdTo.value,
+    minQuestions: minQuestions.value,
+    minPlays: minPlays.value,
     sort: sort.value,
     limit: PAGE_SIZE,
   }),
@@ -56,33 +80,55 @@ const list = useCursorList(
 )
 
 const quizzes = list.items
-const hasFilters = computed(() => Boolean(keyword.value || category.value || sort.value))
 
-// Keep the URL shareable. There is no page number to carry any more.
-watch([keyword, category, sort], () => {
-  router.replace({
-    name: 'discover',
-    query: {
-      keyword: keyword.value || undefined,
-      category: category.value || undefined,
-      sort: sort.value || undefined,
-    },
-  })
-})
+const hasFilters = computed(() =>
+  Boolean(
+    keyword.value ||
+      language.value ||
+      category.value ||
+      createdFrom.value ||
+      createdTo.value ||
+      minQuestions.value ||
+      minPlays.value ||
+      sort.value,
+  ),
+)
+
+// The URL mirrors the filters with the backend parameter names, so a link can be
+// pasted straight into the API while debugging.
+watch(
+  [keyword, language, category, createdFrom, createdTo, minQuestions, minPlays, sort],
+  () => {
+    router.replace({
+      name: 'discover',
+      query: {
+        keyword: keyword.value || undefined,
+        language: language.value || undefined,
+        category: category.value || undefined,
+        created_from: createdFrom.value || undefined,
+        created_to: createdTo.value || undefined,
+        min_questions: minQuestions.value || undefined,
+        min_plays: minPlays.value || undefined,
+        sort: sort.value || undefined,
+      },
+    })
+  },
+)
 
 function selectCategory(value) {
   category.value = category.value === value ? '' : value
 }
 
 function clearFilters() {
+  keywordInput.value = ''
   keyword.value = ''
+  language.value = ''
   category.value = ''
+  createdFrom.value = ''
+  createdTo.value = ''
+  minQuestions.value = ''
+  minPlays.value = ''
   sort.value = ''
-}
-
-/** Appending a page keeps the results in view instead of jumping to the top. */
-function loadMore() {
-  list.loadMore()
 }
 
 onMounted(() => revealOnEnter(pageEl.value))
@@ -120,22 +166,34 @@ watch(
         Discover quizzes
       </h1>
       <p class="mt-xs text-body-sm text-ink-muted">
-        Search by keyword or filter by category.
+        Search by keyword, then narrow the results down by category, language, date or size.
       </p>
     </div>
 
     <div class="mt-lg flex flex-col gap-sm" data-enter>
       <div class="flex flex-wrap items-center gap-sm">
         <input
-          v-model.trim="keyword"
+          v-model.trim="keywordInput"
           class="field max-w-md"
           type="search"
           placeholder="Search by keyword…"
+          aria-label="Search by keyword"
         >
         <label class="flex items-center gap-xs text-caption text-ink-muted">
           Sort
           <select v-model="sort" class="field">
-            <option v-for="item in SORTS" :key="item.value || 'default'" :value="item.value">
+            <option v-for="item in SEARCH_SORTS" :key="item.value || 'default'" :value="item.value">
+              {{ item.label }}
+            </option>
+          </select>
+        </label>
+        <label class="flex items-center gap-xs text-caption text-ink-muted">
+          Language
+          <select v-model="language" class="field">
+            <option value="">
+              Any
+            </option>
+            <option v-for="item in LANGUAGES" :key="item.value" :value="item.value">
               {{ item.label }}
             </option>
           </select>
@@ -155,14 +213,34 @@ watch(
           <span class="h-[9px] w-[9px] shrink-0 rounded-full" :style="{ backgroundColor: item.color }" />
           {{ item.name }}
         </button>
+      </div>
+
+      <!-- Advanced filters map 1:1 onto the backend query parameters. -->
+      <div class="flex flex-wrap items-end gap-sm">
+        <label class="flex flex-col gap-xxs text-caption text-ink-muted">
+          Created from
+          <input v-model="createdFrom" class="field" type="date">
+        </label>
+        <label class="flex flex-col gap-xxs text-caption text-ink-muted">
+          Created to
+          <input v-model="createdTo" class="field" type="date">
+        </label>
+        <label class="flex flex-col gap-xxs text-caption text-ink-muted">
+          Min questions
+          <input v-model="minQuestions" class="field w-[130px]" type="number" min="0">
+        </label>
+        <label class="flex flex-col gap-xxs text-caption text-ink-muted">
+          Min plays
+          <input v-model="minPlays" class="field w-[130px]" type="number" min="0">
+        </label>
 
         <button v-if="hasFilters" class="btn-ghost" type="button" @click="clearFilters">
-          Clear
+          Clear filters
         </button>
       </div>
     </div>
 
-    <div ref="resultsEl" class="mt-lg scroll-mt-[88px]" data-enter>
+    <div class="mt-lg scroll-mt-[88px]" data-enter>
       <div class="flex items-center justify-between gap-sm">
         <p class="text-body-sm text-ink-muted">
           <template v-if="list.total.value !== null">
@@ -199,7 +277,7 @@ watch(
           No quizzes match these filters.
         </p>
         <p class="mt-xxs text-body-sm text-ink-muted">
-          Try a different keyword or clear the category.
+          Try a different keyword or loosen the filters.
         </p>
         <button v-if="hasFilters" class="btn-utility mt-md" type="button" @click="clearFilters">
           Clear filters
@@ -219,7 +297,7 @@ watch(
             class="btn-utility"
             type="button"
             :disabled="list.loadingMore.value"
-            @click="loadMore"
+            @click="list.loadMore()"
           >
             {{ list.loadingMore.value ? 'Loading…' : 'Load more' }}
           </button>

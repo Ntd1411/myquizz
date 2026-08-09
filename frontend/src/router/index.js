@@ -34,6 +34,15 @@ const routes = [
   // their account. A shared link can prefill the code with /join?code=ABC123.
   { path: '/join', name: 'join-game', component: () => import('@/pages/JoinGamePage.vue') },
 
+  // Public creator profile. Lists only published quizzes with questions, so it is
+  // readable by guests and is not a replacement for the owner's own library.
+  {
+    path: '/users/:id',
+    name: 'user-profile',
+    component: () => import('@/pages/UserProfilePage.vue'),
+    props: true,
+  },
+
   {
     path: '/library',
     name: 'library',

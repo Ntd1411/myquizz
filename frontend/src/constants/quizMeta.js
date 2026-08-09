@@ -1,9 +1,10 @@
 /**
  * Presentational constants for quiz browsing.
  *
- * These are not data: `quiz_category` is a free-text column on the backend (max 50
- * chars) and there is no categories endpoint, so the chip list and its sticker
- * swatches are a client-side taxonomy. Only the quizzes themselves come from the API.
+ * These are not data: `quiz_category` and `quiz_language` are free-text columns on
+ * the backend (max 50 chars) and there is no taxonomy endpoint, so the chip list,
+ * its sticker swatches and the language options are a client-side taxonomy. Only the
+ * quizzes themselves come from the API.
  *
  * GAME_MODES is home-page copy. The playable mode rules live in GET /games/game-modes;
  * keep the names here in sync with that response.
@@ -15,6 +16,49 @@ export const CATEGORIES = [
   { name: 'Movies', color: '#dd5b00' },
   { name: 'Sports', color: '#ff64c8' },
   { name: 'Music', color: '#391c57' },
+]
+
+/**
+ * Values written into `quiz_language` by the editor. The search endpoint matches the
+ * column exactly, so these codes must stay identical on both screens.
+ */
+export const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'vi', label: 'Vietnamese' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+]
+
+/**
+ * Sorts accepted by GET /quizzes/search. An empty value is sent as no `sort` at all:
+ * the backend then falls back to relevance with a keyword and to newest without one.
+ */
+export const SEARCH_SORTS = [
+  { value: '', label: 'Best match' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'most_played', label: 'Most played' },
+  { value: 'trending', label: 'Trending' },
+  { value: 'name_asc', label: 'Name A\u2013Z' },
+  { value: 'name_desc', label: 'Name Z\u2013A' },
+]
+
+/** Sorts accepted by GET /quizzes/me. `recently_updated` is the backend default. */
+export const LIBRARY_SORTS = [
+  { value: 'recently_updated', label: 'Recently updated' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'name_asc', label: 'Name A\u2013Z' },
+]
+
+/** Sorts accepted by GET /quizzes/users/id/:ownerId. */
+export const PROFILE_SORTS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'most_played', label: 'Most played' },
+  { value: 'name_asc', label: 'Name A\u2013Z' },
 ]
 
 export const GAME_MODES = [
