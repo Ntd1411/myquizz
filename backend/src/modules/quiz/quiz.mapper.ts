@@ -1,4 +1,4 @@
-import type { QuizSummary } from './listing.type.js'
+import type { QuizOwner, QuizSummary } from './listing.type.js'
 
 /**
  * The database row shape toQuizSummary consumes.
@@ -14,6 +14,9 @@ import type { QuizSummary } from './listing.type.js'
 export interface QuizSummaryRow {
   id: number;
   quiz_owner: number;
+  owner_id: number | null;
+  owner_fullname: string | null;
+  owner_avatar: string | null;
   quiz_name: string;
   quiz_description: string | null;
   quiz_image: string | null;
@@ -28,6 +31,23 @@ export interface QuizSummaryRow {
 }
 
 /**
+ * Folds the joined author columns into the nested `owner` object. Null when the
+ * author row is missing or soft deleted, which is a real state: the quiz stays
+ * listed and the client shows a neutral label.
+ */
+function toQuizOwner(row: QuizSummaryRow): QuizOwner | null {
+  if (row.owner_id === null || row.owner_fullname === null) {
+    return null
+  }
+
+  return {
+    id: row.owner_id,
+    fullname: row.owner_fullname,
+    avatar: row.owner_avatar
+  }
+}
+
+/**
  * The single place a listing row becomes a client-facing summary. Every listing
  * endpoint maps through here, so the response shape changes in exactly one file.
  */
@@ -35,6 +55,7 @@ export function toQuizSummary(row: QuizSummaryRow): QuizSummary {
   return {
     id: row.id,
     quiz_owner: row.quiz_owner,
+    owner: toQuizOwner(row),
     quiz_name: row.quiz_name,
     quiz_description: row.quiz_description,
     quiz_image: row.quiz_image,

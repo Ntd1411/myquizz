@@ -1,6 +1,6 @@
 import { pool } from '../../infrastructure/database/connection.js'
 import type { FeedCursor } from './feed.cursor.js'
-import type { HomeSectionConfig, QuizCard, SectionType } from './home.type.js'
+import type { HomeSectionConfig, QuizCard, QuizOwner, SectionType } from './home.type.js'
 
 /**
  * Single source of truth for "may this quiz appear in a public listing".
@@ -21,14 +21,29 @@ const PUBLIC_FEED_FILTER = `
 `
 
 /**
+ * Author join behind every card's `owner`.
+ *
+ * LEFT so a soft-deleted author never removes the quiz from a listing; the card
+ * then carries owner: null and the client falls back to a neutral label. The
+ * join is on the primary key, so it costs one index lookup per row and cannot
+ * duplicate rows.
+ */
+const OWNER_JOIN = `left join users u
+    on u.id = q.quiz_owner
+    and u.deleted_at is null`
+
+/**
  * Columns behind every quiz card, in one place so the mapper below stays in sync.
  * hot_score is deliberately absent: it is a ranking detail the client never sees,
  * and it is selected explicitly only by the feed query that needs it for cursors.
+ * The owner_* columns come from OWNER_JOIN and are aliased so they cannot collide
+ * with the quizzes columns.
  */
 const CARD_COLUMNS = `
   q.id, q.quiz_name, q.quiz_description, q.quiz_image, q.quiz_category,
   q.quiz_language, q.quiz_owner, q.question_count, q.play_count,
-  q.completion_rate, q.created_at
+  q.completion_rate, q.created_at,
+  u.id as owner_id, u.fullname as owner_fullname, u.avatar as owner_avatar
 `
 
 /**
@@ -50,6 +65,9 @@ interface QuizCardRow {
   play_count: number;
   completion_rate: number;
   created_at: Date | string;
+  owner_id: number | null;
+  owner_fullname: string | null;
+  owner_avatar: string | null;
 }
 
 interface FeedRow extends QuizCardRow {
@@ -75,6 +93,23 @@ export interface FeedRowsPage {
 }
 
 /**
+ * Folds the joined owner columns into the nested shape the client consumes.
+ * Returns null when the author row is missing or soft deleted, which is a real
+ * state rather than an error: the quiz itself is still playable.
+ */
+function toQuizOwner(row: QuizCardRow): QuizOwner | null {
+  if (row.owner_id === null || row.owner_fullname === null) {
+    return null
+  }
+
+  return {
+    id: row.owner_id,
+    fullname: row.owner_fullname,
+    avatar: row.owner_avatar
+  }
+}
+
+/**
  * The only place a database row becomes a client-facing card.
  *
  * `created_at` is normalised here because node-postgres returns a Date object
@@ -90,6 +125,7 @@ function toQuizCard(row: QuizCardRow): QuizCard {
     quiz_category: row.quiz_category,
     quiz_language: row.quiz_language,
     quiz_owner: row.quiz_owner,
+    owner: toQuizOwner(row),
     question_count: Number(row.question_count),
     play_count: Number(row.play_count),
     completion_rate: Number(row.completion_rate),
@@ -130,6 +166,7 @@ export async function getFeedPage(params: {
   const result = await pool.query<FeedRow>(
     `select ${CARD_COLUMNS}, q.hot_score
     from quizzes q
+    ${OWNER_JOIN}
     where ${PUBLIC_FEED_FILTER}
       and ($1::text is null or q.quiz_category = $1)
       and (
@@ -165,6 +202,7 @@ export async function getFeaturedQuizzes(limit: number): Promise<QuizCard[]> {
   const result = await pool.query<QuizCardRow>(
     `select ${CARD_COLUMNS}
     from quizzes q
+    ${OWNER_JOIN}
     where ${PUBLIC_FEED_FILTER}
       and q.is_featured = true
     order by q.hot_score desc, q.id desc
@@ -180,6 +218,7 @@ export async function getTrendingQuizzes(limit: number): Promise<QuizCard[]> {
   const result = await pool.query<QuizCardRow>(
     `select ${CARD_COLUMNS}
     from quizzes q
+    ${OWNER_JOIN}
     where ${PUBLIC_FEED_FILTER}
     order by q.hot_score desc, q.id desc
     limit $1`,
@@ -193,6 +232,7 @@ export async function getNewestQuizzes(limit: number): Promise<QuizCard[]> {
   const result = await pool.query<QuizCardRow>(
     `select ${CARD_COLUMNS}
     from quizzes q
+    ${OWNER_JOIN}
     where ${PUBLIC_FEED_FILTER}
     order by q.created_at desc, q.id desc
     limit $1`,
@@ -209,6 +249,7 @@ export async function getCategoryQuizzes(
   const result = await pool.query<QuizCardRow>(
     `select ${CARD_COLUMNS}
     from quizzes q
+    ${OWNER_JOIN}
     where ${PUBLIC_FEED_FILTER}
       and q.quiz_category = $1
     order by q.hot_score desc, q.id desc
@@ -244,6 +285,7 @@ export async function getContinuePlaying(
       join game_sessions gs on gs.id = ps.game_session_id
       join quiz_snapshots qs on qs.id = gs.quiz_snapshot_id
       join quizzes q on q.id = qs.quiz_id
+      ${OWNER_JOIN}
       where ps.player_id = $1
         and ps.deleted_at is null
         and ps.status <> 'finished'

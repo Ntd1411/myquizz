@@ -8,6 +8,10 @@
  * schemas, not here.
  */
 
+import type { QuizOwner } from './home.type.js'
+
+export type { QuizOwner }
+
 // Every sort the listing feature understands, across all three endpoints.
 export const LIST_SORTS = [
   'relevance',
@@ -57,6 +61,7 @@ export type VisibilityFilter = (typeof VISIBILITY_FILTERS)[number]
 export interface QuizSummary {
   id: number;
   quiz_owner: number;
+  owner: QuizOwner | null;
   quiz_name: string;
   quiz_description: string | null;
   quiz_image: string | null;

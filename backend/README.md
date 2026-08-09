@@ -179,7 +179,12 @@ All three return the same row shape and the same paging block, so one client han
 ```tsx
 {
   id: number
-  quiz_owner: number
+  quiz_owner: number                 // author id, kept for links and ownership checks
+  owner: {                           // joined author identity, null if the account was deleted
+    id: number
+    fullname: string
+    avatar: string | null
+  } | null
   quiz_name: string
   quiz_description: string | null
   quiz_image: string | null
@@ -194,7 +199,11 @@ All three return the same row shape and the same paging block, so one client han
 }
 ```
 
-**`QuizCard`** (home + feed) is the same minus `is_public` and `updated_at`.
+**`QuizCard`** (home + feed) is the same minus `is_public` and `updated_at`, `owner` included.
+
+- `owner` is a `LEFT JOIN` on `users`, so a soft-deleted author never removes the quiz from a
+  listing — the row just carries `owner: null`. Render a neutral author label in that case.
+- Only `id`, `fullname` and `avatar` are exposed; email, phone and role stay private.
 
 **Query parameters**
 

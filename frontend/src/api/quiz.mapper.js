@@ -2,15 +2,30 @@
  * Maps backend quiz rows to the shape the UI components expect.
  *
  * Listing endpoints return snake_case columns (QuizSummary / QuizCard):
- *   { id, quiz_owner, quiz_name, quiz_description, quiz_image, quiz_category,
- *     quiz_language, is_public?, question_count, play_count, completion_rate,
- *     created_at, updated_at? }
+ *   { id, quiz_owner, owner, quiz_name, quiz_description, quiz_image,
+ *     quiz_category, quiz_language, is_public?, question_count, play_count,
+ *     completion_rate, created_at, updated_at? }
  * QuizCard rows (home / feed) omit `is_public` and `updated_at` on purpose.
  *
  * The card components were built against the camelCase mock shape, so every quiz row
  * goes through this mapper before it reaches a component. Keeping the translation in
  * one place means a column rename only has to be handled here.
  */
+/**
+ * The author block every listing joins in. Null when the backend could not
+ * resolve the author (deleted account), which the card renders as a neutral
+ * placeholder rather than an empty name.
+ */
+function toOwner(owner) {
+  if (!owner) return null
+
+  return {
+    id: owner.id ?? null,
+    fullname: owner.fullname ?? '',
+    avatar: owner.avatar ?? null,
+  }
+}
+
 export function toQuizCard(row) {
   if (!row) return null
 
@@ -32,6 +47,7 @@ export function toQuizCard(row) {
     // Only /quizzes/search and /quizzes/me expose visibility; home and feed do not.
     isPublic: row.is_public === undefined ? null : row.is_public,
     ownerId: row.quiz_owner ?? null,
+    owner: toOwner(row.owner),
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   }
