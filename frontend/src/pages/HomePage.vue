@@ -7,7 +7,9 @@ import { mockCategories, mockModes } from '@/api/mock.api'
 import { revealOnScroll } from '@/composables/useMotion'
 
 // The page opens directly on Trending. There is no hero band on purpose.
-const POOL_LIMIT = 20
+// The backend caps `limit` at 24, which is one pool request for every rail here.
+// Server-driven rows from GET /quizzes/home replace this pool in the next PR.
+const POOL_LIMIT = 24
 
 // Category swatches and mode blurbs live in src/mocks/mock.json for now.
 // Decoration only: a swatch never paints a CTA or a structural fill.
@@ -21,7 +23,7 @@ const staticEl = ref(null)
 // one round trip instead of one per category.
 const pool = useQuery({
   queryKey: ['quizzes', 'home-pool'],
-  queryFn: () => searchQuizzes({ page: 1, limit: POOL_LIMIT }),
+  queryFn: () => searchQuizzes({ limit: POOL_LIMIT, sort: 'newest' }),
 })
 
 const quizzes = computed(() => pool.data.value?.quizzes ?? [])

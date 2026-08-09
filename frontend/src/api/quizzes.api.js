@@ -1,49 +1,186 @@
 import { http } from './http'
-import { unwrap, readPagination } from './envelope'
-import {
-  USE_MOCK,
-  mockSearchQuizzes,
-  mockGetQuizById,
-} from './mock.api'
+import { unwrap, readPagination, readCached } from './envelope'
+import { toQuizCards, toHomeSection } from './quiz.mapper'
+import { USE_MOCK, mockSearchQuizzes, mockGetQuizById } from './mock.api'
 
 /**
- * Search / browse quizzes.
- * The backend caps `limit` at 20.
- * Returns both the items and the meta.pagination block.
+ * Quiz REST layer.
  *
- * While `VITE_USE_MOCK` is not set to "false", browse reads are served from
- * `src/mocks/mock.json` so the public pages can be developed without a backend.
+ * Every listing endpoint (/quizzes/search, /quizzes/me, /quizzes/users/id/:ownerId,
+ * /quizzes/home, /quizzes/feed) uses keyset (cursor) pagination. There is no `page`
+ * parameter any more: pass the previous `meta.pagination.nextCursor` back verbatim to
+ * get the next page.
+ *
+ * A cursor is bound to the sort and to the full filter set it was created with, so
+ * changing any filter or the sort must restart from the first page, otherwise the
+ * backend answers 400 "Invalid cursor". `limit` is not part of that binding and may
+ * change between pages.
  */
-export async function searchQuizzes({ keyword, language, category, page = 1, limit = 12 } = {}) {
-  if (USE_MOCK) return mockSearchQuizzes({ keyword, language, category, page, limit })
 
-  const res = await http.get('/quizzes/search', {
-    params: {
-      keyword: keyword || undefined,
-      language: language || undefined,
-      category: category || undefined,
-      page,
-      limit: Math.min(limit, 20),
-    },
-  })
+// backend/src/modules/quiz/quiz.schema.ts: limit is intQuery(1, 24), default 12.
+const MAX_LIMIT = 24
+const DEFAULT_LIMIT = 12
+
+function limitOf(limit) {
+  const value = Number(limit) || DEFAULT_LIMIT
+  return Math.min(Math.max(Math.trunc(value), 1), MAX_LIMIT)
+}
+
+/** The backend only accepts the literal strings 'true' and 'false' for booleans. */
+function boolParam(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  return value ? 'true' : 'false'
+}
+
+function textParam(value) {
+  const text = typeof value === 'string' ? value.trim() : value
+  return text ? text : undefined
+}
+
+function numberParam(value) {
+  return value === undefined || value === null || value === '' ? undefined : Number(value)
+}
+
+/** Shared shape returned by every quiz listing: mapped cards plus the cursor block. */
+function toListPage(res) {
   return {
-    quizzes: unwrap(res.data).quizzes ?? [],
+    quizzes: toQuizCards(unwrap(res.data).quizzes),
     pagination: readPagination(res.data),
   }
 }
 
 /**
- * Quizzes owned by one user. This is never mocked: "My library" must show the rows
- * that really exist for the signed-in account, otherwise a freshly created quiz
- * would be missing from it.
+ * Public search / browse. Signed-in owners additionally see their own private and
+ * empty quizzes, which is handled by the backend query, not by the client.
+ *
+ * Sorts: relevance | newest | oldest | name_asc | name_desc | most_played | trending.
+ * There is no default sort: the backend falls back to relevance when a keyword is
+ * present and to newest otherwise.
  */
-export async function getQuizzesByOwner(ownerId, { page = 1, limit = 12 } = {}) {
+export async function searchQuizzes({
+  keyword,
+  language,
+  category,
+  sort,
+  ownerId,
+  mine,
+  createdFrom,
+  createdTo,
+  minQuestions,
+  minPlays,
+  cursor,
+  limit,
+  includeTotal,
+} = {}) {
+  if (USE_MOCK) {
+    return mockSearchQuizzes({
+      keyword,
+      language,
+      category,
+      sort,
+      cursor,
+      limit: limitOf(limit),
+      includeTotal,
+    })
+  }
+
+  const res = await http.get('/quizzes/search', {
+    params: {
+      keyword: textParam(keyword),
+      language: textParam(language),
+      category: textParam(category),
+      sort: textParam(sort),
+      owner_id: textParam(ownerId),
+      mine: boolParam(mine),
+      created_from: textParam(createdFrom),
+      created_to: textParam(createdTo),
+      min_questions: numberParam(minQuestions),
+      min_plays: numberParam(minPlays),
+      cursor: textParam(cursor),
+      limit: limitOf(limit),
+      // A total costs an extra COUNT, so it is only ever asked for on the first page.
+      include_total: cursor ? undefined : boolParam(includeTotal),
+    },
+  })
+  return toListPage(res)
+}
+
+/**
+ * The signed-in user's own quizzes, including private ones and quizzes without any
+ * question yet. Requires authentication.
+ *
+ * Sorts: recently_updated (default) | newest | oldest | name_asc.
+ * Visibility: all (default) | public | private.
+ */
+export async function getMyQuizzes({
+  keyword,
+  visibility,
+  sort,
+  cursor,
+  limit,
+  includeTotal,
+} = {}) {
+  const res = await http.get('/quizzes/me', {
+    params: {
+      keyword: textParam(keyword),
+      visibility: textParam(visibility),
+      sort: textParam(sort),
+      cursor: textParam(cursor),
+      limit: limitOf(limit),
+      include_total: cursor ? undefined : boolParam(includeTotal),
+    },
+  })
+  return toListPage(res)
+}
+
+/**
+ * Someone's public profile listing. This endpoint is public and always returns the
+ * same rows for everybody, so the owner does not see their private quizzes here.
+ *
+ * Sorts: newest (default) | oldest | most_played | name_asc.
+ */
+export async function getQuizzesByOwner(ownerId, { sort, cursor, limit, includeTotal } = {}) {
   const res = await http.get(`/quizzes/users/id/${ownerId}`, {
-    params: { page, limit: Math.min(limit, 20) },
+    params: {
+      sort: textParam(sort),
+      cursor: textParam(cursor),
+      limit: limitOf(limit),
+      include_total: cursor ? undefined : boolParam(includeTotal),
+    },
+  })
+  return toListPage(res)
+}
+
+/**
+ * Home rows. The sections, their order and their titles are configured server side
+ * in the `home_sections` table; empty sections are already dropped by the backend and
+ * the "continue" row only appears for a signed-in user.
+ */
+export async function getHomeSections() {
+  const res = await http.get('/quizzes/home')
+  const sections = unwrap(res.data).sections ?? []
+  return {
+    sections: sections.map(toHomeSection),
+    cached: readCached(res.data),
+  }
+}
+
+/**
+ * Endless feed ranked by `hot_score`, which is computed by the scoring job and not
+ * at request time. Its cursor is a separate `hot_score|id` pair, so an invalid one
+ * fails with 400 "Invalid feed cursor".
+ */
+export async function getFeed({ topic, cursor, limit } = {}) {
+  const res = await http.get('/quizzes/feed', {
+    params: {
+      topic: textParam(topic),
+      cursor: textParam(cursor),
+      limit: limitOf(limit),
+    },
   })
   return {
-    quizzes: unwrap(res.data).quizzes ?? [],
-    pagination: readPagination(res.data),
+    ...toListPage(res),
+    cached: readCached(res.data),
   }
 }
 

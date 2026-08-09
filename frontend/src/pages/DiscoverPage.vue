@@ -1,22 +1,40 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useQuery, keepPreviousData } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
 import { mockCategories } from '@/api/mock.api'
-import { toErrorMessage } from '@/api/envelope'
+import { useCursorList } from '@/composables/useCursorList'
 import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
+/**
+ * Browse screen on GET /quizzes/search.
+ *
+ * The endpoint is keyset paginated, so there are no page numbers: results grow with
+ * "Load more" using the cursor the backend returns. A cursor is only valid for the
+ * sort and filters it was issued for, so every filter change restarts from page one,
+ * which useCursorList takes care of.
+ */
 const route = useRoute()
 const router = useRouter()
 
+// Sorts accepted by the endpoint. Without a keyword the backend defaults to newest,
+// with one it defaults to relevance, so "Best match" is sent as an empty sort.
+const SORTS = [
+  { value: '', label: 'Best match' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'most_played', label: 'Most played' },
+  { value: 'trending', label: 'Trending' },
+  { value: 'name_asc', label: 'Name A–Z' },
+  { value: 'name_desc', label: 'Name Z–A' },
+]
+
+const PAGE_SIZE = 24
+
 const keyword = ref(route.query.keyword ?? '')
 const category = ref(route.query.category ?? '')
-const page = ref(Number(route.query.page ?? 1))
-
-// Backend caps limit at 20.
-const LIMIT = 12
+const sort = ref(SORTS.some((item) => item.value === route.query.sort) ? route.query.sort : '')
 
 // Same category list and sticker swatches as the home rails.
 const CATEGORIES = mockCategories
@@ -27,32 +45,30 @@ const resultsEl = ref(null)
 
 let gridReveal = null
 
-const query = useQuery({
-  queryKey: computed(() => ['quizzes', 'search', keyword.value, category.value, page.value]),
-  queryFn: () =>
-    searchQuizzes({ keyword: keyword.value, category: category.value, page: page.value, limit: LIMIT }),
-  placeholderData: keepPreviousData,
-})
+const list = useCursorList(
+  (params) => searchQuizzes(params),
+  () => ({
+    keyword: keyword.value,
+    category: category.value,
+    sort: sort.value,
+    limit: PAGE_SIZE,
+  }),
+  { includeTotal: true, errorFallback: 'Could not load quizzes.' },
+)
 
-const quizzes = computed(() => query.data.value?.quizzes ?? [])
-const pagination = computed(() => query.data.value?.pagination)
-const hasFilters = computed(() => Boolean(keyword.value || category.value))
+const quizzes = list.items
+const hasFilters = computed(() => Boolean(keyword.value || category.value || sort.value))
 
-// Keep the URL shareable.
-watch([keyword, category, page], () => {
+// Keep the URL shareable. There is no page number to carry any more.
+watch([keyword, category, sort], () => {
   router.replace({
     name: 'discover',
     query: {
       keyword: keyword.value || undefined,
       category: category.value || undefined,
-      page: page.value > 1 ? page.value : undefined,
+      sort: sort.value || undefined,
     },
   })
-})
-
-// Any filter change must restart pagination.
-watch([keyword, category], () => {
-  page.value = 1
 })
 
 function selectCategory(value) {
@@ -62,32 +78,29 @@ function selectCategory(value) {
 function clearFilters() {
   keyword.value = ''
   category.value = ''
+  sort.value = ''
 }
 
-/** Paging keeps the results in view instead of leaving the user at the page bottom. */
-function goToPage(next) {
-  page.value = next
-  const target = resultsEl.value
-  if (!target) return
-  if (window.__lenis) window.__lenis.scrollTo(target, { offset: -88, duration: 1 })
-  else target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+/** Appending a page keeps the results in view instead of jumping to the top. */
+function loadMore() {
+  list.loadMore()
 }
 
 onMounted(() => revealOnEnter(pageEl.value))
 
 /**
- * The grid is re-keyed on every filter or page change, so the reveal has to be rebuilt
- * against the new nodes. Old triggers are killed first, otherwise each search would
- * leave a dead batch behind and cards could stay stuck at opacity 0.
+ * The grid is re-keyed whenever the result set changes, so the reveal has to be
+ * rebuilt against the new nodes. Old triggers are killed first, otherwise each search
+ * would leave a dead batch behind and cards could stay stuck at opacity 0.
  */
 watch(
   quizzes,
-  async (list) => {
+  async (rows) => {
     if (gridReveal) {
       gridReveal.forEach((trigger) => trigger.kill())
       gridReveal = null
     }
-    if (!list.length) return
+    if (!rows.length) return
 
     await nextTick()
     gridReveal = revealOnScroll(gridEl.value, '[data-reveal]', { y: 20, stagger: 0.04 })
@@ -113,12 +126,22 @@ watch(
     </div>
 
     <div class="mt-lg flex flex-col gap-sm" data-enter>
-      <input
-        v-model.trim="keyword"
-        class="field max-w-md"
-        type="search"
-        placeholder="Search by keyword…"
-      >
+      <div class="flex flex-wrap items-center gap-sm">
+        <input
+          v-model.trim="keyword"
+          class="field max-w-md"
+          type="search"
+          placeholder="Search by keyword…"
+        >
+        <label class="flex items-center gap-xs text-caption text-ink-muted">
+          Sort
+          <select v-model="sort" class="field">
+            <option v-for="item in SORTS" :key="item.value || 'default'" :value="item.value">
+              {{ item.label }}
+            </option>
+          </select>
+        </label>
+      </div>
 
       <div class="flex flex-wrap gap-[10px]">
         <button
@@ -143,20 +166,19 @@ watch(
     <div ref="resultsEl" class="mt-lg scroll-mt-[88px]" data-enter>
       <div class="flex items-center justify-between gap-sm">
         <p class="text-body-sm text-ink-muted">
-          <template v-if="pagination">
-            {{ pagination.total }} quizzes found
+          <template v-if="list.total.value !== null">
+            {{ list.total.value }} quizzes found
           </template>
           <template v-else>
             Results
           </template>
         </p>
-        <!-- Refetching a cached page keeps the old cards on screen, so it needs its own hint. -->
-        <span v-if="query.isFetching.value && !query.isLoading.value" class="text-caption text-ink-faint">
-          Updating…
+        <span v-if="list.loadingMore.value" class="text-caption text-ink-faint">
+          Loading more…
         </span>
       </div>
 
-      <div v-if="query.isLoading.value" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+      <div v-if="list.loading.value" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
         <div
           v-for="n in 8"
           :key="`skeleton-${n}`"
@@ -164,11 +186,11 @@ watch(
         />
       </div>
 
-      <div v-else-if="query.isError.value" class="card-surface mt-md p-xl">
+      <div v-else-if="list.errorMessage.value" class="card-surface mt-md p-xl">
         <p class="text-body-sm text-sticker-orange-deep">
-          {{ toErrorMessage(query.error.value, 'Could not load quizzes.') }}
+          {{ list.errorMessage.value }}
         </p>
-        <button class="btn-utility mt-md" type="button" @click="query.refetch()">
+        <button class="btn-utility mt-md" type="button" @click="list.loadFirst()">
           Try again
         </button>
       </div>
@@ -185,36 +207,25 @@ watch(
         </button>
       </div>
 
-      <div
-        v-else
-        ref="gridEl"
-        class="mt-md grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
-        :class="query.isFetching.value ? 'opacity-70 transition-opacity' : 'transition-opacity'"
-      >
-        <QuizCard v-for="quiz in quizzes" :key="quiz.id" :quiz="quiz" data-reveal />
-      </div>
+      <template v-else>
+        <div
+          ref="gridEl"
+          class="mt-md grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <QuizCard v-for="quiz in quizzes" :key="quiz.id" :quiz="quiz" data-reveal />
+        </div>
 
-      <div v-if="pagination && pagination.totalPages > 1" class="mt-lg flex items-center justify-center gap-sm">
-        <button
-          class="btn-utility"
-          type="button"
-          :disabled="!pagination.hasPreviousPage"
-          @click="goToPage(page - 1)"
-        >
-          Previous
-        </button>
-        <span class="text-caption text-ink-muted">
-          Page {{ pagination.page }} of {{ pagination.totalPages }}
-        </span>
-        <button
-          class="btn-utility"
-          type="button"
-          :disabled="!pagination.hasNextPage"
-          @click="goToPage(page + 1)"
-        >
-          Next
-        </button>
-      </div>
+        <div v-if="list.hasMore.value" class="mt-lg flex justify-center">
+          <button
+            class="btn-utility"
+            type="button"
+            :disabled="list.loadingMore.value"
+            @click="loadMore"
+          >
+            {{ list.loadingMore.value ? 'Loading…' : 'Load more' }}
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
