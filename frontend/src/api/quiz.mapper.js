@@ -7,9 +7,9 @@
  *     completion_rate, created_at, updated_at? }
  * QuizCard rows (home / feed) omit `is_public` and `updated_at` on purpose.
  *
- * The card components were built against the camelCase mock shape, so every quiz row
- * goes through this mapper before it reaches a component. Keeping the translation in
- * one place means a column rename only has to be handled here.
+ * The card components speak camelCase, so every quiz row goes through this mapper
+ * before it reaches a component. Keeping the translation in one place means a column
+ * rename only has to be handled here.
  */
 /**
  * The author block every listing joins in. Null when the backend could not

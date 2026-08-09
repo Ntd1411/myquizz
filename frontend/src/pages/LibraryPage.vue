@@ -9,8 +9,7 @@ import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useM
 /**
  * "My library" reads GET /quizzes/me, the only listing that returns the signed-in
  * user's private quizzes and quizzes without questions. The public profile listing
- * would hide exactly those, so mock data and the owner-profile endpoint are both
- * wrong here.
+ * would hide exactly those, so the owner-profile endpoint is the wrong source here.
  *
  * Pagination is keyset based: the first page is loaded automatically, further pages
  * are appended with the cursor the backend returns.

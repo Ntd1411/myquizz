@@ -1,7 +1,6 @@
 import { http } from './http'
 import { unwrap, readPagination, readCached } from './envelope'
 import { toQuizCards, toHomeSection } from './quiz.mapper'
-import { USE_MOCK, mockSearchQuizzes, mockGetQuizById } from './mock.api'
 
 /**
  * Quiz REST layer.
@@ -72,18 +71,6 @@ export async function searchQuizzes({
   limit,
   includeTotal,
 } = {}) {
-  if (USE_MOCK) {
-    return mockSearchQuizzes({
-      keyword,
-      language,
-      category,
-      sort,
-      cursor,
-      limit: limitOf(limit),
-      includeTotal,
-    })
-  }
-
   const res = await http.get('/quizzes/search', {
     params: {
       keyword: textParam(keyword),
@@ -185,8 +172,6 @@ export async function getFeed({ topic, cursor, limit } = {}) {
 }
 
 export async function getQuizById(quizId) {
-  if (USE_MOCK) return mockGetQuizById(quizId)
-
   const res = await http.get(`/quizzes/id/${quizId}`)
   return unwrap(res.data).quiz
 }

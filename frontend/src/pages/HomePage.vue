@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import QuizRail from '@/components/quiz/QuizRail.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
-import { mockCategories, mockModes } from '@/api/mock.api'
+import { CATEGORIES, GAME_MODES } from '@/constants/quizMeta'
 import { revealOnScroll } from '@/composables/useMotion'
 
 // The page opens directly on Trending. There is no hero band on purpose.
@@ -11,10 +11,8 @@ import { revealOnScroll } from '@/composables/useMotion'
 // Server-driven rows from GET /quizzes/home replace this pool in the next PR.
 const POOL_LIMIT = 24
 
-// Category swatches and mode blurbs live in src/mocks/mock.json for now.
+// Category swatches and mode blurbs are static UI copy (src/constants/quizMeta.js).
 // Decoration only: a swatch never paints a CTA or a structural fill.
-const CATEGORIES = mockCategories
-const GAME_MODES = mockModes
 
 const pageEl = ref(null)
 const staticEl = ref(null)

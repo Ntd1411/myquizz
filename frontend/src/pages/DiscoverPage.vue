@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import { searchQuizzes } from '@/api/quizzes.api'
-import { mockCategories } from '@/api/mock.api'
+import { CATEGORIES } from '@/constants/quizMeta'
 import { useCursorList } from '@/composables/useCursorList'
 import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
@@ -36,8 +36,7 @@ const keyword = ref(route.query.keyword ?? '')
 const category = ref(route.query.category ?? '')
 const sort = ref(SORTS.some((item) => item.value === route.query.sort) ? route.query.sort : '')
 
-// Same category list and sticker swatches as the home rails.
-const CATEGORIES = mockCategories
+// Category chips use the same static list and swatches as the home rails.
 
 const pageEl = ref(null)
 const gridEl = ref(null)
