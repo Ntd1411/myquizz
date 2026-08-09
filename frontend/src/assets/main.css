@@ -113,21 +113,6 @@
   }
 }
 
-/* Scroll progress bar rendered at the very top of the viewport. */
-#scroll-progress {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 2px;
-  width: 100%;
-  transform: scaleX(0);
-  transform-origin: left center;
-  background: var(--primary);
-  z-index: 60;
-  pointer-events: none;
-  will-change: transform;
-}
-
 /* Lenis recommended CSS (vertical page smoothing only). */
 html.lenis,
 html.lenis body {

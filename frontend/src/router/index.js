@@ -86,9 +86,24 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  /**
+   * Lenis owns the scroll position: it keeps driving the window from its own RAF
+   * loop, so the offset the router returns here is overwritten on the next frame and
+   * the new page opens exactly where the previous one was left. Scrolling through
+   * Lenis with `immediate` jumps without easing and keeps its internal position in
+   * sync, then `false` tells the router not to scroll again on its own.
+   */
   scrollBehavior(to, from, savedPosition) {
-    if (savedPosition) return savedPosition
-    return { top: 0 }
+    const top = savedPosition ? savedPosition.top : 0
+    const lenis = window.__lenis
+
+    if (lenis) {
+      lenis.scrollTo(top, { immediate: true, force: true })
+      return false
+    }
+
+    // Reduced motion: Lenis is never started, so native scrolling applies.
+    return { top }
   },
 })
 
