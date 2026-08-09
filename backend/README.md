@@ -1,3 +1,42 @@
+# MyQuizz Backend — API contract
+
+> Single source of truth for (re)building the frontend. Every shape below was verified against the
+> implementation in `backend/src`; where the in-code Swagger comments disagree with the code, this
+> document follows the code.
+
+## 0. Repo layout & local run
+
+```
+backend/
+  src/
+    app.ts                        # Express 5 + Socket.IO bootstrap, Swagger UI at /api-docs
+    infrastructure/
+      cache/                      # redis.client.ts, cache.helper.ts (get-or-set + TTL)
+      config/                     # envconfig.ts (Zod env validation), google.config.ts, storage.ts
+      database/                   # connection.ts, migrate.ts, schema/, migrations/, seed.demo.ts
+      jobs/                       # scoring.job.ts + scoring.cli.ts (hot_score time decay)
+      mail/                       # mail.service.ts (OTP / reset emails)
+    modules/
+      auth/ user/ storage/        # route -> controller -> service -> repository
+      quiz/                       # quiz CRUD + home.* + feed.* + listing.* (cursor pagination)
+      game/                       # REST + socket gameplay, engine/ (modes, scoring, config rules)
+    shared/                       # AppError, error handler, optional auth, rate limits, response, validators
+    swagger/                      # swagger.config.ts, schemas.ts, export.ts
+  tests/                          # api/ + unit/ scripts, Postman collection, manual HTML clients
+```
+
+**Scripts** (`pnpm <script>` inside `backend/`)
+
+| Script | What it does |
+| --- | --- |
+| `dev` | `tsx watch src/app.ts` |
+| `build` / `start` | `tsc` + copy SQL files / run `dist/app.js` |
+| `lint`, `lint:fix` | ESLint (no semicolons, single quotes, 2-space indent) |
+| `db:migrate` | Apply `schema/` then `migrations/` in order |
+| `db:seed`, `db:seed:demo` | Base seed / rich demo data for local development |
+| `db:score` | Run the ranking job once (recomputes `hot_score`) |
+| `db:migrate:prod`, `db:score:prod` | Same, from the compiled `dist/` output |
+
 ## 1. Overview & tech stack
 
 MyQuizz is a real-time quiz app (Kahoot-style) with two communication channels:
@@ -47,6 +86,8 @@ Every REST response (success or error) is wrapped in a single, consistent shape:
 
 - The real payload is **always under `data`**. Branch on `success` / `error`.
 - Paginated endpoints put the items under `data.<collection>` and the page info under **`meta.pagination`**.
+- **All quiz listing endpoints are cursor (keyset) paginated** — there is no `page` parameter any more. See 3.3.
+- Cached endpoints (`/quizzes/home`, `/quizzes/feed`) also expose `meta.cached: boolean`.
 - All "Success `data`" columns below describe the content of `data`.
 
 ### 2.3 Cookie authentication (IMPORTANT)
@@ -120,11 +161,93 @@ There is a global limiter plus dedicated ones for auth (`authRateLimiter`), pass
 | Method | Endpoint | Auth | Notes | Success `data` |
 | --- | --- | --- | --- | --- |
 | POST | `/quizzes` | cookie | Create quiz + questions | `{ quiz }` (201) |
-| GET | `/quizzes/search` | optional | Query: `keyword?, language?, category?, page=1, limit=10(max 20)` | `{ quizzes: Quiz[] }`  • `meta.pagination` |
-| GET | `/quizzes/users/id/:ownerId` | optional | Query: `page, limit` | `{ quizzes: Quiz[] }`  • `meta.pagination` |
+| GET | `/quizzes/home` | optional | Home rows (cached). Anonymous callers get no `continue` row | `{ sections: HomeSection[] }`  • `meta.cached` |
+| GET | `/quizzes/feed` | optional | Infinite discovery feed ranked by `hot_score`. Query: `topic?, cursor?, limit=12(max 24)` | `{ quizzes: QuizCard[] }`  • `meta.cached`, `meta.pagination` |
+| GET | `/quizzes/search` | optional | Cursor search over the catalogue (see below) | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
+| GET | `/quizzes/me` | cookie | The caller's own library, private + empty quizzes included | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
+| GET | `/quizzes/users/id/:ownerId` | none | Public profile: same rows for everyone, owner included | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
 | GET | `/quizzes/id/:quizId` | optional | Detail + questions | `{ quiz }` |
 | PATCH | `/quizzes/id/:quizId` | cookie | Partial; sending `questions` replaces the whole list | `{ quiz }` |
 | DELETE | `/quizzes/id/:quizId` | cookie | Soft delete | `{ quiz }` |
+
+#### Listing endpoints (search / me / public profile)
+
+All three return the same row shape and the same paging block, so one client handler can serve them.
+
+**`QuizSummary`** (never includes questions)
+
+```tsx
+{
+  id: number
+  quiz_owner: number
+  quiz_name: string
+  quiz_description: string | null
+  quiz_image: string | null
+  quiz_category: string | null
+  quiz_language: string
+  is_public: boolean
+  question_count: number
+  play_count: number
+  completion_rate: number // 0..1
+  created_at: string
+  updated_at: string
+}
+```
+
+**`QuizCard`** (home + feed) is the same minus `is_public` and `updated_at`.
+
+**Query parameters**
+
+| Endpoint | Parameters |
+| --- | --- |
+| `GET /quizzes/search` | `keyword?(<=200)`, `language?`, `category?`, `created_from?`/`created_to?` (`YYYY-MM-DD`, inclusive, widened to full day), `min_questions?`, `min_plays?`, `owner_id?`, `mine?('true'\|'false', default false)`, `sort?`, `cursor?`, `limit=12(1..24)`, `include_total?('true'\|'false')` |
+| `GET /quizzes/me` | `visibility('all'\|'public'\|'private', default all)`, `keyword?`, `sort('recently_updated'\|'newest'\|'oldest'\|'name_asc', default recently_updated)`, `cursor?`, `limit`, `include_total?` |
+| `GET /quizzes/users/id/:ownerId` | `sort('newest'\|'oldest'\|'most_played'\|'name_asc', default newest)`, `cursor?`, `limit`, `include_total?` |
+| `GET /quizzes/feed` | `topic?(<=50)`, `cursor?`, `limit=12(1..24)` |
+
+- `search` sorts: `relevance`, `newest`, `oldest`, `name_asc`, `name_desc`, `most_played`, `trending`.
+  There is **no default**: `relevance` is used when `keyword` is present, `newest` otherwise
+  (`relevance` without a keyword falls back to `newest`).
+- Booleans must be the literal strings `'true'` / `'false'`; `1` or `yes` is a `400`.
+- `mine=true` while anonymous is a `400`.
+
+**Visibility rules (enforced inside the SQL, not post-filtered)**
+
+| Endpoint | What the caller sees |
+| --- | --- |
+| `/quizzes/search` | Public, not deleted, at least one question — plus the signed-in caller's own private and still empty quizzes |
+| `/quizzes/me` | Everything the caller owns, including private and empty quizzes |
+| `/quizzes/users/id/:ownerId` | Only public, non-deleted, non-empty quizzes — **even for the owner**; unknown or deactivated owner is `404`, an owner with nothing public is `200` with `quizzes: []` |
+| `/quizzes/feed`, `/quizzes/home` | Public, not deleted, at least one question |
+
+**Cursor rules (important for the frontend)**
+
+- Copy `meta.pagination.nextCursor` verbatim into the next request's `cursor`. `null` means the last page.
+- A listing cursor is **bound to its `sort` and to the whole filter set**. Changing `keyword`, `language`,
+  `category`, a date bound, `min_questions`, `min_plays`, `owner_id`, `mine`, `visibility` or `sort`
+  invalidates it → `400 Invalid cursor`. Reset to the first page whenever a filter changes.
+- `limit` is **not** part of that binding and may change between pages.
+- `include_total=true` adds `meta.pagination.total` at the cost of an extra `COUNT`; request it on the
+  first page only.
+- The feed uses its own cursor format (`hot_score|id`) with the parameter name `cursor` as well;
+  a malformed one is `400 Invalid feed cursor`.
+
+**`HomeSection`** (`GET /quizzes/home`)
+
+```tsx
+{
+  section_key: string  // e.g. 'continue', 'featured'
+  title: string        // display title, server-provided
+  section_type: 'featured' | 'continue' | 'trending' | 'newest' | 'category'
+  items: QuizCard[]
+}
+```
+
+- Rows are configured in the `home_sections` table (`position`, `item_limit`, `is_active`), so the
+  frontend renders whatever comes back and never hardcodes rows.
+- Empty sections are omitted; `continue` only appears for a signed-in user.
+- `trending` / feed ranking comes from `hot_score`, recomputed by the scoring job (`pnpm db:score`)
+  with a time-decay formula, not at request time.
 
 **Create-quiz schema (`createQuizSchema`)**
 
@@ -171,7 +294,16 @@ There is a global limiter plus dedicated ones for auth (`authRateLimiter`), pass
 > On **create**, `answer_options` is a `string[]`; on **read**, each option is `{ id, option_text }`. `correct_answer` is an index array (multiple_choice = 1 index, multiple_select = several) or a string for text questions.
 > 
 
-**Pagination object (`meta.pagination`):** `{ page, limit, total, totalPages, hasPreviousPage, hasNextPage }`.
+**Pagination object (`meta.pagination`)** — cursor based for every listing endpoint:
+
+```tsx
+{
+  limit: number
+  nextCursor: string | null // null on the last page
+  hasMore: boolean
+  total?: number            // only with include_total=true (not available on /quizzes/feed)
+}
+```
 
 ### 3.4 Storage — `/api/v1/storage`
 
