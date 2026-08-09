@@ -138,6 +138,14 @@
  *         questions:
  *           type: array
  *           items: { $ref: '#/components/schemas/Question' }
+ *     QuizOwner:
+ *       type: object
+ *       nullable: true
+ *       description: Public identity of the quiz author, joined into every card and summary. Null when the author was deleted.
+ *       properties:
+ *         id: { type: integer, example: 3 }
+ *         fullname: { type: string, example: Nguyen Van A }
+ *         avatar: { type: string, nullable: true }
  *     QuizCard:
  *       type: object
  *       description: Compact quiz shape used by home sections and feed cards.
@@ -149,6 +157,7 @@
  *         quiz_category: { type: string, nullable: true }
  *         quiz_language: { type: string }
  *         quiz_owner: { type: integer }
+ *         owner: { $ref: '#/components/schemas/QuizOwner' }
  *         question_count: { type: integer, example: 8 }
  *         play_count: { type: integer, example: 120 }
  *         completion_rate: { type: number, format: float, minimum: 0, maximum: 1, example: 0.66 }

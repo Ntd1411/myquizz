@@ -1,45 +1,50 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
-import { getQuizzesByOwner } from '@/api/quizzes.api'
-import { toErrorMessage } from '@/api/envelope'
+import { getMyQuizzes } from '@/api/quizzes.api'
+import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
 import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
 /**
- * "My library" always talks to the real backend (GET /quizzes/users/id/:ownerId).
- * Mock data is only used for the public browse pages; here it would hide the
- * quizzes the account actually owns.
+ * "My library" reads GET /quizzes/me, the only listing that returns the signed-in
+ * user's private quizzes and quizzes without questions. The public profile listing
+ * would hide exactly those, so the owner-profile endpoint is the wrong source here.
+ *
+ * Pagination is keyset based: the first page is loaded automatically, further pages
+ * are appended with the cursor the backend returns.
  */
 const auth = useAuthStore()
+
+const PAGE_SIZE = 24
 
 const pageEl = ref(null)
 const gridEl = ref(null)
 let gridReveal = null
 
-const query = useQuery({
-  queryKey: computed(() => ['quizzes', 'owner', auth.user?.id]),
-  queryFn: () => getQuizzesByOwner(auth.user.id, { page: 1, limit: 20 }),
-  enabled: computed(() => Boolean(auth.user?.id)),
-})
-
-const quizzes = computed(() => query.data.value?.quizzes ?? [])
-const total = computed(() => query.data.value?.pagination?.total ?? quizzes.value.length)
-const errorMessage = computed(() =>
-  query.isError.value ? toErrorMessage(query.error.value, 'Could not load your quizzes.') : '',
+const list = useCursorList(
+  (params) => getMyQuizzes(params),
+  () => ({ sort: 'recently_updated', limit: PAGE_SIZE }),
+  {
+    enabled: () => Boolean(auth.user?.id),
+    includeTotal: true,
+    errorFallback: 'Could not load your quizzes.',
+  },
 )
+
+const quizzes = list.items
+const total = computed(() => list.total.value ?? quizzes.value.length)
 
 onMounted(() => revealOnEnter(pageEl.value))
 
-// Cards only exist once the query resolves, so the scroll reveal is built afterwards
-// and rebuilt if the list is refetched.
-watch(quizzes, async (list) => {
+// Cards only exist once the first page resolves, so the scroll reveal is built
+// afterwards and rebuilt whenever the list changes.
+watch(quizzes, async (rows) => {
   if (gridReveal) {
     gridReveal.forEach((trigger) => trigger.kill())
     gridReveal = null
   }
-  if (!list.length) return
+  if (!rows.length) return
 
   await nextTick()
   gridReveal = revealOnScroll(gridEl.value, '[data-reveal]', { y: 20, stagger: 0.04 })
@@ -67,7 +72,7 @@ watch(quizzes, async (list) => {
     </div>
 
     <div
-      v-if="query.isLoading.value"
+      v-if="list.loading.value"
       class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
       data-enter
     >
@@ -78,11 +83,11 @@ watch(quizzes, async (list) => {
       />
     </div>
 
-    <div v-else-if="errorMessage" class="card-surface mt-lg p-lg" data-enter>
+    <div v-else-if="list.errorMessage.value" class="card-surface mt-lg p-lg" data-enter>
       <p class="text-body-sm text-ink">
-        {{ errorMessage }}
+        {{ list.errorMessage.value }}
       </p>
-      <button class="btn-utility mt-md" type="button" @click="query.refetch()">
+      <button class="btn-utility mt-md" type="button" @click="list.loadFirst()">
         Try again
       </button>
     </div>
@@ -99,8 +104,21 @@ watch(quizzes, async (list) => {
       </RouterLink>
     </div>
 
-    <div v-else ref="gridEl" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-      <QuizCard v-for="quiz in quizzes" :key="quiz.id" :quiz="quiz" data-reveal />
-    </div>
+    <template v-else>
+      <div ref="gridEl" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+        <QuizCard v-for="quiz in quizzes" :key="quiz.id" :quiz="quiz" data-reveal />
+      </div>
+
+      <div v-if="list.hasMore.value" class="mt-lg flex justify-center">
+        <button
+          class="btn-utility"
+          type="button"
+          :disabled="list.loadingMore.value"
+          @click="list.loadMore()"
+        >
+          {{ list.loadingMore.value ? 'Loading…' : 'Load more' }}
+        </button>
+      </div>
+    </template>
   </div>
 </template>

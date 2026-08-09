@@ -24,19 +24,31 @@ export function unwrap(envelope) {
 }
 
 /**
- * Reads the pagination block that paginated endpoints put under meta.pagination.
+ * Reads the cursor pagination block every listing endpoint puts under
+ * meta.pagination: { limit, nextCursor, hasMore, total? }.
+ *
+ * `total` only exists when the request asked for it with include_total=true, so it
+ * stays undefined instead of being faked as 0.
  * Returns a safe default so callers never have to null-check.
  */
 export function readPagination(envelope) {
-  if (envelope && envelope.meta && envelope.meta.pagination) return envelope.meta.pagination
+  const pagination = envelope && envelope.meta ? envelope.meta.pagination : null
+  if (!pagination) return { limit: 0, nextCursor: null, hasMore: false }
+
   return {
-    page: 1,
-    limit: 0,
-    total: 0,
-    totalPages: 0,
-    hasPreviousPage: false,
-    hasNextPage: false,
+    limit: pagination.limit ?? 0,
+    nextCursor: pagination.nextCursor ?? null,
+    hasMore: Boolean(pagination.hasMore),
+    total: pagination.total,
   }
+}
+
+/**
+ * Cached endpoints (/quizzes/home, /quizzes/feed) report whether the payload came
+ * from Redis through meta.cached.
+ */
+export function readCached(envelope) {
+  return Boolean(envelope && envelope.meta && envelope.meta.cached)
 }
 
 /**

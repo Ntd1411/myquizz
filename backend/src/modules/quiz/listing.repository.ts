@@ -24,7 +24,20 @@ const MAX_ITEMS_PER_QUERY = 50
  */
 const SUMMARY_COLUMNS = `q.id, q.quiz_owner, q.quiz_name, q.quiz_description,
   q.quiz_image, q.quiz_category, q.quiz_language, q.is_public,
-  q.question_count, q.play_count, q.completion_rate, q.created_at, q.updated_at`
+  q.question_count, q.play_count, q.completion_rate, q.created_at, q.updated_at,
+  u.id as owner_id, u.fullname as owner_fullname, u.avatar as owner_avatar`
+
+/**
+ * Author join behind every summary's `owner`.
+ *
+ * LEFT so a soft-deleted author never drops the quiz out of a listing; the row
+ * then carries owner: null. Only the data query joins users — the count query
+ * must not, because a primary-key join adds cost without changing the count, and
+ * no WHERE condition references u.
+ */
+const OWNER_JOIN = `left join users u
+    on u.id = q.quiz_owner
+    and u.deleted_at is null`
 
 /**
  * Search visibility: public quizzes with at least one question, plus everything
@@ -233,6 +246,7 @@ async function runListingQuery(input: {
   const result = await pool.query<ListingRow>(
     `select ${SUMMARY_COLUMNS}, ${input.plan.cursorSelect} as cursor_primary
     from quizzes q
+    ${OWNER_JOIN}
     where ${conditions.join('\n  and ')}
     order by ${input.plan.orderExpr} ${input.plan.direction}, q.id ${input.plan.direction}
     limit ${limitP}`,
