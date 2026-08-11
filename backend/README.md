@@ -1,672 +1,413 @@
-# MyQuizz Backend — API contract
+# MyQuizz — Backend
 
-> Single source of truth for (re)building the frontend. Every shape below was verified against the
-> implementation in `backend/src`; where the in-code Swagger comments disagree with the code, this
-> document follows the code.
+[![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-4-010101?logo=socket.io&logoColor=white)](https://socket.io)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-6BA539?logo=openapiinitiative&logoColor=white)](https://api.myquizz.dpdns.org/v1/docs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 
-## 0. Repo layout & local run
+Real-time quiz backend: accounts, quiz authoring, discovery feeds, live game sessions and image uploads.
 
+Node.js + TypeScript (ESM), Express 5 for the REST API, Socket.IO for the gameplay, PostgreSQL as the source of truth and Redis as the hot layer for running matches.
+
+Live at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org), with the interactive reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs). The client it serves is [myquizz.dpdns.org](https://myquizz.dpdns.org).
+
+> Part of the [MyQuizz](../README.md) monorepo. The client lives in [`frontend/`](../frontend/README.md). To run the whole stack with Docker in one command, see the [root README](../README.md#quick-start-with-docker).
+
+---
+
+## Table of contents
+
+- [Stack](#stack)
+- [Getting started](#getting-started)
+- [Environment](#environment)
+- [Scripts](#scripts)
+- [Project structure](#project-structure)
+- [REST API](#rest-api)
+- [Authentication](#authentication)
+- [Errors and status codes](#errors-and-status-codes)
+- [Realtime API](#realtime-api)
+- [Game engine](#game-engine)
+- [Database](#database)
+- [Data and caching](#data-and-caching)
+- [Ranking](#ranking)
+- [Rate limiting and security](#rate-limiting-and-security)
+- [Conventions](#conventions)
+
+---
+
+## Stack
+
+| Concern | Choice |
+| --- | --- |
+| Runtime | Node.js, TypeScript in ESM (`"type": "module"`) |
+| HTTP | Express 5 |
+| Realtime | Socket.IO 4, namespace `/game` |
+| Database | PostgreSQL via `pg` |
+| Cache / live state | Redis via `ioredis` |
+| Validation | Zod |
+| Auth | JWT in HttpOnly cookies, bcrypt, Google OAuth 2.0 + One Tap |
+| Storage | S3-compatible object storage (DigitalOcean Spaces) with presigned uploads |
+| Mail | Nodemailer (SMTP) |
+| API reference | OpenAPI 3.0.3 rendered by Scalar |
+
+## Getting started
+
+Requires Node.js 20+, a PostgreSQL instance and a Redis instance.
+
+```bash
+cd backend
+pnpm install            # or npm install
+cp .env.example .env    # then fill in the values
+pnpm dev
 ```
-backend/
-  src/
-    app.ts                        # Express 5 + Socket.IO bootstrap, Swagger UI at /api-docs
-    infrastructure/
-      cache/                      # redis.client.ts, cache.helper.ts (get-or-set + TTL)
-      config/                     # envconfig.ts (Zod env validation), google.config.ts, storage.ts
-      database/                   # connection.ts, migrate.ts, schema/, migrations/, seed.demo.ts
-      jobs/                       # scoring.job.ts + scoring.cli.ts (hot_score time decay)
-      mail/                       # mail.service.ts (OTP / reset emails)
-    modules/
-      auth/ user/ storage/        # route -> controller -> service -> repository
-      quiz/                       # quiz CRUD + home.* + feed.* + listing.* (cursor pagination)
-      game/                       # REST + socket gameplay, engine/ (modes, scoring, config rules)
-    shared/                       # AppError, error handler, optional auth, rate limits, response, validators
-    swagger/                      # swagger.config.ts, schemas.ts, export.ts
-  tests/                          # api/ + unit/ scripts, Postman collection, manual HTML clients
-```
 
-**Scripts** (`pnpm <script>` inside `backend/`)
+The server starts on `PORT` (3000 by default) and prints `App listening on port 3000`.
+
+- API root: `http://localhost:3000/v1`
+- API reference: `http://localhost:3000/v1/docs`
+- Health check: `http://localhost:3000/health` → `{ "db": true, "redis": true }`, answers 503 when Postgres is unreachable
+
+Migrations run automatically at boot, so a fresh database is usable straight away. Redis is treated as a cache, not a hard dependency: if it is unreachable the server logs the failure and keeps booting, but live matches need it.
+
+## Environment
+
+Every variable from `.env.example`, grouped by concern.
+
+| Group | Variables |
+| --- | --- |
+| Database | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_POOL_MAX`, `DB_IDLE_TIMEOUT`, `DB_CONNECTION_TIMEOUT` |
+| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` |
+| Auth | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` |
+| Socket auth | `SOCKET_JWT_SECRET`, `SOCKET_TOKEN_TTL` |
+| Server / CORS | `PORT`, `NODE_ENV`, `FRONTEND_URL`, `ALLOW_ORIGIN` (comma separated) |
+| API reference | `API_PUBLIC_URL` — optional, public origin of this API including the `/v1` prefix. When set it is listed first as the production server in `/v1/docs`; left empty the reference only offers `localhost`. |
+| Object storage | `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`, `SPACES_ENDPOINT`, `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_PUBLIC_URL` |
+| Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` |
+| Google OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` |
+| Jobs | `SCORING_INTERVAL_MINUTES` (0 disables the scoring job) |
+
+The access and refresh tokens use separate secrets, and the socket token uses a third one: a leaked socket token must never be usable against the REST API.
+
+## Scripts
 
 | Script | What it does |
 | --- | --- |
 | `dev` | `tsx watch src/app.ts` |
-| `build` / `start` | `tsc` + copy SQL files / run `dist/app.js` |
-| `lint`, `lint:fix` | ESLint (no semicolons, single quotes, 2-space indent) |
-| `db:migrate` | Apply `schema/` then `migrations/` in order |
-| `db:seed`, `db:seed:demo` | Base seed / rich demo data for local development |
-| `db:score` | Run the ranking job once (recomputes `hot_score`) |
-| `db:migrate:prod`, `db:score:prod` | Same, from the compiled `dist/` output |
+| `build` | `tsc` then copies the `.sql` files into `dist/` |
+| `start` | Runs the compiled `dist/app.js` |
+| `lint` / `lint:fix` | ESLint over the whole package |
+| `docs:export` | Writes the OpenAPI document to `docs/openapi.json` |
+| `db:migrate` | Applies `schema/` then `migrations/` |
+| `db:seed` | Seeds the base data |
+| `db:seed:demo` | Seeds a demo dataset (users, quizzes, questions) |
+| `db:score` | Recomputes the quiz ranking scores once |
+| `db:migrate:prod`, `db:score:prod` | Same, against the compiled build |
 
-## 1. Overview & tech stack
+## Project structure
 
-MyQuizz is a real-time quiz app (Kahoot-style) with two communication channels:
+```
+src/
+  app.ts                 Boot: engine, migrations, Redis, Express, Socket.IO, jobs
+  docs/                  OpenAPI document and the Scalar reference (see below)
+  infrastructure/
+    cache/               Redis client and cache helpers
+    config/              Env parsing, Google OAuth, object storage
+    database/            Pool, migration runner, schema/, migrations/, seeds
+    jobs/                Quiz scoring job and its CLI
+    mail/                SMTP transport
+  modules/
+    auth/                Sessions, cookies, token rotation, Google sign-in
+    user/                Profile, password flows, avatar
+    quiz/                Authoring, listings, home sections, discovery feed
+    game/                Sessions, config, realtime gameplay, engine/
+    storage/             Presigned upload URLs
+  shared/
+    errors/              AppError
+    middlewares/         Error handler, optional auth, rate limits
+    utils/               Response envelope, cookies
+    validators/          Zod request validation
+```
 
-- **REST API** (`/api/v1`): auth, user management, quiz management, game-room creation/management, image upload.
-- **Socket.IO** (namespace `/game`): the whole real-time gameplay (lobby, countdown, Q&A, leaderboard, results).
+Each module follows the same chain: **route → controller → service → repository**. Routes only wire middleware, controllers only read the request and shape the response, services hold the rules, repositories own the SQL.
 
-**Backend stack**
+## REST API
 
-- Node.js + TypeScript, **Express 5**
-- **Socket.IO 4** (namespace `/game`)
-- **PostgreSQL** — durable data
-- **Redis** — real-time game state (session, players, clock, leaderboard, answer stats); required, the server pings Redis on boot
-- **S3-compatible object storage** (DigitalOcean Spaces) for images, uploaded directly from the client via presigned URLs
-- **Google OAuth 2.0** + Google One Tap
-- Auth via **JWT stored in HttpOnly cookies** (not Bearer headers)
-- Swagger UI at `/api-docs`
+Everything is mounted under `/v1` and rate limited. Full, always-up-to-date reference at **`/v1/docs`**, raw document at `/v1/docs/openapi.json`.
 
-## 2. Conventions (read before touching the frontend)
+### Response envelope
 
-### 2.1 Base URL & versioning
-
-- Every REST endpoint is prefixed with `/api/v1`.
-- Socket.IO connects to the `/game` namespace.
-
-### 2.2 Response envelope
-
-Every REST response (success or error) is wrapped in a single, consistent shape:
+Every response, success or failure, has the same shape:
 
 ```json
-// success(res, data, status = 200, meta = {})
 {
   "success": true,
-  "data": { /* real payload */ },
+  "data": { },
   "error": null,
-  "meta": { "timestamp": "2026-07-31T00:00:00.000Z" }
-}
-
-// fail(res, message, details, status = 400)
-{
-  "success": false,
-  "data": null,
-  "error": { "message": "...", "details": null },
-  "meta": { "timestamp": "..." }
+  "meta": { "timestamp": "2026-08-12T03:00:00.000Z" }
 }
 ```
 
-- The real payload is **always under `data`**. Branch on `success` / `error`.
-- Paginated endpoints put the items under `data.<collection>` and the page info under **`meta.pagination`**.
-- **All quiz listing endpoints are cursor (keyset) paginated** — there is no `page` parameter any more. See 3.3.
-- Cached endpoints (`/quizzes/home`, `/quizzes/feed`) also expose `meta.cached: boolean`.
-- All "Success `data`" columns below describe the content of `data`.
+On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }`. Paginated endpoints add `meta.pagination`, cached ones add `meta.cached`.
 
-### 2.3 Cookie authentication (IMPORTANT)
+### Endpoint groups
 
-The backend does **not** return tokens in the body for `localStorage`. Instead it sets two HttpOnly cookies:
-
-- `accessToken` — lifetime `JWT_EXPIRES_IN`
-- `refreshToken` — lifetime `JWT_REFRESH_EXPIRES_IN`
-
-Cookie attributes:
-
-- `httpOnly: true` → JS **cannot read** the token (so you cannot attach an Authorization header yourself).
-- Production: `secure: true`, `sameSite: 'none'` → the frontend **must run on HTTPS** and calls are cross-site.
-- Dev: `secure: false`, `sameSite: 'lax'`.
-
-**Consequences for the frontend**
-
-- Every request (REST and Socket.IO) must send cookies:
-    - `fetch(url, { credentials: 'include' })`
-    - `axios.create({ withCredentials: true })`
-    - `io('/game', { withCredentials: true })`
-- CORS reads allowed origins from `FRONTEND_URL` + `ALLOW_ORIGIN` (comma-separated) with `credentials: true`. Your frontend origin must be in that list.
-- When `accessToken` expires → call `POST /auth/refresh` (the cookie is sent automatically) to rotate tokens, then retry. Add an interceptor that auto-refreshes on `401`.
-
-### 2.4 Rate limiting
-
-There is a global limiter plus dedicated ones for auth (`authRateLimiter`), password reset (`resetPasswordRateLimiter`) and upload (`uploadRateLimiter`). Handle `429`.
-
-## 3. REST API
-
-### 3.1 Auth — `/api/v1/auth`
-
-| Method | Endpoint | Auth | Request body | Success `data` |
-| --- | --- | --- | --- | --- |
-| POST | `/auth/register` | none | `{ email, password(min 8), fullname(2-100), phone? }` | `{ user }` (201) + sets cookies |
-| POST | `/auth/login` | none | `{ email, password }` | `{ user }`  • sets cookies |
-| POST | `/auth/refresh` | cookie `refreshToken` | — | `{ accessToken, refreshToken }`  • rotates cookies |
-| POST | `/auth/logout` | cookie | — | `{ message }`  • clears cookies |
-| GET | `/auth/google` | none | — | 302 redirect to Google |
-| GET | `/auth/google/callback` | none | query `code`, `state` | 302 redirect to `FRONTEND_URL/auth/callback` (error: `?error=...`) |
-| POST | `/auth/google/one-tap` | none | `{ credential }` (Google ID token) | `{ user }`  • sets cookies |
-
-**`user` object:** `{ id, fullname, email, phone, role, avatar, description, created_at, updated_at }` (never returns `password`).
-
-> Google redirect flow: send the browser to `/api/v1/auth/google`, then handle a `/auth/callback` route in the frontend (cookies are already set — just call `/users/me`, or read `?error=`).
-> 
-
-### 3.2 Users — `/api/v1/users`
-
-| Method | Endpoint | Auth | Request body | Success `data` |
-| --- | --- | --- | --- | --- |
-| GET | `/users/me` | cookie | — | `{ user }` |
-| PATCH | `/users/me` | cookie | `{ fullname?, email?, phone?, description?(<=200) }` | `{ user }` |
-| DELETE | `/users/me` | cookie | `{ password }` | `{ message }` (soft delete) |
-| GET | `/users/:userId` | none | — | `{ user }` public (`id, fullname, email, avatar, description`); 404 / 410 if deactivated |
-| PATCH | `/users/me/password` | cookie | `{ oldPassword, newPassword }` (min 8) | `{ message }` |
-| PATCH | `/users/me/avatar` | cookie | `{ fileUrl }` (JSON, see note) | `{ avatarUrl }` |
-| POST | `/users/forgot-password` | none | `{ email }` | `{ resetTime }` (OTP emailed) |
-| POST | `/users/reset-password` | none | `{ email, otp(6 chars), newPassword }` | `{ message }` |
-| POST | `/users/reset-password-token` | none | `{ token, newPassword }` | `{ message }` |
-
-<aside>
-⚠️
-
-**Avatar is NOT a multipart upload.** `PATCH /users/me/avatar` takes a JSON body `{ fileUrl }` and returns `{ avatarUrl }`. First upload the image via `/storage/presign` (folder `avatars`) + a `PUT` to the presigned URL, then send the resulting `publicUrl` here as `fileUrl`. (The old Swagger showed a `multipart` field `avatar` returning `{ message, fileUrl }` — that is wrong.)
-
-</aside>
-
-### 3.3 Quizzes — `/api/v1/quizzes`
-
-| Method | Endpoint | Auth | Notes | Success `data` |
-| --- | --- | --- | --- | --- |
-| POST | `/quizzes` | cookie | Create quiz + questions | `{ quiz }` (201) |
-| GET | `/quizzes/home` | optional | Home rows (cached). Anonymous callers get no `continue` row | `{ sections: HomeSection[] }`  • `meta.cached` |
-| GET | `/quizzes/feed` | optional | Infinite discovery feed ranked by `hot_score`. Query: `topic?, cursor?, limit=12(max 24)` | `{ quizzes: QuizCard[] }`  • `meta.cached`, `meta.pagination` |
-| GET | `/quizzes/search` | optional | Cursor search over the catalogue (see below) | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
-| GET | `/quizzes/me` | cookie | The caller's own library, private + empty quizzes included | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
-| GET | `/quizzes/users/id/:ownerId` | none | Public profile: same rows for everyone, owner included | `{ quizzes: QuizSummary[] }`  • `meta.pagination` |
-| GET | `/quizzes/id/:quizId` | optional | Detail + questions | `{ quiz }` |
-| PATCH | `/quizzes/id/:quizId` | cookie | Partial; sending `questions` replaces the whole list | `{ quiz }` |
-| DELETE | `/quizzes/id/:quizId` | cookie | Soft delete | `{ quiz }` |
-
-#### Listing endpoints (search / me / public profile)
-
-All three return the same row shape and the same paging block, so one client handler can serve them.
-
-**`QuizSummary`** (never includes questions)
-
-```tsx
-{
-  id: number
-  quiz_owner: number                 // author id, kept for links and ownership checks
-  owner: {                           // joined author identity, null if the account was deleted
-    id: number
-    fullname: string
-    avatar: string | null
-  } | null
-  quiz_name: string
-  quiz_description: string | null
-  quiz_image: string | null
-  quiz_category: string | null
-  quiz_language: string
-  is_public: boolean
-  question_count: number
-  play_count: number
-  completion_rate: number // 0..1
-  created_at: string
-  updated_at: string
-}
-```
-
-**`QuizCard`** (home + feed) is the same minus `is_public` and `updated_at`, `owner` included.
-
-- `owner` is a `LEFT JOIN` on `users`, so a soft-deleted author never removes the quiz from a
-  listing — the row just carries `owner: null`. Render a neutral author label in that case.
-- Only `id`, `fullname` and `avatar` are exposed; email, phone and role stay private.
-
-**Query parameters**
-
-| Endpoint | Parameters |
-| --- | --- |
-| `GET /quizzes/search` | `keyword?(<=200)`, `language?`, `category?`, `created_from?`/`created_to?` (`YYYY-MM-DD`, inclusive, widened to full day), `min_questions?`, `min_plays?`, `owner_id?`, `mine?('true'\|'false', default false)`, `sort?`, `cursor?`, `limit=12(1..24)`, `include_total?('true'\|'false')` |
-| `GET /quizzes/me` | `visibility('all'\|'public'\|'private', default all)`, `keyword?`, `sort('recently_updated'\|'newest'\|'oldest'\|'name_asc', default recently_updated)`, `cursor?`, `limit`, `include_total?` |
-| `GET /quizzes/users/id/:ownerId` | `sort('newest'\|'oldest'\|'most_played'\|'name_asc', default newest)`, `cursor?`, `limit`, `include_total?` |
-| `GET /quizzes/feed` | `topic?(<=50)`, `cursor?`, `limit=12(1..24)` |
-
-- `search` sorts: `relevance`, `newest`, `oldest`, `name_asc`, `name_desc`, `most_played`, `trending`.
-  There is **no default**: `relevance` is used when `keyword` is present, `newest` otherwise
-  (`relevance` without a keyword falls back to `newest`).
-- Booleans must be the literal strings `'true'` / `'false'`; `1` or `yes` is a `400`.
-- `mine=true` while anonymous is a `400`.
-
-**Visibility rules (enforced inside the SQL, not post-filtered)**
-
-| Endpoint | What the caller sees |
-| --- | --- |
-| `/quizzes/search` | Public, not deleted, at least one question — plus the signed-in caller's own private and still empty quizzes |
-| `/quizzes/me` | Everything the caller owns, including private and empty quizzes |
-| `/quizzes/users/id/:ownerId` | Only public, non-deleted, non-empty quizzes — **even for the owner**; unknown or deactivated owner is `404`, an owner with nothing public is `200` with `quizzes: []` |
-| `/quizzes/feed`, `/quizzes/home` | Public, not deleted, at least one question |
-
-**Cursor rules (important for the frontend)**
-
-- Copy `meta.pagination.nextCursor` verbatim into the next request's `cursor`. `null` means the last page.
-- A listing cursor is **bound to its `sort` and to the whole filter set**. Changing `keyword`, `language`,
-  `category`, a date bound, `min_questions`, `min_plays`, `owner_id`, `mine`, `visibility` or `sort`
-  invalidates it → `400 Invalid cursor`. Reset to the first page whenever a filter changes.
-- `limit` is **not** part of that binding and may change between pages.
-- `include_total=true` adds `meta.pagination.total` at the cost of an extra `COUNT`; request it on the
-  first page only.
-- The feed uses its own cursor format (`hot_score|id`) with the parameter name `cursor` as well;
-  a malformed one is `400 Invalid feed cursor`.
-
-**`HomeSection`** (`GET /quizzes/home`)
-
-```tsx
-{
-  section_key: string  // e.g. 'continue', 'featured'
-  title: string        // display title, server-provided
-  section_type: 'featured' | 'continue' | 'trending' | 'newest' | 'category'
-  items: QuizCard[]
-}
-```
-
-- Rows are configured in the `home_sections` table (`position`, `item_limit`, `is_active`), so the
-  frontend renders whatever comes back and never hardcodes rows.
-- Empty sections are omitted; `continue` only appears for a signed-in user.
-- `trending` / feed ranking comes from `hot_score`, recomputed by the scoring job (`pnpm db:score`)
-  with a time-decay formula, not at request time.
-
-**Create-quiz schema (`createQuizSchema`)**
-
-```tsx
-{
-  quiz_name: string        // 3-100 chars
-  quiz_description?: string // <= 500
-  quiz_language: string     // required
-  quiz_image?: string       // valid URL
-  quiz_category?: string    // <= 50
-  is_public: boolean
-  questions: CreateQuestion[] // >= 1
-}
-
-// CreateQuestion
-{
-  question_type: 'multiple_choice' | 'multiple_select' | 'short_answer' | 'long_answer'
-  question_text: string     // 1-200 chars
-  time_limit: number         // default 30, >= 0 (0 = no limit)
-  question_image?: string    // valid URL
-  answer_options?: string[]  // 2-4 options, each 1-100 chars (choice questions only)
-  correct_answer: number[] | string // index array (choice) OR string (text answer)
-}
-```
-
-**Question object when reading a quiz (`Question`)**
-
-```tsx
-{
-  id: number
-  quiz_id: number
-  question_type: 'multiple_choice' | 'multiple_select' | 'short_answer' | 'long_answer'
-  question_text: string
-  time_limit: number
-  question_image?: string
-  question_hint?: string
-  explanation?: string
-  answer_options?: { id: number; option_text: string }[] // has ids on read
-  correct_answer: number[] | string
-  created_at: string; updated_at: string; deleted_at: string | null
-}
-```
-
-> On **create**, `answer_options` is a `string[]`; on **read**, each option is `{ id, option_text }`. `correct_answer` is an index array (multiple_choice = 1 index, multiple_select = several) or a string for text questions.
-> 
-
-**Pagination object (`meta.pagination`)** — cursor based for every listing endpoint:
-
-```tsx
-{
-  limit: number
-  nextCursor: string | null // null on the last page
-  hasMore: boolean
-  total?: number            // only with include_total=true (not available on /quizzes/feed)
-}
-```
-
-### 3.4 Storage — `/api/v1/storage`
-
-| Method | Endpoint | Auth | Success `data` |
-| --- | --- | --- | --- |
-| POST | `/storage/presign` | cookie | `{ presignedUrl: { uploadUrl, publicUrl, key } }` |
-
-**Body (`presignUploadSchema`)**
-
-```tsx
-{
-  contentType: 'image/jpeg' | 'image/jpg' | 'image/png' | 'image/gif' | 'image/webp'
-  folder: 'avatars' | 'quizzes' | 'questions' | 'uploads'
-  fileSize: number // 1 .. 2_097_152 (max 2MB)
-}
-```
-
-<aside>
-⚠️
-
-The result is nested under **`data.presignedUrl`** (i.e. `data.presignedUrl.uploadUrl`), not directly on `data`. The object key is `{folder}/{userId}/{uuid}` and `uploadUrl` expires after **5 minutes**.
-
-</aside>
-
-**Image upload flow**
-
-1. `POST /storage/presign` with `contentType`, `folder`, `fileSize`.
-2. `PUT` the raw file to `uploadUrl` with a `Content-Type` matching `contentType`.
-3. Use `publicUrl` as `quiz_image` / `question_image` (or as `fileUrl` for the avatar endpoint).
-
-### 3.5 Games (REST) — `/api/v1/games`
-
-| Method | Endpoint | Auth | Success `data` (see nesting notes) |
-| --- | --- | --- | --- |
-| GET | `/games/game-modes` | — | `{ gameModes: ModeDescriptor[] }` |
-| POST | `/games` | cookie | `{ data: { session }, ignored }` (201) — note the double `data` |
-| GET | `/games/:code` | — | `{ session: { session, players, config } }` (public lobby) |
-| PATCH | `/games/:id/config` | cookie (host) | `{ config, changed, ignored }` (lobby only) |
-| POST | `/games/:id/host-token` | cookie (host) | `{ hostToken: { socketToken } }` |
-| POST | `/games/:code/join` | optional | `{ player, socketToken }` (201) |
-| GET | `/games/:id/leaderboard` | — | `{ leaderboard: LeaderboardEntry[] }` |
-| GET | `/games/:id/results` | — | `{ results: { session, leaderboard, perQuestion } }` |
-
-<aside>
-⚠️
-
-Mind the response nesting: create returns `data.data.session`, lobby returns `data.session.{session,players,config}`, host-token returns `data.hostToken.socketToken`, results returns `data.results.{session,leaderboard,perQuestion}`.
-
-</aside>
-
-**Create a room (`createGameSchema`)**
-
-```tsx
-{
-  quiz_id: number            // required, positive
-  session_name: string       // 2-100 chars
-  mode: 'classic' | 'solo' | 'survival' | 'marathon' | 'practice' // default 'classic'
-  config?: Partial<GameConfig> // patch over the mode default; invalid/locked fields are dropped and reported in `ignored`
-}
-```
-
-> Mode `team` appears in the OpenAPI enum but is **NOT** in `createGameSchema` → the backend does not support it, hide it in the UI.
-> 
-
-**Join a room (`joinGameSchema`)**
-
-```tsx
-{
-  player_name: string        // 1-50 chars
-  player_id?: number          // when logged in
-  player_guest_id?: string    // UUID, required for guests
-}
-```
-
-- With a valid auth cookie → the server uses the user's `fullname` + `id` and ignores the body.
-- As a guest → send `player_name` + `player_guest_id` (a client-generated UUID; store it in `localStorage` to reconnect with the same identity).
-- The returned **`socketToken`** is the key to open the Socket.IO connection (see section 4).
-
-**`ModeDescriptor`** (each item of `GET /games/game-modes`, from `describeModeConfig`): `{ mode, pacing('host'|'self'), scored, defaultConfig, editable, locked }`.
-
-- `editable`: dotted-path → field spec + current default (`kind`, `min`/`max`/`nullable`/`values`, `default`).
-- `locked`: dotted-path → current value, rendered read-only.
-- Render the create/config form from this — do **not** hardcode the fields.
-
-## 4. Socket.IO — namespace `/game`
-
-### 4.1 Connecting & auth
-
-- Connect to `/game` with `withCredentials: true`.
-- Pass the **`socketToken`** (from REST) to the `socketAuth` middleware. The token carries: `code` (session_code), `role` (`'host'` or `'player'`), `gameId`, `playerSessionId`.
-    - Host: token from `POST /games/:id/host-token`.
-    - Player/guest: token from `POST /games/:code/join`.
-
-```tsx
-import { io } from 'socket.io-client'
-
-const socket = io(`${API_ORIGIN}/game`, {
-  withCredentials: true,
-  auth: { token: socketToken } // socketToken from join / host-token
-})
-```
-
-- Internal rooms: `game:${code}` (whole room) and `game:${code}:host` (host only — the only place the correct answer is sent while a question is open).
-
-### 4.2 Security principle ("answer oracle")
-
-- The **correct answer is never sent to players while a question is open.** It is only revealed after the question is locked (`question:results`) and only when `flow.showCorrectAnswer = true`.
-- The host room gets its own `host:question` (with `correct_answer`) and `host:answer-received` (with `is_correct`).
-- Host-paced: the `question:answer` ack only says `accepted: true` while the question is open; correctness + score are revealed at lock time. Self-paced (if `showCorrectAnswer`): the ack returns the result immediately.
-- Scoring is 100% server-side. `publicQuestion` strips the answer and applies `shuffleOptions` / `showHint` before sending.
-
-### 4.3 Client → Server events
-
-| Event | Role | Payload | Notes |
-| --- | --- | --- | --- |
-| `lobby:join` | host & player | — | Enter the room/lobby |
-| `lobby:leave` | player | — | Leave (player becomes `disconnected`, row kept for reconnect) |
-| `lobby:config-update` | host | `{ config }` or bare config | ack `{ ok, changed, config, ignored }` |
-| `game:start` | host | — | Start the match (lobby → countdown/active) |
-| `game:next` | host | — | Host-paced + `autoAdvance=false` only: lock the question or move to the next |
-| `game:pause` | host | — | Pause, freeze the clock |
-| `game:resume` | host | — | Resume, restore the frozen time |
-| `game:end` | host | — | End the match early |
-| `question:answer` | player | `{ answer }`  • ack | Submit an answer (once per question). See ack below |
-| `question:next` | player | — | Self-paced + `autoAdvance=false` only: move to the next question after answering |
-| `player:sync` | host & player | — | Request a fresh snapshot (reconnect) → `game:state` |
-| `game:review` | player | — | Review your own answers (only when the match is `finished`  • `reviewMode`) |
-
-**`question:answer` ack**
-
-```tsx
-{
-  accepted: true,
-  isLate: boolean,
-  lives: number | null,
-  eliminated: boolean,
-  serverTime: string,
-  // Only when self-paced + showCorrectAnswer = true:
-  isCorrect?: boolean,
-  scoreEarned?: number,
-  totalScore?: number,
-  streak?: number,
-  correct_answer?: number[] | string
-}
-```
-
-### 4.4 Server → Client events
-
-| Event | Recipient | Main payload |
+| Prefix | Operations | Covers |
 | --- | --- | --- |
-| `lobby:updated` | whole room | Player list + lobby state |
-| `game:started` | whole room | `{ mode, config, total_questions, serverTime }` |
-| `game:countdown` | room / one socket | `{ seconds, startsAt, serverTime }` |
-| `question:started` | player | `{ question, time_limit, endsAt, serverTime, ... }` — **no answer**. Self-paced adds `matchEndsAt, allow_answer_late, remainingSeconds, lives` |
-| `host:question` | host room | `{ question, correct_answer, time_limit, endsAt, total_questions, serverTime }` |
-| `answer:received` | player | `{ index, answered, activePlayers, serverTime }` — counts only, no identities |
-| `host:answer-received` | host room | `{ index, answered, activePlayers, player, is_correct, serverTime }` |
-| `host:player-progress` | host room | Per-player progress (self-paced) |
-| `question:locked` | whole room | index, reason ('time_up' / 'all_answered'), serverTime |
-| `question:results` | whole room | `{ index, question_id, correct_answer(if showCorrectAnswer), stats, nextQuestionAt, serverTime }` |
-| `question:awaiting_next` | player | Self-paced `autoAdvance=false`: `{ previous_result, player_score, lives, serverTime }` |
-| `question:timeout` | player | Self-paced time-up: `{ index, question_id, is_correct, correct_answer, lives, eliminated, serverTime }` |
-| `leaderboard:updated` | player | Lean leaderboard: `rank, name, score` |
-| `leaderboard:host` | host room | Full leaderboard for monitoring |
-| `player:eliminated` | whole room | `{ id, player_name, serverTime }` (survival) |
-| `player:finished` | player + host | `{ player, leaderboard?, serverTime }` (one player done, match still running) |
-| `game:state` | player/host | Full snapshot (reconnect / pause / resume) — see 4.5 |
-| `game:review` | player | `{ player_score, correct_answers_count, total_questions, items[], serverTime }` |
-| `game:ended` | whole room | `{ leaderboard, perQuestion, review_enabled, serverTime }` (host gets the full board) |
-| `error` | offending socket | Error message (thrown as `CONFLICT: ...`, `FORBIDDEN: ...`) |
+| `/v1/auth` | 7 | Register, login, refresh, logout, Google OAuth redirect flow and One Tap |
+| `/v1/users` | 9 | Own profile, public profile, password change, avatar, forgot / reset password |
+| `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
+| `/v1/games` | 8 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results |
+| `/v1/storage` | 1 | Presigned upload URL |
 
-### 4.5 `game:state` snapshot (reconnect)
+Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
 
-Contains: `session_status, current_phase, mode, config, index, total_questions, question(if in a question, answer stripped), countdown, endsAt, matchEndsAt, allow_answer_late, remainingSeconds, serverTime, player, leaderboard`.
+## Authentication
 
-> Server-based clock: every event carries `serverTime`, `endsAt`, `remainingSeconds`. Reconnecting does **not** reset the question clock (anti-time-farming). Compute countdowns from the `serverTime` ↔ local-time offset.
-> 
+Sign-in sets two HttpOnly cookies; there is no `Authorization` header to manage. A browser client only has to send credentials with the request, and the API does the rest.
 
-## 5. Game state machine
+### The three tokens
 
-**`session_status`:** `lobby` → `active` → (`paused`) → `finished` / `cancelled`
+| Token | Where it lives | Secret | Lifetime |
+| --- | --- | --- | --- |
+| `accessToken` | HttpOnly cookie, sent automatically | `JWT_SECRET` | `JWT_EXPIRES_IN` |
+| `refreshToken` | HttpOnly cookie, stored **hashed** in `refresh_sessions` | `JWT_REFRESH_SECRET` | `JWT_REFRESH_EXPIRES_IN` |
+| socket token | Returned in a response body, passed in the Socket.IO handshake | `SOCKET_JWT_SECRET` | `SOCKET_TOKEN_TTL` |
 
-**`current_phase`:** `lobby` → `countdown` → `question_active` → `question_locked` → `showing_results` → (next question / `finished`)
+Cookies are `httpOnly`, `sameSite=lax`, and `secure` only in production. The client and the API are meant to sit on sibling subdomains, where `lax` is enough and safer than `none`.
 
-### Host-paced (classic)
+The socket token is deliberately not a cookie and uses its own secret: it is scoped to one game session and one role, so leaking it cannot grant access to the REST API.
 
-1. `game:start` → `game:started` + `game:countdown` (if `countdownSeconds > 0`).
-2. `startQuestion`: emit `question:started` (player) & `host:question` (host); arm a timer based on `time_limit`.
-3. Players submit `question:answer` → `answer:received` (counts). Enough answers or time-up → `question:locked`.
-4. `showResults`: emit `question:results` (+ answer if enabled), `leaderboard:updated` (if `showLeaderboard='between_questions'`).
-5. `autoAdvance=true` → auto-advance after `showResultsSeconds`; `false` → host emits `game:next`.
-6. Out of questions → `game:ended`.
+### Refresh rotation
 
-### Self-paced (solo / survival / marathon / practice)
+`POST /v1/auth/refresh` issues a brand new pair every time and invalidates the one it consumed. Only the SHA hash of a refresh token ever reaches the database, so a dump of `refresh_sessions` cannot be replayed.
 
-- Each player has their own progress + clock (`sendSelfQuestion`); questions/options can be shuffled per player.
-- After answering: `autoAdvance=true` sends the next question automatically; `false` → player emits `question:next` (gets `question:awaiting_next` while waiting).
-- One question times out → `question:timeout`. Out of questions / lives / time budget → `player:finished`. All done → `game:ended`.
+1. Verify the JWT signature and that it is a refresh token.
+2. Load the user; a missing or deactivated account stops here.
+3. Look up the hashed token in `refresh_sessions`.
+4. **Not found?** The token was valid but has already been rotated or revoked — that is a replay. Every session of that user is revoked and the call answers 401.
+5. Otherwise revoke that row, mint a new pair, and store the new hash under the same device and IP.
 
-## 6. Game modes & GameConfig
+So a stolen refresh token buys at most one round trip: as soon as either the attacker or the legitimate user rotates, the other one triggers the reuse detection and both are logged out everywhere.
 
-### 6.1 GameConfig (full shape + defaults)
+`POST /v1/auth/logout` revokes the refresh row and adds the access token to `blacklist_token`, so the remaining minutes of its lifetime are dead too. A logout where the two cookies disagree about the user is treated like a replay and revokes every session.
 
-```tsx
-{
-  version: 1,
-  scoring: {
-    basePoints: 1000,
-    speedBonus: true,
-    streak: { enabled: false, bonusPerStep: 100, max: 500 },
-    negativeMarking: false,
-    latePenaltyRatio: 0.9
-  },
-  timing: {
-    countdownSeconds: 3,
-    perQuestionSeconds: null, // null = use each question's time_limit
-    autoAdvance: true,
-    showResultsSeconds: 2,
-    totalMatchSeconds: null   // marathon uses a total time budget
-  },
-  lobby: { maxPlayers: 100, allowLateJoin: false, allowGuests: true },
-  flow: {
-    pacing: 'host',          // 'host' | 'self'
-    showCorrectAnswer: true,
-    showLeaderboard: 'between_questions', // 'never' | 'between_questions' | 'end_only'
-    lives: null,
-    allowAnswerLate: false,
-    shuffleQuestions: false,
-    shuffleOptions: false,
-    showHint: false,
-    reviewMode: true
-  }
-}
+### Google sign-in
+
+Two flows share the same profile verification:
+
+- **Redirect** — `GET /v1/auth/google` sends the user to the consent screen with an anti-CSRF `state` kept in a short-lived cookie, and `GET /v1/auth/google/callback` reads it back.
+- **One Tap** — `POST /v1/auth/google/one-tap` verifies the `id_token` directly, with `GOOGLE_CLIENT_ID` as the expected audience.
+
+Both end in the same place: an account matched by Google id, and the usual cookie pair.
+
+## Errors and status codes
+
+Errors are thrown, never returned. Services throw `AppError(statusCode, message, details?)` and a single error handler turns anything that reaches it into the standard envelope.
+
+| Source | Result |
+| --- | --- |
+| `AppError` | Its own status, message and `details` |
+| Zod validation | `400` `Validation error`, `details` maps each field path to its message |
+| Upload too large | `413` `File too large. Maximum size is 20MB` |
+| Unsupported file type | `400` `File type not supported` |
+| `ECONNREFUSED` / `ETIMEDOUT` | `503` `Service unavailable` |
+| Anything else | `500` `Internal server error`, logged with the stack, never leaked to the client |
+
+What the status codes mean here:
+
+| Code | Used for |
+| --- | --- |
+| `400` | Validation failure, malformed id, nothing to update |
+| `401` | Missing, blacklisted or invalid token, wrong credentials |
+| `403` | Authenticated but not allowed: deactivated account, not the host of the session |
+| `404` | The resource does not exist, or is not visible to the caller |
+| `409` | Conflict with the current state: email already registered, config patch outside the lobby |
+| `410` | The resource existed but was soft deleted |
+| `429` | Rate limited, with `Retry-After` telling you how long to wait |
+| `503` | A dependency is down; `/health` reports the same |
+
+Messages are stable strings, and the reference at `/v1/docs` lists the exact ones each endpoint can return.
+
+## Realtime API
+
+Gameplay runs on Socket.IO, namespace **`/game`**. REST creates and configures a room; once the match starts, everything goes through the socket.
+
+### Handshake
+
+The socket token is not a cookie. Get it from REST first, then pass it in the handshake:
+
+- host: `POST /v1/games/{id}/host-token` → `data.hostToken.socketToken`
+- player: `POST /v1/games/{code}/join` → `data.socketToken`
+
+```js
+const socket = io('http://localhost:3000/game', { auth: { token: socketToken } })
 ```
 
-### 6.2 Scoring formula (`computeScore`)
+The token carries the session, the role and the player row id. Identity is always read from the token, never from an event payload, so a client cannot answer or host on behalf of somebody else. A token for a finished or cancelled session is refused at the handshake.
 
-```tsx
-// Wrong: 0 (or -0.25 * basePoints if negativeMarking is on)
-// Late (self-paced): round(basePoints * latePenaltyRatio), no speed/streak bonus
-// Correct and on time:
-speed  = speedBonus && timeLimit > 0
-         ? max(0, ((timeLimit - timeTaken) / timeLimit) * basePoints * 0.5)
-         : 0
-streak = streak.enabled
-         ? min((currentStreak + 1) * streak.bonusPerStep, streak.max)
-         : 0
-score  = round(basePoints + speed + streak)
-```
+Each connection joins `game:{code}`, and hosts additionally join `game:{code}:host`. Anything that would reveal an answer is sent to the host room only.
 
-### 6.3 Per-mode characteristics
+### Events sent by the client
 
-| Mode | pacing | Scored | Lives | showLeaderboard | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `classic` | host | yes | none | between_questions | Whole room in lockstep, host-controlled |
-| `solo` | self | yes | none | end_only (default) | Play at your own pace; shuffles questions + options, `allowAnswerLate=true`, review on |
-| `survival` | self | yes | 3 (default) | end_only | Wrong/timeout costs a life, eliminated at 0; shuffles questions + options |
-| `marathon` | self | yes | null (default) | end_only | `totalMatchSeconds=300`: loops the question bank until the total time runs out |
-| `practice` | self | no | none | never | `basePoints=0`, no time limit, always shows the answer + review; still tracks streak |
-
-### 6.4 Config rules the server enforces
-
-Each mode ships a `defaultConfig` and its own **editable / locked** field set (returned by `GET /games/game-modes`). The server runs `sanitizeConfigPatch` to drop unknown/locked/invalid fields (reported in `ignored`) and `normalizeConfig` to rewrite mode-owned fields. Key behaviors:
-
-- **Always locked** (any mode): `version`, `flow.pacing`, `flow.allowAnswerLate`, `timing.countdownSeconds`, `timing.showResultsSeconds`, `scoring.basePoints`, `scoring.latePenaltyRatio`, `scoring.streak.*`.
-- `flow.pacing` is forced to the mode's pacing; non-lives modes force `flow.lives = null`; non-budget modes force `timing.totalMatchSeconds = null`.
-- `marathon` forces `autoAdvance = true`, `showResultsSeconds = 2`, `showCorrectAnswer = true`.
-- Self-paced + `showLeaderboard='between_questions'` → coerced to `end_only`.
-- `reviewMode=true` forces `showCorrectAnswer=true`.
-- `perQuestionSeconds=0` (no deadline) forces `speedBonus=false`.
-- Self-paced + `autoAdvance=false` + a real deadline → `allowAnswerLate` auto-enabled.
-- Unscored mode (`practice`): `basePoints=0`, `speedBonus=false`, streak off, negativeMarking off.
-- Editable ranges: `perQuestionSeconds` 0–600, `totalMatchSeconds` 30–7200, `lobby.maxPlayers` 1–500, `flow.lives` 1–10.
-
-> Render the config form from `editable` / `locked` returned by the API — never hardcode.
-> 
-
-## 7. Core data models
-
-**GameSession**
-
-```tsx
-{
-  id: number
-  quiz_snapshot_id: number
-  session_name: string
-  session_code: string      // room code players use to join
-  session_host: number
-  total_players: number
-  total_questions: number
-  session_status: 'lobby' | 'active' | 'paused' | 'finished' | 'cancelled'
-  game_mode: 'classic' | 'solo' | 'survival' | 'marathon' | 'practice'
-  config: GameConfig
-  current_question_index: number
-  current_phase: 'lobby' | 'countdown' | 'question_active' | 'question_locked' | 'showing_results' | 'finished'
-  phase_ends_at: string | null
-}
-```
-
-**PlayerSession**
-
-```tsx
-{
-  id: number
-  game_session_id: number
-  player_id: number | null        // null for guests
-  player_guest_id: string | null  // null for logged-in users
-  player_name: string
-  player_score: number
-  correct_answers_count: number
-  answered_questions: AnsweredQuestion[]
-  streak: number
-  lives: number | null
-  current_question_index: number
-  status: 'connected' | 'disconnected' | 'eliminated' | 'finished'
-}
-
-// AnsweredQuestion
-{
-  question_id: number
-  question_index: number
-  answer: unknown
-  is_correct: boolean
-  is_late: boolean
-  time_taken: number
-  score_earned: number
-  answered_at: string
-}
-```
-
-**LeaderboardEntry:** `{ rank, id, player_name, player_score, correct_answers_count, streak, status }`
-
-**QuestionStat** (per-question breakdown in results): `{ question_id, answer_count, correct_count }`
-
-**Public question over socket (`publicQuestion`)** strips `correct_answer` and `explanation`; `answer_options` is `{ id, option_text }[]` (shuffled if enabled); `question_hint` only appears when `showHint=true`.
-
-## 8. Environment variables
-
-The repo ships two example files:
-
-- **`.env.example`** (repo root) — Docker / production values (`DB_HOST=postgres`, `REDIS_HOST=redis`, `JWT_EXPIRES_IN=1d`, placeholder Spaces credentials).
-- **`backend/.env.example`** — local development values (`DB_HOST=localhost`, `REDIS_HOST=localhost`, `JWT_EXPIRES_IN=15m`).
-
-Every variable below is **required** — on boot the server validates `process.env` with Zod (`envconfig.ts`) and exits if any is missing or invalid.
-
-| Group | Variables | Notes (frontend impact in **bold**) |
+| Event | Role | Purpose |
 | --- | --- | --- |
-| Server | `PORT`, `NODE_ENV` | **`NODE_ENV=production` enables cookie `secure` and `sameSite=none` (frontend must be HTTPS)** |
-| CORS | `FRONTEND_URL`, `ALLOW_ORIGIN` | **`FRONTEND_URL` is a single origin (CORS + OAuth redirect base to `/auth/callback`); `ALLOW_ORIGIN` is a comma-separated list. Your frontend origin must appear in one of them.** |
-| JWT (access) | `JWT_SECRET`, `JWT_EXPIRES_IN` | Access-token cookie lifetime (dev 15m, prod/docker 1d) |
-| JWT (refresh) | `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Refresh-token cookie lifetime (7d); separate secret from the access token |
-| Socket | `SOCKET_JWT_SECRET`, `SOCKET_TOKEN_TTL` | **Signs the Socket.IO `socketToken`; TTL 6h — the token is short-lived, always fetch a fresh one from join / host-token before connecting** |
-| PostgreSQL | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_POOL_MAX`, `DB_IDLE_TIMEOUT`, `DB_CONNECTION_TIMEOUT` | Backend only |
-| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Real-time game state; required |
-| Object storage (Spaces) | `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`, `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_ENDPOINT`, `SPACES_PUBLIC_URL` | **`SPACES_PUBLIC_URL` is the base of every returned `publicUrl`** |
-| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | OTP / password-reset emails |
-| Google OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | **`GOOGLE_CALLBACK_URL` = `{server}/api/v1/auth/google/callback`** |
+| `lobby:join` | both | Enter the room and receive the current state |
+| `lobby:leave` | both | Leave; a player is marked disconnected, not removed |
+| `lobby:config-update` | host | Patch the game config while still in the lobby |
+| `game:start` | host | Start the countdown, then the first question |
+| `game:next` | host | Advance manually when `autoAdvance` is off |
+| `game:pause` / `game:resume` | host | Freeze and restore every clock |
+| `game:end` | host | End the match early |
+| `question:answer` | player | Submit an answer, acknowledged by the server |
+| `question:next` | player | Move on in self-paced modes when `autoAdvance` is off |
+| `player:sync` | both | Ask for a full state snapshot after a reconnect |
+| `game:review` | player | Get the personal answer review once the match is over |
+
+### Events sent by the server
+
+| Event | Audience | Meaning |
+| --- | --- | --- |
+| `lobby:updated` | room | Roster, status and config |
+| `game:started`, `game:countdown` | room | The match is starting |
+| `question:started` | room / player | The current question, without the correct answer |
+| `answer:received` | room | How many answers arrived, never who was right |
+| `question:locked` | room | Question closed, by timeout or because everybody answered |
+| `question:results` | room | Correct answer and distribution, once locked |
+| `question:timeout`, `question:awaiting_next` | player | Self-paced flow |
+| `leaderboard:updated` | room | Rank, name and score |
+| `player:eliminated`, `player:finished` | room / player | Per-player outcome |
+| `game:state` | both | Full snapshot, used to restore a client after a reconnect |
+| `game:ended` | room | Final standings and per-question stats |
+| `game:review` | player | The caller's own answers |
+| `host:question`, `host:answer-received`, `host:player-progress`, `leaderboard:host` | host room | Answer key and the full monitoring table |
+| `error` | caller | A handler failed and no acknowledgement was expected |
+
+### Rules that matter
+
+- **The server is authoritative.** Grading, timing and scoring happen server side; `correct_answer` is stripped from every payload that leaves the server, except inside the host room and after a question is locked.
+- **One answer per question.** The slot is claimed atomically in Redis, so two sockets racing on the same question cannot both be accepted.
+- **Reconnects are cheap.** `lobby:join` or `player:sync` returns a full snapshot with the remaining time; a self-paced player gets back the leftover time, not a fresh timer.
+
+## Game engine
+
+Modes live in `modules/game/engine/modes/` behind a small interface (`evaluateAnswer`, `shouldAdvance`, `isGameOver`), registered at boot by `bootstrapEngine()`.
+
+| Mode | Pacing | Shape |
+| --- | --- | --- |
+| `classic` | host | Everybody answers the same question at the same time |
+| `solo` | self | One player, own rhythm |
+| `survival` | self | Limited lives, elimination |
+| `marathon` | self | Loops the question bank until the match budget runs out |
+| `practice` | self | No pressure, no deadline |
+
+A mode also declares which config fields a host may change. Anything it locks is reported back under `ignored` instead of failing the whole request, so an outdated client never blocks a session from starting. `GET /v1/games/game-modes` returns the defaults and those rules.
+
+## Database
+
+### Tables
+
+| Table | Holds |
+| --- | --- |
+| `users` | Accounts, `role` in admin / moderator / user, soft deleted through `deleted_at` |
+| `quizzes` | Quiz metadata, owner, language, category, `is_public`, plus the ranking columns |
+| `questions` | Questions of a quiz: type, text, image, `time_limit`, `answer_options` and `correct_answer` as JSONB |
+| `quiz_snapshots` | A frozen copy of a quiz taken when a session is created |
+| `game_sessions` | One match: snapshot, code, host, mode, `config`, status, current phase and deadline |
+| `player_sessions` | One participant of one match: score, answered questions, streak, lives, status |
+| `refresh_sessions` | Live refresh tokens, stored hashed, with device and IP |
+| `blacklist_token` | Access tokens revoked before their natural expiry |
+| `schema_migrations` | Which SQL files have already been applied |
+
+```mermaid
+erDiagram
+  users ||--o{ quizzes : owns
+  users ||--o{ game_sessions : hosts
+  users ||--o{ refresh_sessions : "signs in from"
+  quizzes ||--o{ questions : contains
+  quizzes ||--o{ quiz_snapshots : "frozen into"
+  quiz_snapshots ||--o{ game_sessions : "played as"
+  game_sessions ||--o{ player_sessions : gathers
+  users ||--o{ player_sessions : "plays as"
+```
+
+A session points at a **snapshot**, never at the live quiz. That is what makes history immutable: editing or deleting a quiz cannot rewrite a match that already happened. A `player_sessions` row without `player_id` is a guest, identified by `player_guest_id` and a display name.
+
+Deletion is soft almost everywhere: rows carry `deleted_at` and stay queryable, which is why a removed resource answers `410` rather than `404`.
+
+### Migrations
+
+Two folders, applied in this order at boot and by `pnpm db:migrate`:
+
+- `schema/` — the base tables, `001_users.sql` through `006_player_sessions.sql`.
+- `migrations/` — incremental changes: refresh sessions, token blacklist, question hints, Google OAuth columns, quiz ranking, home sections, listing indexes.
+
+Every file that runs is recorded in `schema_migrations` **by filename**, so each one is applied exactly once and a restart is a no-op.
+
+To add a change: create the next numbered file in `migrations/`, never edit a file that has already run, and give it a name that is unique across both folders since the tracking table only stores the name.
+
+## Data and caching
+
+- **PostgreSQL is the source of truth.** `infrastructure/database/schema/` holds the base tables, `migrations/` the incremental changes; both are applied in order at boot.
+- **Quizzes are snapshotted.** Creating a session copies the questions into a snapshot, so editing or deleting a quiz never rewrites a match that already happened.
+- **Redis holds the running match**: session state, players, per-question answers and the live leaderboard. Postgres is flushed at the end of every question and once more when the match ends, then the Redis keys are cleared.
+- **Home and feed responses are cached**, and the response says so through `meta.cached`.
+- **The scoring job** recomputes quiz ranking every `SCORING_INTERVAL_MINUTES`, started after the server is listening so a slow first pass never delays readiness.
+
+## Ranking
+
+The home sections and the discovery feed sort by `hot_score`, a stored column recomputed by a background job rather than at query time, so a feed page stays a plain indexed read.
+
+```
+hot_score = decayed play volume * (0.5 + 0.5 * completion_rate)
+```
+
+- **Decay** is exponential with a **7 day half-life**, so a quiz nobody plays any more slides down on its own and no cleanup process is needed.
+- **The window is 90 days**, which only bounds how many `game_sessions` rows are scanned: with that half-life an older play is worth less than 0.02% of its original weight.
+- **The `0.5 +` floor is deliberate.** Multiplying by `completion_rate` alone would pin every brand new quiz at 0 forever — nobody has finished it, so it is never shown, so nobody ever can.
+- **`completion_rate`** is the share of `player_sessions` that reached `finished`.
+- A quiz whose plays have all aged out is **reset to 0** instead of keeping a stale score.
+
+The job only rewrites a row when `hot_score` moved by more than **1% relative**, because the score is a function of `now()` and an exact comparison would rewrite every played quiz on every run. Between two runs without new plays each score is multiplied by the same constant, which cannot change the order, so those writes buy nothing.
+
+It runs once immediately at startup, then every `SCORING_INTERVAL_MINUTES` (`0` disables it), skips a tick if the previous one is still running, and never holds the event loop open. It assumes a single API process — several instances would need a database advisory lock. Run it by hand with `pnpm db:score`, which is also what a fresh seed needs before the feed looks right.
+
+## Rate limiting and security
+
+### Rate limits
+
+A fixed window counter in Redis, keyed by `rate_limit:<scope>:<identifier>:<window>`. Every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; a rejection adds `Retry-After` and answers `429`.
+
+| Scope | Budget | Keyed by | Counts |
+| --- | --- | --- | --- |
+| Global | 500 / minute | IP | Everything |
+| API (`/v1`) | 2000 / 10 minutes | IP | Everything |
+| Auth | 5 / 5 minutes | IP | Failures only, so a correct login is never punished |
+| Reset password | 5 / 10 minutes | IP | Successes only |
+| Upload | 20 / 10 minutes | User + IP | Successes only |
+
+The limiter **fails open**: if Redis is unreachable the request goes through instead of erroring, because it runs on every call and losing rate limiting for a few minutes is cheaper than losing the API. `/health` is registered before the global limiter, so a monitor can never be throttled.
+
+On top of that, requesting a password reset OTP is blocked for 240 seconds after the previous one.
+
+### Other measures
+
+- Passwords are hashed with **bcrypt**; a Google-only account has no local password at all.
+- Refresh tokens are stored **hashed**, and reusing a rotated one revokes every session (see [Authentication](#authentication)).
+- Logging out **blacklists** the access token for the rest of its lifetime.
+- CORS is an allowlist built from `FRONTEND_URL` and `ALLOW_ORIGIN`; credentials are enabled, so the origins have to be exact.
+- `trust proxy` is on, so the client IP behind the reverse proxy is the one that gets rate limited.
+- Every request body, query and param goes through a **Zod** schema before reaching a service.
+- Uploads never touch the API: the client gets a **presigned URL** limited to a folder allowlist and 2 MB, and the key is namespaced per user.
+- Gameplay payloads are filtered server side, so `correct_answer` never reaches a player before a question is locked.
+
+## Conventions
+
+- ESLint style: no semicolons, single quotes, two-space indentation. Run `pnpm lint` before pushing.
+- Comments, logs and user-facing strings are written in English.
+- Runtime imports carry the `.js` extension (ESM), type-only imports use `import type`.
+- Errors are thrown as `AppError(statusCode, message, details)` and turned into the envelope by the central error handler; Zod failures become `400 Validation error` with the field errors in `details`.
+- The OpenAPI document is hand-written in `src/docs/` as typed objects, so a wrong `$ref` is a compile error rather than a broken page. Update it in the same commit as the endpoint it describes.

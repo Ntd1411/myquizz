@@ -38,26 +38,27 @@ export function createRateLimiter(options: RateLimitOptions) {
       const userId = req.user?.id
       const rawIp = req.ip || req.socket.remoteAddress || 'unknown'
 
-      // Normalize IP address: chuyển IPv6 loopback thành IPv4, loại bỏ ký tự đặc biệt
+      // Normalize the IP: IPv6 loopback becomes IPv4 and characters that
+      // clash with the Redis key delimiter are replaced.
       let ip = rawIp
       if (ip === '::1' || ip === '::ffff:127.0.0.1') {
         ip = '127.0.0.1'
       }
-      // Loại bỏ prefix ::ffff: của IPv4-mapped IPv6
+      // Drop the ::ffff: prefix of an IPv4-mapped IPv6 address
       ip = ip.replace(/^::ffff:/, '')
-      // Thay thế : bằng - để tránh conflict với Redis key delimiter
+      // Replace : with - so it cannot collide with the Redis key delimiter
       ip = ip.replace(/:/g, '-')
 
-      // Xác định identifier cho rate limit
+      // Work out the identifier this request is counted against
       let identifier: string
       if (byBoth && userId) {
-        // Rate limit theo cả userId và IP
+        // Limit by userId and IP together
         identifier = `${userId}:${ip}`
       } else if (byIp) {
-        // Rate limit chỉ theo IP
+        // Limit by IP only
         identifier = ip
       } else {
-        // Rate limit theo userId (mặc định)
+        // Limit by userId (default)
         if (!userId) {
           throw new AppError(401, 'Unauthorized')
         }

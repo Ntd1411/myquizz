@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Table để track migrations
+// Table used to track which migration files have already run
 const MIGRATIONS_TABLE = 'schema_migrations'
 
 async function initMigrationsTable() {
@@ -41,7 +41,7 @@ export async function runMigrations() {
     await initMigrationsTable()
     const migratedFiles = await getMigratedFiles()
 
-    // Chạy schema files nếu lần đầu
+    // Run the base schema files first
     const schemaDir = path.join(__dirname, 'schema')
     const schemaFiles = fs.readdirSync(schemaDir).sort()
 
@@ -60,7 +60,7 @@ export async function runMigrations() {
       }
     }
 
-    // Chạy migration files
+    // Then the incremental migration files
     const migrationsDir = path.join(__dirname, 'migrations')
     if (fs.existsSync(migrationsDir)) {
       const migrationFiles = fs.readdirSync(migrationsDir).sort()
