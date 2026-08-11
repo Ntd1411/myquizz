@@ -68,7 +68,8 @@ pnpm dev
 The server starts on `PORT` (3000 by default) and prints `App listening on port 3000`.
 
 - API root: `http://localhost:3000/v1`
-- API reference: `http://localhost:3000/v1/docs`
+- API reference (read-only): `http://localhost:3000/v1/docs`
+- API reference with Test Request: `http://localhost:3000/v1/api-docs`
 - Health check: `http://localhost:3000/health` → `{ "db": true, "redis": true }`, answers 503 when Postgres is unreachable
 
 Migrations run automatically at boot, so a fresh database is usable straight away. Redis is treated as a cache, not a hard dependency: if it is unreachable the server logs the failure and keeps booting, but live matches need it.
@@ -137,6 +138,15 @@ Each module follows the same chain: **route → controller → service → repos
 ## REST API
 
 Everything is mounted under `/v1` and rate limited. Full, always-up-to-date reference at **`/v1/docs`**, raw document at `/v1/docs/openapi.json`.
+
+The same document is published twice, from `src/docs/serve.ts`:
+
+| Route | Test Request | Meant for |
+| --- | --- | --- |
+| `/v1/docs` | hidden | Public reading. Nobody can fire a live call at the API from the page. |
+| `/v1/api-docs` | kept | Internal use. The reverse proxy puts HTTP basic auth in front of it, so it is not reachable from outside. |
+
+Each one serves its own copy of the document (`/v1/docs/openapi.json` and `/v1/api-docs/openapi.json`), so the internal page never depends on a path the proxy may restrict. **Restricting `/v1/api-docs` is the proxy's job** — the application itself does not authenticate it.
 
 ### Response envelope
 

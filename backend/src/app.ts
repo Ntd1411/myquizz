@@ -11,7 +11,7 @@ import { userRouter } from './modules/user/user.route.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
 import gameRouter from './modules/game/game.route.js'
 import { GameSocket } from './modules/game/game.socket.js'
-import { docsRouter } from './docs/serve.js'
+import { docsRouter, internalDocsRouter } from './docs/serve.js'
 import RedisClient, { redisClient } from './infrastructure/cache/redis.client.js'
 import { bootstrapEngine } from './modules/game/engine/index.js'
 import { storageRouter } from './modules/storage/storage.route.js'
@@ -79,7 +79,10 @@ app.get('/', (req, res) => {
 const router = express.Router()
 router.get('/', (req, res) => res.send({ success: 'ok' }))
 
+// Public reference, read-only. The interactive one lives under /api-docs and is
+// restricted to basic auth in the reverse proxy.
 router.use('/docs', docsRouter)
+router.use('/api-docs', internalDocsRouter)
 
 router.use('/auth', authRouter)
 router.use('/users', userRouter)

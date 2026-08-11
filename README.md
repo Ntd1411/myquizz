@@ -155,7 +155,7 @@ pnpm dev                 # http://localhost:5173
 
 Each package has its own `.env.example` here — the root one is only for Docker. Point `DB_HOST` and `REDIS_HOST` at `localhost` (or wherever your services run) instead of the Compose service names.
 
-Migrations still run on boot, and the API reference is available at `http://localhost:3000/v1/docs`. Each package README documents the full environment variables, scripts and architecture.
+Migrations still run on boot, and the API reference is available at `http://localhost:3000/v1/docs`. The same reference with the **Test Request** panel enabled is served at `http://localhost:3000/v1/api-docs`, which is meant to stay behind basic auth in production. Each package README documents the full environment variables, scripts and architecture.
 
 ## Demo data
 
@@ -210,6 +210,7 @@ pm2 restart myquizz-api --update-env
 - `NODE_ENV=production`, and `API_PUBLIC_URL` set to the public API origin including the `/v1` prefix (for example `https://api.example.com/v1`) so the reference page offers the production server instead of localhost. It is listed in both `.env.example` files and left empty by default.
 - `FRONTEND_URL` and `ALLOW_ORIGIN` must list the real domains. The API and the client sit on different subdomains, so the auth cookies are cross-site and the origins have to match exactly.
 - The reverse proxy in front of the API has to forward the `Upgrade` and `Connection` headers, otherwise the WebSocket handshake silently falls back to polling.
+- `/v1/api-docs` must be protected by the reverse proxy. It is the same reference as `/v1/docs`, but with the Test Request panel enabled; the application does not authenticate it, so nginx has to (`auth_basic` plus an `auth_basic_user_file`). `/v1/docs` stays public and cannot send requests.
 - `GOOGLE_CALLBACK_URL` must be the production URL and registered in the Google console.
 
 ## Troubleshooting
