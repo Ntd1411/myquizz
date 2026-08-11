@@ -84,6 +84,7 @@ Every variable from `.env.example`, grouped by concern.
 | Auth | `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` |
 | Socket auth | `SOCKET_JWT_SECRET`, `SOCKET_TOKEN_TTL` |
 | Server / CORS | `PORT`, `NODE_ENV`, `FRONTEND_URL`, `ALLOW_ORIGIN` (comma separated) |
+| API reference | `API_PUBLIC_URL` — optional, public origin of this API including the `/v1` prefix. When set it is listed first as the production server in `/v1/docs`; left empty the reference only offers `localhost`. |
 | Object storage | `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`, `SPACES_ENDPOINT`, `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_PUBLIC_URL` |
 | Mail | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` |
 | Google OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` |
@@ -129,8 +130,6 @@ src/
     middlewares/         Error handler, optional auth, rate limits
     utils/               Response envelope, cookies
     validators/          Zod request validation
-tests/                   HTTP checks plus standalone HTML clients for socket,
-                         storage and Google OAuth
 ```
 
 Each module follows the same chain: **route → controller → service → repository**. Routes only wire middleware, controllers only read the request and shape the response, services hold the rules, repositories own the SQL.

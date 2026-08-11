@@ -207,7 +207,7 @@ pm2 restart myquizz-api --update-env
 
 ### What changes in production
 
-- `NODE_ENV=production`, and `API_PUBLIC_URL` set to the public API origin so the reference page offers the production server instead of localhost.
+- `NODE_ENV=production`, and `API_PUBLIC_URL` set to the public API origin including the `/v1` prefix (for example `https://api.example.com/v1`) so the reference page offers the production server instead of localhost. It is listed in both `.env.example` files and left empty by default.
 - `FRONTEND_URL` and `ALLOW_ORIGIN` must list the real domains. The API and the client sit on different subdomains, so the auth cookies are cross-site and the origins have to match exactly.
 - The reverse proxy in front of the API has to forward the `Upgrade` and `Connection` headers, otherwise the WebSocket handshake silently falls back to polling.
 - `GOOGLE_CALLBACK_URL` must be the production URL and registered in the Google console.
