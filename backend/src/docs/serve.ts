@@ -62,6 +62,10 @@ docsRouter.use(
     // sidebar footer; both are needed because the flag moved between releases.
     agent: { disabled: true },
     mcp: { name: 'MyQuizz API', url: '/v1/docs/openapi.json', disabled: true },
+    // Drops the Open API Client entry from the sidebar footer. Requests are
+    // meant to be sent from the Test Request panel of each operation, not from
+    // the standalone client, which opens the whole document in a separate app.
+    hideClientButton: true,
     // The frontend is the main consumer, so the snippet panel opens on Node.js
     // and only keeps the clients somebody would realistically copy.
     defaultHttpClient: { targetKey: 'node', clientKey: 'fetch' },
