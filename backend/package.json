@@ -22,12 +22,12 @@
     "url": "git+https://github.com/Ntd1411/myquizz.git"
   },
   "author": "Dung",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/Ntd1411/myquizz/issues"
   },
   "homepage": "https://github.com/Ntd1411/myquizz#readme",
-  "description": "",
+  "description": "MyQuizz backend: REST API and realtime game server for a live quiz platform",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1096.0",
     "@aws-sdk/s3-request-presigner": "^3.1096.0",
