@@ -11,8 +11,7 @@ import { userRouter } from './modules/user/user.route.js'
 import { quizRouter } from './modules/quiz/quiz.route.js'
 import gameRouter from './modules/game/game.route.js'
 import { GameSocket } from './modules/game/game.socket.js'
-import swaggerUi from 'swagger-ui-express'
-import { swaggerSpec } from './swagger/swagger.config.js'
+import { docsRouter } from './docs/serve.js'
 import RedisClient, { redisClient } from './infrastructure/cache/redis.client.js'
 import { bootstrapEngine } from './modules/game/engine/index.js'
 import { storageRouter } from './modules/storage/storage.route.js'
@@ -80,10 +79,7 @@ app.get('/', (req, res) => {
 const router = express.Router()
 router.get('/', (req, res) => res.send({ success: 'ok' }))
 
-router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'MyQuizz API Documentation'
-}))
+router.use('/docs', docsRouter)
 
 router.use('/auth', authRouter)
 router.use('/users', userRouter)
