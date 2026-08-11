@@ -6,14 +6,14 @@
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-4-010101?logo=socket.io&logoColor=white)](https://socket.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-6BA539?logo=openapiinitiative&logoColor=white)](http://api.myquizz.dpdns.org/v1/docs)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-6BA539?logo=openapiinitiative&logoColor=white)](https://api.myquizz.dpdns.org/v1/docs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 
 Real-time quiz backend: accounts, quiz authoring, discovery feeds, live game sessions and image uploads.
 
 Node.js + TypeScript (ESM), Express 5 for the REST API, Socket.IO for the gameplay, PostgreSQL as the source of truth and Redis as the hot layer for running matches.
 
-Live at [api.myquizz.dpdns.org](http://api.myquizz.dpdns.org), with the interactive reference at [api.myquizz.dpdns.org/v1/docs](http://api.myquizz.dpdns.org/v1/docs). The client it serves is [myquizz.dpdns.org](http://myquizz.dpdns.org).
+Live at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org), with the interactive reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs). The client it serves is [myquizz.dpdns.org](https://myquizz.dpdns.org).
 
 > Part of the [MyQuizz](../README.md) monorepo. The client lives in [`frontend/`](../frontend/README.md). To run the whole stack with Docker in one command, see the [root README](../README.md#quick-start-with-docker).
 

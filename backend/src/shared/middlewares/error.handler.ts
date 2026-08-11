@@ -37,7 +37,7 @@ export function errorHandler(
     return fail(res, 'File too large. Maximum size is 20MB', null, 413)
   }
   if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-    return fail(res, 'Field name không hợp lệ', null, 400)
+    return fail(res, 'Invalid field name', null, 400)
   }
   if (err.message?.includes('File type not supported')) {
     return fail(res, 'File type not supported', null, 400)

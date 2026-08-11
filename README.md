@@ -12,7 +12,7 @@ A real-time quiz platform: write a quiz, open a room, and let everybody answer t
 
 One host drives the match, players join with a room code, and the server keeps the single source of truth for timing, grading and ranking.
 
-**Live demo** — [myquizz.dpdns.org](http://myquizz.dpdns.org) · API at [api.myquizz.dpdns.org](http://api.myquizz.dpdns.org) · API reference at [api.myquizz.dpdns.org/v1/docs](http://api.myquizz.dpdns.org/v1/docs)
+**Live demo** — [myquizz.dpdns.org](https://myquizz.dpdns.org) · API at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org) · API reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs)
 
 You can try it without signing up: open the client, enter a room code and a nickname, and you are in as a guest.
 
