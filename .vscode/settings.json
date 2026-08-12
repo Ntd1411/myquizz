@@ -9,6 +9,10 @@
     "typescriptreact"
   ],
   "editor.formatOnSave": false,
+  // Tailwind at-rules are unknown to the built-in CSS language server.
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
   "js/ts.tsdk.path": "node_modules/typescript/lib",
   "postman.settings.dotenv-detection-notification-visibility": false,
   "search.exclude": {

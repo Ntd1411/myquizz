@@ -15,6 +15,10 @@
   --wash-2: #eef4ff;
   --hairline: #e6e7ee;
 
+  /* Type. One family for words, one mono face for every number. */
+  --sans: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --numeric: 'Martian Mono', ui-monospace, SFMono-Regular, monospace;
+
   /* Text */
   --ink: #23242b;
   --ink-2: #565968;
@@ -118,7 +122,7 @@
 
   /* Every number in the product: PIN, timer, score, counts. */
   .num {
-    @apply font-numeric;
+    font-family: var(--numeric);
     font-variant-numeric: tabular-nums;
   }
 
@@ -132,7 +136,8 @@
   }
 
   .eyebrow-label {
-    @apply font-numeric text-eyebrow uppercase text-ink-3;
+    @apply text-eyebrow uppercase text-ink-3;
+    font-family: var(--numeric);
   }
 
   /* Buttons. Exactly one Spotlight button per screen. */
@@ -225,7 +230,8 @@
 
   /* Six light cells that behave as one field. The active cell is the focus indicator. */
   .pin-cell {
-    @apply grid h-[66px] w-[54px] place-items-center rounded-md border-2 border-hairline bg-paper font-numeric text-[26px] font-medium text-ink;
+    @apply grid h-[66px] w-[54px] place-items-center rounded-md border-2 border-hairline bg-paper text-[26px] font-medium text-ink;
+    font-family: var(--numeric);
     transition:
       border-color var(--t-ui) var(--ease),
       box-shadow var(--t-ui) var(--ease),
