@@ -311,7 +311,7 @@ watch(quizzes, async (rows) => {
 }
 
 .card-action-danger:hover {
-  color: var(--sticker-orange-deep, #b23c00);
+  color: var(--ans-a);
 }
 
 @media (prefers-reduced-motion: reduce) {

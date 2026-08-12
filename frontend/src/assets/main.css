@@ -2,25 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens mirror the home_myquizz.html demo one-to-one so the Vue app and
-   the static demo render identically. Structural accent = primary blue only. */
+/*
+  Design v2.1 "Daylight Studio" tokens, mirroring design/styleguide-v2.html one to one.
+  White leads every surface, ink is a text colour only, and the violet Spotlight marks
+  the single primary action on a screen.
+*/
 :root {
-  --ink: rgba(0, 0, 0, 0.95);
-  --ink-secondary: #31302e;
-  --ink-muted: #615d59;
-  --ink-faint: #a39e98;
-  --canvas-soft: #f6f5f4;
-  --surface: #ffffff;
-  --hairline: #e6e6e6;
-  --primary: #0075de;
-  --primary-active: #005bab;
-  --on-primary: #ffffff;
-  --r-xs: 4px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  /* Surfaces */
+  --paper: #ffffff;
+  --canvas: #fafafc;
+  --wash: #f4f1fe;
+  --wash-2: #eef4ff;
+  --hairline: #e6e7ee;
+
+  /* Text */
+  --ink: #23242b;
+  --ink-2: #565968;
+  --ink-3: #8e92a4;
+
+  /* Brand. Spotlight sits outside the answer quartet on purpose. */
+  --spotlight: #6c4cf1;
+  --spotlight-press: #573ad4;
+  --spotlight-soft: #efeaff;
+  --spotlight-line: #cfc4fb;
+
+  /* The answer quartet: solid on answers, soft on tags and badges. */
+  --ans-a: #ef4b45;
+  --ans-b: #2f6be0;
+  --ans-c: #f2b32e;
+  --ans-d: #1ba968;
+  --ans-a-soft: #fdeceb;
+  --ans-b-soft: #eaf1fe;
+  --ans-c-soft: #fef5e3;
+  --ans-d-soft: #e7f7f0;
+
+  /* Shape */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
   --r-full: 9999px;
-  --shadow-1: rgba(0, 0, 0, 0.01) 0 0.175px 1.041px, rgba(0, 0, 0, 0.02) 0 0.8px 2.925px,
-    rgba(0, 0, 0, 0.027) 0 2.025px 7.847px, rgba(0, 0, 0, 0.04) 0 4px 18px;
+
+  /* Depth: layered and soft, never a hard offset block. */
+  --sh-1: 0 1px 2px rgba(35, 36, 43, 0.04), 0 4px 12px rgba(35, 36, 43, 0.05);
+  --sh-2: 0 2px 6px rgba(35, 36, 43, 0.05), 0 14px 34px rgba(35, 36, 43, 0.09);
+  --sh-brand: 0 2px 6px rgba(108, 76, 241, 0.18), 0 10px 24px rgba(108, 76, 241, 0.2);
+
+  /* Motion */
+  --t-fast: 140ms;
+  --t-ui: 220ms;
+  --t-slow: 420ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+
+  /*
+    Legacy v1 aliases. Screens written against the old variable names keep working and
+    now resolve to v2.1 values. Delete each one as its last usage disappears.
+  */
+  --surface: var(--paper);
+  --canvas-soft: var(--canvas);
+  --ink-secondary: var(--ink-2);
+  --ink-muted: var(--ink-2);
+  --ink-faint: var(--ink-3);
+  --primary: var(--spotlight);
+  --primary-active: var(--spotlight-press);
+  --on-primary: #ffffff;
+  --r-xs: var(--r-sm);
+  --shadow-1: var(--sh-1);
 }
 
 @layer base {
@@ -31,19 +79,34 @@
   }
 
   body {
-    @apply bg-canvas-soft font-sans text-ink;
+    @apply bg-canvas font-sans text-body-md text-ink;
     margin: 0;
-    font-feature-settings: 'lnum' 1;
+  }
+
+  /* One family, so hierarchy is size plus weight plus tracking. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.022em;
   }
 
   :focus-visible {
-    outline: 2px solid theme('colors.primary.DEFAULT');
+    outline: 2px solid var(--spotlight);
     outline-offset: 2px;
   }
 
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
     }
   }
 }
@@ -53,62 +116,181 @@
     @apply mx-auto w-full max-w-container px-[20px] md:px-[32px];
   }
 
-  /* One structural accent only. Primary blue is reserved for the main action. */
+  /* Every number in the product: PIN, timer, score, counts. */
+  .num {
+    @apply font-numeric;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+    Thousands separator. A real space is far too wide in a monospaced face, so groups
+    are split with a fixed sliver instead: 1<i class="ts"></i>204.
+  */
+  .ts {
+    display: inline-block;
+    width: 0.2em;
+  }
+
+  .eyebrow-label {
+    @apply font-numeric text-eyebrow uppercase text-ink-3;
+  }
+
+  /* Buttons. Exactly one Spotlight button per screen. */
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-xs text-body-sm font-medium leading-none transition-[background-color,transform,border-color] duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-xs rounded-full border-[1.5px] border-transparent px-[20px] py-[11px] text-body-sm font-semibold leading-none;
+    transition:
+      transform var(--t-fast) var(--ease),
+      box-shadow var(--t-ui) var(--ease),
+      background-color var(--t-ui) var(--ease),
+      border-color var(--t-ui) var(--ease),
+      color var(--t-ui) var(--ease);
   }
 
-  /* Marketing CTA: fully pill shaped, with the demo's short press transform. */
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /* Press shrinks by 3%; nothing in this system sinks into the page. */
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
   .btn-primary {
-    @apply btn rounded-full border border-primary bg-primary px-[18px] py-[10px] text-white hover:border-primary-active hover:bg-primary-active active:scale-[0.97];
+    @apply btn bg-spotlight text-white shadow-brand hover:bg-spotlight-press;
   }
 
-  /* Utility / nav button: tighter 8px radius, never a pill. */
+  .btn-secondary {
+    @apply btn border-hairline bg-paper text-ink shadow-soft hover:border-spotlight-line;
+  }
+
   .btn-utility {
-    @apply btn rounded-md border border-hairline bg-surface px-[14px] py-[9px] text-ink hover:bg-canvas-soft;
+    @apply btn rounded-md border-hairline bg-paper px-md py-[9px] text-caption text-ink-2 hover:border-spotlight-line hover:text-ink;
   }
 
   .btn-ghost {
-    @apply btn rounded-md px-sm py-xs text-ink-secondary hover:bg-canvas-soft;
+    @apply btn bg-transparent text-ink-2 hover:bg-canvas hover:text-ink;
   }
 
-  /* Form fields stay square-ish (4px) - pill radii are for CTAs only. */
+  /* Answer A is the only answer colour allowed on a button, and only to destroy. */
+  .btn-danger {
+    @apply btn bg-ans-a text-white;
+  }
+
   .field {
-    @apply w-full rounded-xs border border-hairline bg-surface px-sm py-[8px] text-body-sm text-ink placeholder:text-ink-faint focus:outline-none;
-    transition: border-color 150ms ease, box-shadow 150ms ease;
+    @apply w-full rounded-md border border-hairline bg-paper px-sm py-[10px] text-body-sm text-ink placeholder:text-ink-3 focus:outline-none;
+    transition:
+      border-color var(--t-ui) var(--ease),
+      box-shadow var(--t-ui) var(--ease);
   }
 
   .field:focus,
   .field:focus-within {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(0, 117, 222, 0.14);
+    border-color: var(--spotlight);
+    box-shadow: 0 0 0 4px var(--spotlight-soft);
   }
 
   .card-surface {
-    @apply rounded-lg border border-hairline bg-surface;
+    @apply rounded-lg border border-hairline bg-paper;
   }
 
-  /* Section header: 40px / -1px tracking, tightening down on small screens. */
+  .card-soft {
+    @apply rounded-lg bg-paper shadow-soft;
+  }
+
+  /* Wash panel: the only marker for "a game happens here". */
+  .wash-panel {
+    @apply rounded-xl border border-hairline bg-wash;
+  }
+
+  /*
+    Answer tile. While a question is open it is a plain white card; only the A-D badge
+    carries colour. Grading adds a border and a tinted halo, never a solid fill.
+  */
+  .tile {
+    @apply flex w-full items-center gap-sm rounded-lg border border-hairline bg-paper px-md py-[14px] text-left text-body-md text-ink;
+    transition:
+      transform var(--t-fast) var(--ease),
+      box-shadow var(--t-ui) var(--ease),
+      border-color var(--t-ui) var(--ease),
+      opacity var(--t-ui) var(--ease);
+  }
+
+  .tile:hover:not(:disabled) {
+    box-shadow: var(--sh-1);
+  }
+
+  .tile:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  /* Six light cells that behave as one field. The active cell is the focus indicator. */
+  .pin-cell {
+    @apply grid h-[66px] w-[54px] place-items-center rounded-md border-2 border-hairline bg-paper font-numeric text-[26px] font-medium text-ink;
+    transition:
+      border-color var(--t-ui) var(--ease),
+      box-shadow var(--t-ui) var(--ease),
+      transform var(--t-ui) var(--ease);
+  }
+
+  .pin-cell.is-filled {
+    border-color: var(--spotlight-line);
+  }
+
+  .pin-cell.is-active {
+    border-color: var(--spotlight);
+    box-shadow: 0 0 0 4px var(--spotlight-soft), var(--sh-1);
+    transform: translateY(-2px);
+  }
+
+  @media (max-width: 480px) {
+    .pin-cell {
+      @apply h-[58px] w-[46px] text-[22px];
+    }
+  }
+
+  /* Filter chip. Active state is Spotlight Soft, never a dark fill. */
+  .chip {
+    @apply inline-flex select-none items-center gap-xs rounded-full border border-hairline bg-paper px-[15px] py-[7px] text-caption text-ink-2;
+    transition:
+      background-color var(--t-ui) var(--ease),
+      border-color var(--t-ui) var(--ease),
+      color var(--t-ui) var(--ease),
+      transform var(--t-fast) var(--ease);
+  }
+
+  .chip:hover {
+    border-color: var(--spotlight-line);
+    color: var(--ink);
+  }
+
+  .chip:active {
+    transform: scale(0.97);
+  }
+
+  .chip.is-active {
+    @apply border-transparent bg-spotlight-soft font-semibold text-spotlight;
+  }
+
+  /* Category tag: always the tinted half of an answer colour, never the solid one. */
+  .tag {
+    @apply inline-flex items-center rounded-sm px-[8px] py-[3px] text-[12.5px] font-semibold;
+  }
+
   .section-title {
-    @apply flex items-center gap-sm text-[30px] font-bold leading-[1.1] tracking-[-0.75px] text-ink md:text-heading-1;
+    @apply flex items-center gap-sm text-heading-1 text-ink;
   }
 
   .section-link {
-    @apply text-body-sm text-primary hover:underline;
+    @apply text-body-sm font-semibold text-spotlight hover:underline;
   }
 
-  .eyebrow-label {
-    @apply text-eyebrow uppercase text-ink-muted;
+  /* Toast: a hairline is enough on white; a shadow would read as a modal. */
+  .toast {
+    @apply rounded-md border border-hairline bg-paper px-md py-sm text-body-sm text-ink;
   }
 
-  /* Topic chip used by the category rail on the home page. */
-  .chip {
-    @apply inline-flex items-center gap-xs rounded-full border border-hairline bg-surface px-[15px] py-xs text-body-sm text-ink transition-colors duration-150 hover:border-ink-faint;
-  }
-
-  /* Rail control: 40px circle, hairline + barely-there layered shadow. */
   .rail-arrow {
-    @apply absolute z-20 grid h-10 w-10 place-items-center rounded-full border border-hairline bg-surface text-ink shadow-soft transition-[opacity,background-color] duration-200 hover:bg-canvas-soft;
+    @apply absolute z-20 grid h-10 w-10 place-items-center rounded-full border border-hairline bg-paper text-ink shadow-soft transition-colors duration-ui hover:bg-canvas;
     top: 40%;
   }
 }
