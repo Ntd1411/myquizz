@@ -112,9 +112,10 @@ export async function updateProfile(
       description?: string
     }
 
-    const user = await updateProfileService(userId, fullname, email, phone, description)
+    const { password: _password, deleted_at: _deleted_at, ...updatedUser } =
+      await updateProfileService(userId, fullname, email, phone, description)
 
-    return success(res, { user })
+    return success(res, { user: updatedUser })
   } catch (error) {
     next(error)
   }

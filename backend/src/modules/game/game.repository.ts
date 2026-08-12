@@ -180,8 +180,8 @@ export const getQuestionStats = async (gameSessionId: number) => {
   const { rows } = await pool.query<QuestionStatRow>(
     `SELECT
         (ans->>'question_id')::int              AS question_id,
-        count(*)                                AS answer_count,
-        count(*) FILTER (WHERE (ans->>'is_correct')::boolean) AS correct_count
+        count(*)::int                           AS answer_count,
+        (count(*) FILTER (WHERE (ans->>'is_correct')::boolean))::int AS correct_count
      FROM player_sessions ps,
           jsonb_array_elements(ps.answered_questions) AS ans
      WHERE ps.game_session_id = $1 AND ps.deleted_at IS NULL
