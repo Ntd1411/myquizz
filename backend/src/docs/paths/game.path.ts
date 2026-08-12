@@ -70,19 +70,20 @@ const exampleConfig = {
   },
   timing: {
     countdownSeconds: 3,
-    perQuestionSeconds: 30,
+    // null on purpose: the engine then uses the time_limit of each question.
+    perQuestionSeconds: null,
     autoAdvance: true,
     showResultsSeconds: 2,
     totalMatchSeconds: null
   },
-  lobby: { maxPlayers: 50, allowLateJoin: false, allowGuests: true },
+  lobby: { maxPlayers: 100, allowLateJoin: false, allowGuests: true },
   flow: {
     pacing: 'host',
     showCorrectAnswer: true,
     showLeaderboard: 'between_questions',
     lives: null,
     allowAnswerLate: false,
-    shuffleQuestions: true,
+    shuffleQuestions: false,
     shuffleOptions: false,
     showHint: false,
     reviewMode: true
@@ -97,12 +98,12 @@ const exampleSession = {
   session_status: 'lobby',
   game_mode: 'classic',
   quiz_snapshot_id: 7,
+  total_players: 0,
   total_questions: 8,
-  current_question: 0,
-  config: exampleConfig,
-  created_at: '2026-08-12T03:00:00.000Z',
-  started_at: null,
-  ended_at: null
+  current_question_index: 0,
+  current_phase: 'lobby',
+  phase_ends_at: null,
+  config: exampleConfig
 }
 
 export const gamePaths: PathMap = {
@@ -126,15 +127,20 @@ export const gamePaths: PathMap = {
   '/games': {
     post: {
       summary: 'Create a game session',
-      description: `Snapshots the quiz, opens a room for it and makes the caller its host. The session is nested under data.data.session, and any config field the mode refused is listed under data.ignored instead of failing the request. mode defaults to classic when omitted. ${AUTH_NOTE}`,
+      description: `Snapshots the quiz, opens a room for it and makes the caller its host. The session is nested under data.data.session, and any config field the mode refused is listed under data.ignored instead of failing the request. mode defaults to classic when omitted. The stored config is not simply the patch you sent: once the surviving fields are merged, the mode rewrites what it owns, so marathon always auto-advances and pins showResultsSeconds to 2, reviewMode forces showCorrectAnswer, perQuestionSeconds 0 disables the speed bonus, self-paced modes downgrade showLeaderboard from between_questions to end_only, and practice zeroes the whole scoring block. Compare data.data.session.config, never your own patch. ${AUTH_NOTE}`,
       tags: [gameTag.name],
       requestBody: jsonBody(
         object(
           {
-            quiz_id: { type: 'integer', minimum: 1 },
+            quiz_id: {
+              type: 'number',
+              exclusiveMinimum: 0,
+              description:
+                'Quiz to snapshot. The schema is z.number().positive(), so it is not narrowed to an integer.'
+            },
             session_name: { type: 'string', minLength: 2, maxLength: 100 },
             mode: ref('GameMode'),
-            config: ref('GameConfig')
+            config: ref('GameConfigPatch')
           },
           ['quiz_id', 'session_name']
         ),
@@ -144,12 +150,14 @@ export const gamePaths: PathMap = {
             session_name: 'Friday warm-up',
             mode: 'classic',
             config: {
-              version: 1,
-              scoring: { basePoints: 1000, speedBonus: true },
-              timing: { countdownSeconds: 3, perQuestionSeconds: 30 },
+              scoring: { speedBonus: true },
+              timing: { perQuestionSeconds: 30 },
               lobby: { maxPlayers: 50, allowGuests: true },
               flow: { showCorrectAnswer: true, shuffleQuestions: true }
             }
+            // config is a patch: every field may be omitted. Only fields the
+            // mode marks editable are applied; version, countdownSeconds and
+            // basePoints are locked everywhere and would come back in ignored.
           }
         }
       ),
@@ -190,13 +198,20 @@ export const gamePaths: PathMap = {
             ]
           })
         }),
-        400: errorResponse('Rejected payload or unknown mode', [
-          validationError({ quiz_id: 'Too small: expected number to be >0' })
+        400: errorResponse('Rejected payload', [
+          validationError({ quiz_id: 'Too small: expected number to be >0' }),
+          validationError({
+            mode: 'Invalid option: expected one of "classic"|"solo"|"survival"|"marathon"|"practice"'
+          })
         ]),
         401: unauthenticated,
         403: errorResponse('The account was deactivated', [
           'Account is deactivated'
-        ])
+        ]),
+        404: errorResponse(
+          'No quiz behind quiz_id. The snapshot is written before the room, so nothing is created.',
+          ['Quiz #1 not found']
+        )
       }
     }
   },
@@ -231,15 +246,14 @@ export const gamePaths: PathMap = {
                 {
                   id: 11,
                   player_name: 'Guest Player',
-                  player_id: null,
-                  score: 0
+                  player_score: 0,
+                  status: 'connected'
                 }
               ],
               config: exampleConfig
             }
           })
         }),
-        400: errorResponse('The code segment is empty', ['Missing code']),
         404: roomNotFound
       }
     }
@@ -248,13 +262,12 @@ export const gamePaths: PathMap = {
   '/games/{id}/config': {
     patch: {
       summary: 'Update the game config',
-      description: `Only the host may call this, and only while the session is still in the lobby, because the config is part of the room contract. The patch is deep-optional, so omitted fields keep their stored value. Fields the mode locks come back under ignored instead of failing the request, and changed is false when nothing survived the filter. ${AUTH_NOTE}`,
+      description: `Only the host may call this, and only while the session is still in the lobby, because the config is part of the room contract. The patch is deep-optional, so omitted fields keep their stored value and even an empty body is accepted, answering with changed false. Fields the mode locks come back under ignored with reason locked, unknown paths with reason unknown, and values outside the range the mode allows with reason invalid, none of which fail the request. The merge is followed by the same mode normalization POST /games describes, so changed compares the stored config with the normalized result rather than with your patch. ${AUTH_NOTE}`,
       tags: [gameTag.name],
       parameters: [idParam],
-      requestBody: jsonBody(object({ config: ref('GameConfig') }, ['config']), {
+      requestBody: jsonBody(object({ config: ref('GameConfigPatch') }), {
         example: {
           config: {
-            version: 1,
             timing: { perQuestionSeconds: 20, autoAdvance: true },
             lobby: { maxPlayers: 30, allowLateJoin: true },
             flow: { showLeaderboard: 'between_questions' }
@@ -377,16 +390,19 @@ export const gamePaths: PathMap = {
               player_id: null,
               player_guest_id: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
               player_name: 'Guest Player',
-              score: 0,
+              player_score: 0,
+              correct_answers_count: 0,
+              answered_questions: [],
+              streak: 0,
               lives: null,
-              joined_at: '2026-08-12T03:01:00.000Z'
+              current_question_index: 0,
+              status: 'connected'
             },
             socketToken:
               'eyJhbGciOiJIUzI1NiJ9.eyJwc2lkIjoxMSwiZ3NpZCI6MSwicm9sZSI6InBsYXllciJ9.REDACTED'
           })
         }),
-        400: errorResponse('Empty code, or a guest body that does not validate', [
-          'Missing code',
+        400: errorResponse('A guest body that does not validate', [
           validationError({
             player_guest_id: 'Invalid input: expected a UUID'
           })
@@ -408,7 +424,7 @@ export const gamePaths: PathMap = {
     get: {
       summary: 'Retrieve the leaderboard',
       description:
-        'Current standings of a running session, read from Redis while the match is live and from Postgres once it is over. This route runs no authentication.',
+        'Current standings of a running session, read from Redis while the match is live and from Postgres once it is over. The two paths do not rank identically: the Redis sorted set returns the top 100 players ordered by score alone, while Postgres returns every player ordered by score and then by correct answers. This route runs no authentication.',
       tags: [gameTag.name],
       parameters: [idParam],
       responses: {

@@ -41,6 +41,7 @@ const exampleUser = {
   role: 'user',
   avatar: null,
   description: null,
+  google_id: null,
   auth_provider: 'local',
   created_at: '2026-08-11T21:09:24.744Z',
   updated_at: '2026-08-11T21:09:24.744Z'
@@ -82,14 +83,23 @@ export const authPaths: PathMap = {
           data: userData,
           example: successExample({ user: exampleUser })
         }),
-        400: errorResponse('Missing field or rejected payload', [
-          'Email, password, and fullname are required',
-          validationError({ password: 'Too small: expected string to have >=8 characters' })
-        ]),
+        400: errorResponse(
+          'Rejected body. registerSchema runs before the controller, so a missing or malformed field always answers Validation error with the message written in the schema; the plain sentence below is a guard the controller can no longer reach.',
+          [
+            validationError({ password: 'Password must be at least 8 characters' }),
+            validationError({ email: 'Email must be valid' }),
+            validationError({ phone: 'Phone must be 7-15 digits' }),
+            'Email, password, and fullname are required'
+          ]
+        ),
         409: errorResponse('Email or phone already taken', [
           'Email already registered',
           'Phone number already registered'
         ]),
+        429: errorResponse(
+          'authRateLimiter, applied after validation: 5 requests per IP per 5 minutes, and a successful registration does not consume the quota.',
+          ['Too many requests. Please try again in 240 seconds']
+        ),
         500: errorResponse('The row could not be written', [
           'Failed to create user'
         ])
@@ -107,7 +117,7 @@ export const authPaths: PathMap = {
         object(
           {
             email: { type: 'string', format: 'email' },
-            password: { type: 'string', format: 'password' }
+            password: { type: 'string', format: 'password', minLength: 1 }
           },
           ['email', 'password']
         ),
@@ -125,15 +135,24 @@ export const authPaths: PathMap = {
           data: userData,
           example: successExample({ user: exampleUser })
         }),
-        400: errorResponse('Missing credentials', [
-          'Email and password are required'
-        ]),
+        400: errorResponse(
+          'Rejected body. loginSchema runs before the controller, so a missing field answers Validation error; the plain sentence below is a guard the controller can no longer reach.',
+          [
+            validationError({ email: 'Email must be valid' }),
+            validationError({ password: 'Password is required' }),
+            'Email and password are required'
+          ]
+        ),
         401: errorResponse('Unknown email or wrong password', [
           'Invalid email or password'
         ]),
         403: errorResponse('The account was deactivated', [
           'Account is deactivated'
-        ])
+        ]),
+        429: errorResponse(
+          'authRateLimiter, applied after validation: 5 requests per IP per 5 minutes, and a successful login does not consume the quota, so only failed attempts add up.',
+          ['Too many requests. Please try again in 240 seconds']
+        )
       }
     }
   },
@@ -183,7 +202,12 @@ export const authPaths: PathMap = {
         ]),
         401: errorResponse(
           'A token does not verify or does not belong to the caller. The mismatched case revokes every session of that user.',
-          ['Access token missing', 'Invalid access token', 'Invalid refresh token']
+          [
+            'Access token missing',
+            'Token is blacklisted',
+            'Invalid access token',
+            'Invalid refresh token'
+          ]
         ),
         403: errorResponse('The account was deactivated', [
           'Account is deactivated'
@@ -199,7 +223,11 @@ export const authPaths: PathMap = {
         'Redirects the browser to the Google consent screen and stores an anti-CSRF state cookie. Open it in a browser tab rather than through Test Request, which cannot follow a cross-origin redirect.',
       tags: [authTag.name],
       responses: {
-        302: { description: 'Redirect to the Google consent screen' }
+        302: { description: 'Redirect to the Google consent screen' },
+        429: errorResponse(
+          'authRateLimiter: 5 requests per IP per 5 minutes. A redirect counts as a success and is not charged to the quota.',
+          ['Too many requests. Please try again in 240 seconds']
+        )
       }
     }
   },
@@ -231,6 +259,7 @@ export const authPaths: PathMap = {
         401: errorResponse(
           'The state does not match the cookie, or the Google profile cannot be used',
           [
+            'Google OAuth error: access_denied',
             'Invalid OAuth state',
             'Google did not return an id_token',
             'Cannot read profile from Google account',
@@ -275,6 +304,7 @@ export const authPaths: PathMap = {
             user: {
               ...exampleUser,
               phone: null,
+              google_id: '112233445566778899001',
               auth_provider: 'google',
               avatar: 'https://lh3.googleusercontent.com/a/default-user'
             }
@@ -289,7 +319,11 @@ export const authPaths: PathMap = {
         ]),
         403: errorResponse('The matching local account was deactivated', [
           'Account is deactivated'
-        ])
+        ]),
+        429: errorResponse(
+          'authRateLimiter: 5 requests per IP per 5 minutes, successful sign-ins excluded.',
+          ['Too many requests. Please try again in 240 seconds']
+        )
       }
     }
   }

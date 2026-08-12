@@ -47,7 +47,14 @@ const deactivated = errorResponse('The account was deactivated', [
 
 const quizData = object({ quiz: ref('Quiz') }, ['quiz'])
 
-const quizzesData = object({ quizzes: arrayOf('QuizCard') }, ['quizzes'])
+// The three listing endpoints return QuizSummary rows, which are QuizCards
+// plus is_public and updated_at. Only the feed and the home sections return
+// plain QuizCards.
+const quizSummariesData = object({ quizzes: arrayOf('QuizSummary') }, [
+  'quizzes'
+])
+
+const quizCardsData = object({ quizzes: arrayOf('QuizCard') }, ['quizzes'])
 
 // meta of the keyset-paginated listings. total only appears with include_total.
 const listingMeta = object({ pagination: ref('ListingPagination') }, [
@@ -78,16 +85,16 @@ const cursorParam = (description: string): OpenApiObject => ({
 const limitParam: OpenApiObject = {
   in: 'query',
   name: 'limit',
-  description: 'Rows per page, 1 to 50. Defaults to 12.',
-  schema: { type: 'integer', minimum: 1, maximum: 50, default: 12 }
+  description: 'Rows per page, 1 to 24. Defaults to 12.',
+  schema: { type: 'integer', minimum: 1, maximum: 24, default: 12 }
 }
 
 const includeTotalParam: OpenApiObject = {
   in: 'query',
   name: 'include_total',
   description:
-    'Set to true to also count the whole result set into meta.pagination.total. It costs an extra query, so it is off by default and usually only worth it on the first page.',
-  schema: { type: 'boolean', default: false }
+    'Set to true to also count the whole result set into meta.pagination.total. It costs an extra query, so it is off by default and usually only worth it on the first page. The schema accepts the literal strings true and false only, so 1 or yes is a 400.',
+  schema: { type: 'string', enum: ['true', 'false'], default: 'false' }
 }
 
 const quizIdParam: OpenApiObject = {
@@ -98,9 +105,13 @@ const quizIdParam: OpenApiObject = {
   example: 1
 }
 
-const invalidCursor = validationError({
-  cursor: 'Cursor does not match the current sort and filters'
-})
+// decodeListCursor throws this plain message for every failure: bad base64, a
+// wrong version prefix, a sort or filter set that no longer matches the current
+// request, or a primary value whose type does not fit the sort.
+const invalidCursor = 'Invalid cursor'
+
+// The feed has its own cursor format, and its own message.
+const invalidFeedCursor = 'Invalid feed cursor'
 
 export const quizPaths: PathMap = {
   '/quizzes': {
@@ -113,18 +124,18 @@ export const quizPaths: PathMap = {
           multipleChoice: {
             summary: 'Multiple choice',
             value: {
-              title: 'World Capitals',
-              description: 'A short geography warm-up.',
-              category: 'Geography',
+              quiz_name: 'World Capitals',
+              quiz_description: 'A short geography warm-up.',
+              quiz_language: 'en',
+              quiz_category: 'Geography',
               is_public: true,
               questions: [
                 {
                   question_text: 'What is the capital of France?',
                   question_type: 'multiple_choice',
                   time_limit: 30,
-                  points: 1000,
-                  options: ['Paris', 'Lyon', 'Marseille', 'Toulouse'],
-                  correct_answer: 'Paris'
+                  answer_options: ['Paris', 'Lyon', 'Marseille', 'Toulouse'],
+                  correct_answer: [0]
                 }
               ]
             }
@@ -132,17 +143,16 @@ export const quizPaths: PathMap = {
           shortAnswer: {
             summary: 'Short answer',
             value: {
-              title: 'Quick Maths',
-              description: 'Type the answer, no options given.',
-              category: 'Science',
+              quiz_name: 'Quick Maths',
+              quiz_description: 'Type the answer, no options given.',
+              quiz_language: 'en',
+              quiz_category: 'Science',
               is_public: false,
               questions: [
                 {
                   question_text: 'What is 12 x 12?',
                   question_type: 'short_answer',
                   time_limit: 20,
-                  points: 500,
-                  options: [],
                   correct_answer: '144'
                 }
               ]
@@ -157,7 +167,8 @@ export const quizPaths: PathMap = {
         }),
         400: errorResponse('Rejected payload or a quiz without questions', [
           'Quiz must have at least one question',
-          validationError({ title: 'Too small: expected string to have >=3 characters' })
+          validationError({ quiz_name: 'Quiz name at least 3 chars' }),
+          validationError({ quiz_language: 'Language is required' })
         ]),
         401: unauthenticated,
         403: deactivated,
@@ -177,31 +188,84 @@ export const quizPaths: PathMap = {
       parameters: [
         {
           in: 'query',
-          name: 'q',
-          description: 'Search terms matched against the title and description.',
-          schema: { type: 'string' },
+          name: 'keyword',
+          description:
+            'Search terms matched against the quiz name and description. Trimmed, 200 characters at most.',
+          schema: { type: 'string', maxLength: 200 },
           example: 'capitals'
         },
         {
           in: 'query',
+          name: 'language',
+          schema: { type: 'string', maxLength: 50 },
+          example: 'en'
+        },
+        {
+          in: 'query',
           name: 'category',
-          schema: { type: 'string' },
+          schema: { type: 'string', maxLength: 100 },
           example: 'Geography'
+        },
+        {
+          in: 'query',
+          name: 'created_from',
+          description:
+            'Inclusive lower bound on the creation date, widened to the start of that day.',
+          schema: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          example: '2026-01-01'
+        },
+        {
+          in: 'query',
+          name: 'created_to',
+          description:
+            'Inclusive upper bound on the creation date, widened to the end of that day. It may not be earlier than created_from.',
+          schema: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          example: '2026-12-31'
+        },
+        {
+          in: 'query',
+          name: 'min_questions',
+          schema: { type: 'integer', minimum: 0 }
+        },
+        {
+          in: 'query',
+          name: 'min_plays',
+          schema: { type: 'integer', minimum: 0 }
+        },
+        {
+          in: 'query',
+          name: 'owner_id',
+          description: 'Restrict the search to one author.',
+          schema: { type: 'integer', minimum: 1 }
+        },
+        {
+          in: 'query',
+          name: 'mine',
+          description:
+            'Search your own quizzes instead, private ones included. It needs a session: sending true while anonymous is a 400. Only the literal strings true and false are accepted.',
+          schema: { type: 'string', enum: ['true', 'false'], default: 'false' }
         },
         {
           in: 'query',
           name: 'sort',
           description:
-            'relevance ranks by match quality and needs q, newest and popular do not.',
+            'No default: the service picks relevance when keyword is set and newest otherwise. Asking for relevance without a keyword degrades to newest instead of failing.',
           schema: {
             type: 'string',
-            enum: ['relevance', 'newest', 'popular'],
-            default: 'relevance'
+            enum: [
+              'relevance',
+              'newest',
+              'oldest',
+              'name_asc',
+              'name_desc',
+              'most_played',
+              'trending'
+            ]
           }
         },
         limitParam,
         cursorParam(
-          'meta.pagination.nextCursor of the previous page. It encodes the query, the filters and the sort, so they must stay unchanged.'
+          'meta.pagination.nextCursor of the previous page. It encodes the viewer, the filters and the sort, so they must stay unchanged.'
         ),
         includeTotalParam
       ],
@@ -209,12 +273,18 @@ export const quizPaths: PathMap = {
         200: successResponse({
           description:
             'A page of matches. meta.pagination.nextCursor is null on the last page.',
-          data: quizzesData,
+          data: quizSummariesData,
           meta: listingMeta
         }),
         400: errorResponse(
-          'The cursor does not belong to the current query, or a parameter is out of range',
-          [invalidCursor]
+          'The cursor does not belong to the current query, a parameter is out of range, the date range is inverted, or mine was requested without a session',
+          [
+            invalidCursor,
+            'mine=true requires an authenticated session',
+            validationError({
+              created_from: 'created_from must not be after created_to'
+            })
+          ]
         )
       }
     }
@@ -223,9 +293,33 @@ export const quizPaths: PathMap = {
   '/quizzes/me': {
     get: {
       summary: 'List your quizzes',
-      description: `The quizzes owned by the signed-in account, private ones included, newest first and keyset paginated. ${AUTH_NOTE}`,
+      description: `The quizzes owned by the signed-in account, private ones included, most recently updated first and keyset paginated. ${AUTH_NOTE}`,
       tags: [quizTag.name],
       parameters: [
+        {
+          in: 'query',
+          name: 'visibility',
+          schema: {
+            type: 'string',
+            enum: ['all', 'public', 'private'],
+            default: 'all'
+          }
+        },
+        {
+          in: 'query',
+          name: 'keyword',
+          description: 'Trimmed, 200 characters at most.',
+          schema: { type: 'string', maxLength: 200 }
+        },
+        {
+          in: 'query',
+          name: 'sort',
+          schema: {
+            type: 'string',
+            enum: ['recently_updated', 'newest', 'oldest', 'name_asc'],
+            default: 'recently_updated'
+          }
+        },
         limitParam,
         cursorParam('meta.pagination.nextCursor of the previous page.'),
         includeTotalParam
@@ -233,7 +327,7 @@ export const quizPaths: PathMap = {
       responses: {
         200: successResponse({
           description: 'A page of the caller own quizzes.',
-          data: quizzesData,
+          data: quizSummariesData,
           meta: listingMeta
         }),
         400: errorResponse('The cursor does not decode', [invalidCursor]),
@@ -264,17 +358,26 @@ export const quizPaths: PathMap = {
       description: `The endless list under the home sections, keyset paginated and cached. Unlike the listing endpoints it never reports a total, because the feed is meant to be scrolled rather than counted. ${OPTIONAL_AUTH_NOTE}`,
       tags: [quizTag.name],
       parameters: [
+        {
+          in: 'query',
+          name: 'topic',
+          description: 'Narrows the feed to one topic. Trimmed, 50 characters at most.',
+          schema: { type: 'string', maxLength: 50 },
+          example: 'Geography'
+        },
         limitParam,
-        cursorParam('meta.pagination.nextCursor of the previous page.')
+        cursorParam(
+          'meta.pagination.nextCursor of the previous page, 200 characters at most.'
+        )
       ],
       responses: {
         200: successResponse({
           description:
             'A page of the feed. meta.pagination has no total by design.',
-          data: quizzesData,
+          data: quizCardsData,
           meta: feedMeta
         }),
-        400: errorResponse('The cursor does not decode', [invalidCursor])
+        400: errorResponse('The cursor does not decode', [invalidFeedCursor])
       }
     }
   },
@@ -293,21 +396,38 @@ export const quizPaths: PathMap = {
           schema: { type: 'integer', minimum: 1 },
           example: 3
         },
+        {
+          in: 'query',
+          name: 'sort',
+          schema: {
+            type: 'string',
+            enum: ['newest', 'oldest', 'most_played', 'name_asc'],
+            default: 'newest'
+          }
+        },
         limitParam,
         cursorParam('meta.pagination.nextCursor of the previous page.'),
         includeTotalParam
       ],
       responses: {
         200: successResponse({
-          description: 'A page of that author public quizzes.',
-          data: quizzesData,
+          description:
+            'A page of that author public quizzes. An author who published nothing answers 200 with an empty page rather than 404.',
+          data: quizSummariesData,
           meta: listingMeta
         }),
-        400: errorResponse('ownerId is not a positive integer, or the cursor does not decode', [
-          'Invalid user ID',
-          invalidCursor
-        ]),
-        404: errorResponse('No account with that id', ['User not found'])
+        400: errorResponse(
+          'ownerId is not a positive integer, or the cursor does not decode',
+          [
+            validationError({
+              ownerId: 'Too small: expected number to be >=1'
+            }),
+            invalidCursor
+          ]
+        ),
+        404: errorResponse('No account with that id, or a deactivated one', [
+          'User not found'
+        ])
       }
     }
   },
@@ -336,18 +456,18 @@ export const quizPaths: PathMap = {
       parameters: [quizIdParam],
       requestBody: jsonBody(ref('UpdateQuizRequest'), {
         example: {
-          title: 'World Capitals (revised)',
-          description: 'A short geography warm-up, now with harder questions.',
-          category: 'Geography',
+          quiz_name: 'World Capitals (revised)',
+          quiz_description:
+            'A short geography warm-up, now with harder questions.',
+          quiz_category: 'Geography',
           is_public: true,
           questions: [
             {
               question_text: 'What is the capital of Australia?',
               question_type: 'multiple_choice',
               time_limit: 30,
-              points: 1000,
-              options: ['Canberra', 'Sydney', 'Melbourne', 'Perth'],
-              correct_answer: 'Canberra'
+              answer_options: ['Canberra', 'Sydney', 'Melbourne', 'Perth'],
+              correct_answer: [0]
             }
           ]
         }
@@ -361,7 +481,7 @@ export const quizPaths: PathMap = {
           'No valid fields to update',
           'Quiz must have at least one question',
           validationError({
-            'questions.0.correct_answer': 'Invalid input: expected string'
+            'questions.0.answer_options': 'At least 2 options required'
           })
         ]),
         401: unauthenticated,
