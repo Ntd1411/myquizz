@@ -48,6 +48,15 @@ const home = useQuery({
 
 const sections = computed(() => home.data.value?.sections ?? [])
 
+// A rail is a row of four cards on a desktop viewport. A shorter one reads as a
+// half-empty shelf rather than a curated pick, so a section is held back until it
+// can fill the row. The backend already drops sections with no items at all.
+const MIN_RAIL_ITEMS = 4
+
+const rails = computed(() =>
+  sections.value.filter((section) => (section.items?.length ?? 0) >= MIN_RAIL_ITEMS),
+)
+
 /**
  * Turns a server section into its "See all" destination. The in-progress row has no
  * list page, so it deliberately gets no link.
@@ -124,7 +133,7 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <QuizRail
-        v-for="section in sections"
+        v-for="section in rails"
         :key="section.key"
         :title="section.title"
         :items="section.items"
