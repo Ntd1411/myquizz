@@ -59,6 +59,10 @@
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --spring: cubic-bezier(0.34, 1.42, 0.64, 1);
 
+  /* Scrollbar. One step darker than the hairline; the track itself stays invisible. */
+  --scroll-thumb: #d5d7e2;
+  --scroll-thumb-hover: #b3b6c6;
+
   /*
     Legacy v1 aliases. Screens written against the old variable names keep working and
     now resolve to v2.1 values. Delete each one as its last usage disappears.
@@ -80,6 +84,46 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
+    /* Firefox exposes no pseudo-elements for the bar, only these two properties. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+    /*
+      The page keeps its gutter whether or not it scrolls. A document that grows and
+      shrinks around the height of the viewport would otherwise gain and lose the bar,
+      and each change resizes the viewport by the width of the bar: card grids re-wrap,
+      that changes the height again, and the bar flickers on and off. Reserving the
+      gutter also stops the sideways jump when Lenis clips the page for a modal.
+    */
+    scrollbar-gutter: stable;
+  }
+
+  /*
+    WebKit scrollbar. The thumb is painted inside a transparent border, so it reads as a
+    pill floating over the page instead of a channel cut into it. Applies to the window
+    and to every inner scroller that does not opt into the slimmer .scroll-slim variant.
+  */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: var(--r-full);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scroll-thumb-hover);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   body {
@@ -283,7 +327,7 @@
   }
 
   .section-title {
-    @apply flex items-center gap-sm text-heading-1 text-ink;
+    @apply flex items-center gap-sm text-heading-2 text-ink;
   }
 
   .section-link {
@@ -298,6 +342,48 @@
   .rail-arrow {
     @apply absolute z-20 grid h-10 w-10 place-items-center rounded-full border border-hairline bg-paper text-ink shadow-soft transition-colors duration-ui hover:bg-canvas;
     top: 40%;
+  }
+
+  /*
+    Icon-only control. The size is fixed rather than derived from the glyph, so a row
+    that shows one conditionally keeps exactly the same height either way.
+  */
+  .icon-btn {
+    @apply grid h-[34px] w-[34px] shrink-0 place-items-center rounded-md border border-transparent bg-transparent text-ink-2;
+    transition:
+      background-color var(--t-ui) var(--ease),
+      border-color var(--t-ui) var(--ease),
+      color var(--t-ui) var(--ease);
+  }
+
+  .icon-btn:hover:not(:disabled) {
+    @apply border-hairline bg-canvas text-ink;
+  }
+
+  .icon-btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /*
+    Inner scrollers get a narrower bar than the page it sits on.
+
+    The gutter is reserved even while nothing overflows. An inner scroller changes
+    height whenever its content is collapsed or expanded, and without a reserved
+    gutter the bar appearing and leaving would resize the content box by its own
+    width on every toggle, which reflows every row and reads as a flicker.
+  */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .scroll-slim::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb {
+    border-width: 2px;
   }
 }
 

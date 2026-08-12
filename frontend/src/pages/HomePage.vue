@@ -1,14 +1,13 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import QuizRail from '@/components/quiz/QuizRail.vue'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import { getHomeSections, getFeed } from '@/api/quizzes.api'
-import { CATEGORIES, GAME_MODES } from '@/constants/quizMeta'
 import { useCursorList } from '@/composables/useCursorList'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { useAuthStore } from '@/stores/auth.store'
-import { revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
+import { revealAppended, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
 /**
  * Home screen, fully server driven.
@@ -21,6 +20,11 @@ import { revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
  * Below the rails sits the endless feed on GET /quizzes/feed, ranked by hot_score and
  * paginated by its own cursor. It grows automatically when the sentinel under the last
  * card reaches the viewport.
+ *
+ * The feed is deliberately unfiltered. The topic chips that used to sit above it were a
+ * hardcoded taxonomy matched against a free-text column, so most of them returned an
+ * empty page; a filter comes back once an endpoint can list the categories that really
+ * exist. Until then the server-side ranking is the whole product here.
  */
 const auth = useAuthStore()
 
@@ -33,7 +37,6 @@ const SECTION_SORTS = ['trending', 'newest', 'oldest', 'most_played', 'name_asc'
 const pageEl = ref(null)
 const feedGridEl = ref(null)
 const sentinelEl = ref(null)
-const topic = ref('')
 
 // The signed-in state changes the section list, so it belongs in the cache key.
 const audience = computed(() => (auth.isLoggedIn ? 'user' : 'guest'))
@@ -62,37 +65,36 @@ function seeAllFor(section) {
 
 const feed = useCursorList(
   (params) => getFeed(params),
-  () => ({ topic: topic.value, limit: FEED_LIMIT }),
+  () => ({ limit: FEED_LIMIT }),
   { errorFallback: 'Could not load the feed.' },
 )
 
 const feedItems = feed.items
 
-function selectTopic(value) {
-  topic.value = topic.value === value ? '' : value
-}
-
 useInfiniteScroll(sentinelEl, () => feed.loadMore())
 
-let feedReveal = null
+const feedReveals = []
 
 onMounted(() => {
   // Rails animate their own header and cards; this only covers the static sections.
   revealOnScroll(pageEl.value, '[data-reveal]', { y: 20, stagger: 0.06 })
 })
 
-// Feed cards are appended, so the reveal is rebuilt against the new nodes. Old
-// triggers are killed first, otherwise a dead batch could leave cards at opacity 0.
+// Every page appends into the same grid, so only the cards that are actually new may
+// be touched. Rebuilding the reveal over the whole grid re-hid the cards the reader had
+// already scrolled past, and those never came back: their trigger start sits behind the
+// scroll position, so the enter callback that fades them in is never called again.
 watch(feedItems, async (rows) => {
-  if (feedReveal) {
-    feedReveal.forEach((trigger) => trigger.kill())
-    feedReveal = null
-  }
   if (!rows.length) return
 
   await nextTick()
-  feedReveal = revealOnScroll(feedGridEl.value, '[data-reveal-card]', { y: 20, stagger: 0.04 })
+  feedReveals.push(revealAppended(feedGridEl.value, '[data-reveal-card]', { y: 16, stagger: 0.04 }))
+  // The page just got taller, so triggers further down need their start recomputed.
   ScrollTrigger.refresh()
+})
+
+onBeforeUnmount(() => {
+  feedReveals.forEach((kill) => kill())
 })
 </script>
 
@@ -111,7 +113,7 @@ watch(feedItems, async (rows) => {
 
     <div v-else-if="home.isError.value" class="container-page py-lg">
       <div class="card-surface p-xl">
-        <p class="text-body-sm text-sticker-orange-deep">
+        <p class="text-body-sm text-ans-a">
           Could not load the home sections.
         </p>
         <button class="btn-utility mt-md" type="button" @click="home.refetch()">
@@ -142,21 +144,6 @@ watch(feedItems, async (rows) => {
         </RouterLink>
       </div>
 
-      <div class="flex flex-wrap gap-[10px]" data-reveal>
-        <button
-          v-for="item in CATEGORIES"
-          :key="item.name"
-          type="button"
-          class="filter-chip"
-          :class="topic === item.name ? 'is-active' : ''"
-          :aria-pressed="topic === item.name"
-          @click="selectTopic(item.name)"
-        >
-          <span class="h-[9px] w-[9px] shrink-0 rounded-full" :style="{ backgroundColor: item.color }" />
-          {{ item.name }}
-        </button>
-      </div>
-
       <div v-if="feed.loading.value" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
         <div
           v-for="n in 8"
@@ -166,7 +153,7 @@ watch(feedItems, async (rows) => {
       </div>
 
       <div v-else-if="feed.errorMessage.value" class="card-surface mt-lg p-xl">
-        <p class="text-body-sm text-sticker-orange-deep">
+        <p class="text-body-sm text-ans-a">
           {{ feed.errorMessage.value }}
         </p>
         <button class="btn-utility mt-md" type="button" @click="feed.loadFirst()">
@@ -176,11 +163,11 @@ watch(feedItems, async (rows) => {
 
       <div v-else-if="!feedItems.length" class="card-surface mt-lg p-xl text-center">
         <p class="text-body-md text-ink">
-          Nothing in this topic yet.
+          Nothing here yet.
         </p>
-        <button v-if="topic" class="btn-utility mt-md" type="button" @click="topic = ''">
-          Show every topic
-        </button>
+        <p class="mt-xxs text-body-sm text-ink-2">
+          New quizzes show up as soon as they are published.
+        </p>
       </div>
 
       <template v-else>
@@ -199,78 +186,13 @@ watch(feedItems, async (rows) => {
         <!-- Sentinel: reaching it asks for the next cursor page. -->
         <div ref="sentinelEl" class="h-px w-full" aria-hidden="true" />
 
-        <p v-if="feed.loadingMore.value" class="mt-md text-center text-caption text-ink-faint">
+        <p v-if="feed.loadingMore.value" class="mt-md text-center text-caption text-ink-3">
           Loading more…
         </p>
-        <p v-else-if="!feed.hasMore.value" class="mt-md text-center text-caption text-ink-faint">
+        <p v-else-if="!feed.hasMore.value" class="mt-md text-center text-caption text-ink-3">
           You have reached the end.
         </p>
       </template>
     </section>
-
-    <section class="container-page py-lg">
-      <h2 class="section-title mb-[20px]" data-reveal>
-        Game modes
-      </h2>
-      <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-        <article
-          v-for="mode in GAME_MODES"
-          :key="mode.name"
-          class="card-surface px-lg py-[22px]"
-          data-reveal
-        >
-          <h3 class="text-title text-ink">
-            {{ mode.name }}
-          </h3>
-          <p class="mt-xxs text-body-sm text-ink-muted">
-            {{ mode.desc }}
-          </p>
-        </article>
-      </div>
-    </section>
   </div>
 </template>
-
-<style scoped>
-/* Topic chips are toggles, so they need a visible pressed state. */
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-full);
-  background-color: var(--surface);
-  color: var(--ink-secondary);
-  font-size: 14px;
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease;
-}
-
-.filter-chip:hover {
-  background-color: var(--canvas-soft);
-}
-
-.filter-chip:active {
-  transform: scale(0.97);
-}
-
-.filter-chip.is-active {
-  border-color: var(--ink);
-  color: var(--ink);
-  font-weight: 600;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .filter-chip {
-    transition: none;
-  }
-
-  .filter-chip:active {
-    transform: none;
-  }
-}
-</style>

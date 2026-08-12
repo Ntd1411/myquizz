@@ -139,6 +139,47 @@ function animateIn(targets, options) {
 }
 
 /**
+ * Reveals list items that have just been appended, and only those.
+ *
+ * An endless list calls this again for every page, so anything already revealed has to
+ * be left alone. Re-hiding a card the reader has already scrolled past is exactly what
+ * leaves it stuck at opacity 0: its trigger start is behind the scroll position, so the
+ * enter callback that would fade it back in never runs. Each node is therefore stamped
+ * on its first pass and skipped from then on.
+ *
+ * Returns a kill function for the triggers this call created.
+ */
+export function revealAppended(container, selector = '[data-reveal-item]', options = {}) {
+  if (!container) return () => {}
+
+  const fresh = gsap.utils.toArray(selector, container).filter((el) => !el.dataset.revealed)
+  fresh.forEach((el) => {
+    el.dataset.revealed = 'true'
+  })
+
+  if (!fresh.length || prefersReducedMotion()) return () => {}
+
+  // A node appended above the trigger line would wait for a scroll that never comes,
+  // so it plays straight away; only nodes still below the line get a trigger.
+  const line = window.innerHeight * (options.threshold ?? 0.92)
+  const visible = fresh.filter((el) => el.getBoundingClientRect().top <= line)
+  const pending = fresh.filter((el) => el.getBoundingClientRect().top > line)
+
+  gsap.set(fresh, { opacity: 0, y: options.y ?? 16 })
+
+  if (visible.length) animateIn(visible, options)
+  if (!pending.length) return () => {}
+
+  const batch = ScrollTrigger.batch(pending, {
+    start: options.start ?? 'top 92%',
+    once: true,
+    onEnter: (group) => animateIn(group, options),
+  })
+
+  return () => batch.forEach((trigger) => trigger.kill())
+}
+
+/**
  * Reveals a group of cards (a rail) the first time it scrolls into view.
  * Returns a kill function so the caller can clean up on unmount or data change.
  */

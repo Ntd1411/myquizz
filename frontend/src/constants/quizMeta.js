@@ -11,8 +11,10 @@
  * the disambiguating, the colour only has to keep the grid from turning into one grey
  * block. Tags always use the tinted half; the solid half belongs to answer tiles.
  *
- * GAME_MODES is home-page copy. The playable mode rules live in GET /games/game-modes;
- * keep the names here in sync with that response.
+ * CATEGORIES is no longer a browsing filter: the category chips were removed from the
+ * home feed and the discover rail because a hardcoded taxonomy cannot match the
+ * free-text column. It survives only as the lookup behind categoryTheme(), so a known
+ * category keeps a stable colour until a real taxonomy endpoint exists.
  */
 
 /** The four answer colours, plus the neutral used when nothing else fits. */
@@ -54,15 +56,13 @@ export function categoryTheme(name) {
 
 /**
  * Values written into `quiz_language` by the editor. The search endpoint matches the
- * column exactly, so these codes must stay identical on both screens.
+ * column exactly, so these codes must stay identical to the ones the editor writes
+ * (utils/quizImport.js) - a language offered on only one of the two screens is either
+ * unsearchable or unfilterable.
  */
 export const LANGUAGES = [
-  { value: 'en', label: 'English' },
   { value: 'vi', label: 'Vietnamese' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ko', label: 'Korean' },
-  { value: 'fr', label: 'French' },
-  { value: 'es', label: 'Spanish' },
+  { value: 'en', label: 'English' },
 ]
 
 /**
@@ -93,27 +93,4 @@ export const PROFILE_SORTS = [
   { value: 'oldest', label: 'Oldest' },
   { value: 'most_played', label: 'Most played' },
   { value: 'name_asc', label: 'Name A\u2013Z' },
-]
-
-export const GAME_MODES = [
-  {
-    name: 'Classic',
-    desc: 'Host-paced, whole room in lockstep. Everyone answers the same question at once.',
-  },
-  {
-    name: 'Solo',
-    desc: 'Self-paced. Play the whole set at your own speed and compare scores at the end.',
-  },
-  {
-    name: 'Survival',
-    desc: 'Three lives. A wrong answer or a timeout costs a life - last player standing wins.',
-  },
-  {
-    name: 'Marathon',
-    desc: 'Beat the clock. Loop the question bank until the total time budget runs out.',
-  },
-  {
-    name: 'Practice',
-    desc: 'No pressure, no score. Instant answers and review to actually learn.',
-  },
 ]
