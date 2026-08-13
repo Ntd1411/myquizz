@@ -16,9 +16,12 @@ export async function getMe({ probe = false } = {}) {
 }
 
 /**
- * PATCH /users/me. The backend schema accepts fullname, email, phone and
- * description, all optional, and rejects an email or phone already taken by
- * another account with a 400.
+ * PATCH /users/me. The backend schema accepts fullname, phone and description, all
+ * optional, and rejects a phone already taken by another account with a 400.
+ *
+ * Email is NOT accepted. The address is what Google sign-in falls back on to recognise
+ * an account, so it is frozen server side and the body is strict: sending an email key
+ * answers 400 rather than being ignored.
  */
 export async function updateMe(patch) {
   const res = await http.patch('/users/me', patch)

@@ -1,90 +1,565 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
-import { getMyQuizzes } from '@/api/quizzes.api'
+import UserAvatar from '@/components/base/UserAvatar.vue'
+import { getMyQuizzes, deleteQuiz } from '@/api/quizzes.api'
+import { getMe } from '@/api/users.api'
+import { toErrorMessage } from '@/api/envelope'
+import { LIBRARY_SORTS } from '@/constants/quizMeta'
+import { groupDigits, formatCount } from '@/utils/formatNumber'
+import { toTextParts } from '@/utils/linkify'
 import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
-import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
+import { useUiStore } from '@/stores/ui.store'
+import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useMotion'
 
 /**
- * "My library" reads GET /quizzes/me, the only listing that returns the signed-in
- * user's private quizzes and quizzes without questions. The public profile listing
- * would hide exactly those, so the owner-profile endpoint is the wrong source here.
+ * "My library" reads two independent endpoints, and both requests leave in the same
+ * tick: neither one awaits the other, so the page costs one round trip, not two.
  *
- * Pagination is keyset based: the first page is loaded automatically, further pages
- * are appended with the cursor the backend returns.
+ *   GET /quizzes/me  -> the listing, through useCursorList
+ *   GET /users/me    -> the author card, through vue-query
+ *
+ * GET /quizzes/me is the only listing that returns the signed-in user's private
+ * quizzes and quizzes without questions. The public profile listing would hide exactly
+ * those, so the owner-profile endpoint is the wrong source for the rows here - it is
+ * only asked for the author.
+ *
+ * Where each field of the author card comes from:
+ *   GET /users/me   -> the whole own row: id, fullname, email, phone, avatar,
+ *                      description, role, auth_provider, created_at. The public
+ *                      /users/:id row is the wrong source here - it strips the phone
+ *                      and the account facts, and this card is only ever read by the
+ *                      person the row belongs to.
+ *   session row     -> the same fields as a fallback. It is already in the store when
+ *                      the page mounts, so the card is never blank while the request
+ *                      is in flight, and it covers the card entirely if that request
+ *                      fails.
+ *   listing meta    -> the quiz count. Questions and plays are summed from the rows on
+ *                      screen because the backend reports no library-wide totals for
+ *                      them, which is what the note under the stats says.
+ *
+ * What the listing endpoint answers, and how this page reads it:
+ *   data.quizzes             -> the rows, already mapped to cards by quizzes.api
+ *   meta.pagination.limit    -> echo of the requested page size, not used here
+ *   meta.pagination.nextCursor / hasMore -> "Load more"
+ *   meta.pagination.total    -> ONLY present on the first page, and only because the
+ *                               request asked with include_total=true. It counts the
+ *                               current visibility filter, not the whole library.
+ *   error.message            -> read through toErrorMessage, never error.message on
+ *                               the axios error, which is just "Request failed...".
+ *
+ * Pagination is keyset based, so filtering and sorting happen on the server: a cursor
+ * page only covers a slice of the library, and a cursor is bound to the filters it was
+ * issued for.
+ *
+ * The page has no keyword field: search across quizzes lives on Discover, so the
+ * `keyword` parameter of the endpoint is simply never sent from here.
  */
 const auth = useAuthStore()
+const ui = useUiStore()
 
 const PAGE_SIZE = 24
 
+// Values accepted by the `visibility` parameter of GET /quizzes/me.
+const VISIBILITIES = [
+  { value: 'all', label: 'All' },
+  { value: 'public', label: 'Public' },
+  { value: 'private', label: 'Private' },
+]
+
+// "Member since August 2026": a join date needs no day to be useful.
+const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+
 const pageEl = ref(null)
 const gridEl = ref(null)
-let gridReveal = null
+
+// One kill handle per revealed page, released together when the page unmounts.
+const gridReveals = []
+
+const visibility = ref('all')
+const sort = ref('recently_updated')
+
+// The quiz waiting for a delete confirmation, and whether the request is in flight.
+const pendingDelete = ref(null)
+const deleting = ref(false)
+
+// Every quiz in this library belongs to the signed-in user, so one author request
+// covers the header and all the cards.
+const ownerId = computed(() => auth.user?.id ?? null)
+
+/**
+ * Author request. It is created here, next to the list, and vue-query fires it while
+ * the first listing page is still in flight - the two never queue behind each other.
+ *
+ * The endpoint takes no id: the session cookie decides whose row comes back, which is
+ * why the query key carries none either. It is still gated on the session being
+ * resolved, so a signed-out store never fires a request that can only answer 401.
+ *
+ * A failure is not fatal: the session already carries the same fields, so the card
+ * falls back to it instead of leaving a hole at the top of the page.
+ */
+const profile = useQuery({
+  queryKey: ['users', 'me'],
+  queryFn: () => getMe(),
+  enabled: computed(() => Boolean(ownerId.value)),
+  retry: false,
+  staleTime: 5 * 60 * 1000,
+})
 
 const list = useCursorList(
   (params) => getMyQuizzes(params),
-  () => ({ sort: 'recently_updated', limit: PAGE_SIZE }),
+  () => ({
+    visibility: visibility.value,
+    sort: sort.value,
+    limit: PAGE_SIZE,
+  }),
   {
-    enabled: () => Boolean(auth.user?.id),
+    // The session probe resolves before this route is entered, but a direct store
+    // reset would leave the list without an owner, so the guard stays.
+    enabled: () => auth.ready && Boolean(auth.user?.id),
     includeTotal: true,
     errorFallback: 'Could not load your quizzes.',
   },
 )
 
 const quizzes = list.items
-const total = computed(() => list.total.value ?? quizzes.value.length)
 
-onMounted(() => revealOnEnter(pageEl.value))
+/**
+ * The full author row behind the header card. The fetched row wins field by field, the
+ * session row is what keeps the card filled while that request is still running and
+ * what covers it entirely if the request fails.
+ */
+const author = computed(() => {
+  const fetched = profile.data.value
+  const session = auth.user
+  const row = fetched ?? session
+  if (!row?.id) return null
 
-// Cards only exist once the first page resolves, so the scroll reveal is built
-// afterwards and rebuilt whenever the list changes.
-watch(quizzes, async (rows) => {
-  if (gridReveal) {
-    gridReveal.forEach((trigger) => trigger.kill())
-    gridReveal = null
+  return {
+    id: row.id,
+    fullname: row.fullname ?? session?.fullname ?? '',
+    avatar: row.avatar ?? session?.avatar ?? null,
+    email: row.email ?? session?.email ?? '',
+    phone: row.phone ?? session?.phone ?? '',
+    description: row.description ?? session?.description ?? '',
+    role: row.role ?? session?.role ?? '',
+    // Snake case on purpose: these two are raw backend columns, not mapped fields.
+    authProvider: row.auth_provider ?? session?.auth_provider ?? '',
+    createdAt: row.created_at ?? session?.created_at ?? session?.createdAt ?? null,
   }
-  if (!rows.length) return
-
-  await nextTick()
-  gridReveal = revealOnScroll(gridEl.value, '[data-reveal]', { y: 20, stagger: 0.04 })
-  ScrollTrigger.refresh()
 })
+
+const authorName = computed(() => author.value?.fullname || 'You')
+
+const authorAvatar = computed(() => author.value?.avatar || '')
+
+const authorBio = computed(() => author.value?.description?.trim() || '')
+
+const authorPhone = computed(() => author.value?.phone || '')
+
+// A URL pasted into the intro is clickable here, through the same helper the public
+// profile and the settings page use.
+const bioParts = computed(() => toTextParts(authorBio.value))
+
+const authorRoute = computed(() =>
+  author.value ? { name: 'user-profile', params: { id: author.value.id } } : null,
+)
+
+/**
+ * Read off the same author row as everything else in the card, so the join date and
+ * the name can never come from two different accounts.
+ */
+const memberSince = computed(() => {
+  const raw = author.value?.createdAt
+  if (!raw) return ''
+
+  const joined = new Date(raw)
+  if (Number.isNaN(joined.getTime())) return ''
+
+  return `Member since ${MONTH_YEAR.format(joined)}`
+})
+
+/**
+ * A badge only earns its space when it says something, so the default case - a local
+ * account with the plain 'user' role - shows none at all.
+ *
+ * The tone is part of the fact: a role is about standing in the product and wears the
+ * brand colour, a sign-in method is plumbing and stays neutral.
+ */
+const accountBadges = computed(() => {
+  const badges = []
+  const role = author.value?.role
+  const provider = author.value?.authProvider
+
+  if (role && role !== 'user') {
+    badges.push({
+      key: 'role',
+      label: role.charAt(0).toUpperCase() + role.slice(1),
+      tone: 'brand',
+    })
+  }
+
+  if (provider === 'google') {
+    badges.push({ key: 'provider', label: 'Google', tone: 'neutral' })
+  }
+
+  return badges
+})
+
+/**
+ * The card contract is `{ id, fullname, avatar }` and nothing else, so the extra header
+ * fields never leak into a quiz row.
+ */
+const cardAuthor = computed(() => {
+  const row = author.value
+  if (!row) return null
+
+  return { id: row.id, fullname: row.fullname, avatar: row.avatar }
+})
+
+/**
+ * The listing rows carry whatever author block the backend joined in. Where it is
+ * missing, the author fetched above is filled in: on this page the owner is known for
+ * certain, which is what turns the face on every card into a working profile link.
+ */
+const cards = computed(() => {
+  const owner = cardAuthor.value
+  if (!owner) return quizzes.value
+
+  return quizzes.value.map((quiz) =>
+    quiz.owner ? quiz : { ...quiz, owner, ownerId: quiz.ownerId ?? owner.id },
+  )
+})
+
+/*
+ * While the session is still being resolved the list is not allowed to load, so its
+ * `loading` flag is false and the rows are empty. Rendering that as "Nothing here yet"
+ * flashed an empty library on every hard refresh, so the unresolved session counts as
+ * loading instead.
+ */
+const isLoading = computed(() => !auth.ready || list.loading.value)
+
+const total = computed(() => list.total.value)
+
+const loadedCount = computed(() => quizzes.value.length)
+
+const hasFilters = computed(() => visibility.value !== 'all')
+
+// The backend only sends a total on the first page, so the loaded row count stands in
+// for it until it does.
+const quizCount = computed(() => total.value ?? loadedCount.value)
+
+const countLabel = computed(() => {
+  if (isLoading.value) return ''
+  return `${quizCount.value} ${quizCount.value === 1 ? 'quiz' : 'quizzes'}`
+})
+
+const questionTotal = computed(() =>
+  quizzes.value.reduce((sum, quiz) => sum + (quiz.questionCount ?? 0), 0),
+)
+
+const playTotal = computed(() =>
+  quizzes.value.reduce((sum, quiz) => sum + (quiz.playCount ?? 0), 0),
+)
+
+const stats = computed(() => [
+  { key: 'quizzes', label: quizCount.value === 1 ? 'Quiz' : 'Quizzes', value: quizCount.value },
+  { key: 'questions', label: 'Questions', value: questionTotal.value },
+  { key: 'plays', label: 'Plays', value: playTotal.value },
+])
+
+// Questions and plays are summed from the rows on screen. While a cursor page is still
+// unloaded they are a partial figure, and saying so is cheaper than hiding them.
+const statsNote = computed(() => {
+  if (!list.hasMore.value || !loadedCount.value) return ''
+  return `Questions and plays cover the ${loadedCount.value} quizzes loaded so far.`
+})
+
+// Only shown while part of the library is still unloaded, and only when the backend
+// actually sent a total: the row count alone never stands in for it.
+const rangeLabel = computed(() => {
+  if (total.value === null || total.value <= loadedCount.value) return ''
+  return `Showing ${loadedCount.value} of ${total.value}`
+})
+
+const activeSortLabel = computed(
+  () => LIBRARY_SORTS.find((item) => item.value === sort.value)?.label ?? '',
+)
+
+function clearFilters() {
+  visibility.value = 'all'
+}
+
+/**
+ * Deleting is irreversible on the backend, so it goes through an in-page dialog rather
+ * than window.confirm, which cannot be styled and blocks the whole tab.
+ */
+function askDelete(quiz) {
+  pendingDelete.value = quiz
+}
+
+function cancelDelete() {
+  if (deleting.value) return
+  pendingDelete.value = null
+}
+
+/**
+ * After a successful delete the list reloads from the first page instead of splicing
+ * the row out locally: the following cursor pages shift by one, so a local removal
+ * would make "Load more" skip a quiz.
+ */
+async function confirmDelete() {
+  const quiz = pendingDelete.value
+  if (!quiz || deleting.value) return
+
+  deleting.value = true
+  try {
+    await deleteQuiz(quiz.id)
+    ui.toast('Quiz deleted.', 'success')
+    pendingDelete.value = null
+    await list.loadFirst()
+  } catch (error) {
+    // The envelope carries the reason under error.message (404 gone, 403 not yours),
+    // which only toErrorMessage reads; error.message alone is the axios status text.
+    ui.toast(toErrorMessage(error, 'Could not delete this quiz.'), 'error')
+  } finally {
+    deleting.value = false
+  }
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape') cancelDelete()
+}
+
+/**
+ * The dialog covers the page, so the page behind it must not scroll. Lenis drives the
+ * scroll itself, so pausing it is what actually freezes the page; the inline overflow
+ * lock is the fallback for the reduced-motion path where Lenis is off.
+ */
+watch(pendingDelete, (quiz) => {
+  const lenis = window.__lenis
+
+  if (quiz) {
+    lenis?.stop()
+    document.body.style.overflow = 'hidden'
+    return
+  }
+
+  lenis?.start()
+  document.body.style.overflow = ''
+})
+
+onMounted(() => {
+  revealOnEnter(pageEl.value)
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  gridReveals.forEach((kill) => kill())
+  window.__lenis?.start()
+  document.body.style.overflow = ''
+})
+
+/**
+ * "Load more" appends into the same grid, so only the cards that are actually new may
+ * be touched. Re-running the reveal across the whole grid would hide the cards the
+ * reader already scrolled past, and they would never come back.
+ *
+ * This watches the raw rows, not `cards`: the author landing later only patches the
+ * existing nodes in place, which must not start an animation.
+ */
+watch(
+  quizzes,
+  async (rows) => {
+    if (!rows.length) return
+
+    await nextTick()
+    gridReveals.push(revealAppended(gridEl.value, '[data-reveal-card]', { y: 16, stagger: 0.04 }))
+    // Layout height changed with the new row count.
+    ScrollTrigger.refresh()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
   <div ref="pageEl" class="container-page pb-xxl pt-lg">
-    <div class="flex flex-wrap items-end justify-between gap-sm" data-enter>
-      <div>
+    <!-- Author card. Everything a visitor sees on the public profile, plus the account
+         facts only the owner is allowed to read. -->
+    <section v-if="!author" class="profile-card" data-enter>
+      <span class="skeleton-avatar" />
+      <div class="profile-main">
+        <span class="skeleton-line" style="width: 30%" />
+        <span class="skeleton-line skeleton-line-tall" style="width: 46%" />
+        <span class="skeleton-line" style="width: 62%" />
+      </div>
+    </section>
+
+    <section v-else class="profile-card" data-enter>
+      <RouterLink
+        :to="authorRoute"
+        class="profile-avatar"
+        :title="`View ${authorName}`"
+      >
+        <UserAvatar :name="authorName" :src="authorAvatar" :size="84" />
+        <span class="sr-only">View the public profile of {{ authorName }}</span>
+      </RouterLink>
+
+      <div class="profile-main">
         <p class="eyebrow-label">
           Your work
         </p>
-        <h1 class="mt-xxs text-heading-1 text-ink">
-          My library
-        </h1>
-        <p class="mt-xs text-body-sm text-ink-muted">
-          {{ total }} {{ total === 1 ? 'quiz' : 'quizzes' }} you created.
+        <!-- A badge qualifies the name, so it rides on the same line instead of
+             claiming one of its own. -->
+        <div class="profile-headline">
+          <h1 class="profile-name">
+            {{ authorName }}
+          </h1>
+
+          <p v-if="accountBadges.length" class="profile-badges">
+            <span
+              v-for="badge in accountBadges"
+              :key="badge.key"
+              class="badge"
+              :class="`badge-${badge.tone}`"
+            >
+              {{ badge.label }}
+            </span>
+          </p>
+        </div>
+
+        <!-- One labelled fact per line. The phone is the private half of the row, so
+             it appears here and nowhere a visitor can reach. -->
+        <div class="profile-meta">
+          <p v-if="author.email" class="meta-row">
+            <span class="meta-key">Email:</span>
+            <span class="meta-value">{{ author.email }}</span>
+          </p>
+
+          <p v-if="authorPhone" class="meta-row">
+            <span class="meta-key">Phone:</span>
+            <span class="meta-value">{{ authorPhone }}</span>
+          </p>
+
+          <p v-if="memberSince" class="meta-row meta-since">
+            {{ memberSince }}
+          </p>
+        </div>
+
+        <p class="profile-bio" :class="authorBio ? '' : 'is-empty'">
+          <template v-if="authorBio">
+            <template v-for="part in bioParts" :key="part.key">
+              <a
+                v-if="part.type === 'link'"
+                :href="part.href"
+                class="bio-link"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ part.text }}</a>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </template>
+          <template v-else>
+            No intro yet. Add one so players know who is behind your quizzes.
+          </template>
         </p>
       </div>
-      <RouterLink :to="{ name: 'create-start' }" class="btn-primary">
-        Create a quiz
-      </RouterLink>
+
+      <div class="profile-actions">
+        <RouterLink :to="{ name: 'profile' }" class="btn-utility">
+          Edit profile
+        </RouterLink>
+        <RouterLink :to="authorRoute" class="btn-ghost">
+          View public profile
+        </RouterLink>
+      </div>
+
+      <dl class="profile-stats">
+        <div v-for="stat in stats" :key="stat.key" class="stat">
+          <dt class="stat-label">
+            {{ stat.label }}
+          </dt>
+          <dd class="stat-value num" :title="formatCount(stat.value)">
+            <template v-for="(group, index) in groupDigits(stat.value)" :key="index">
+              <i v-if="index" class="ts" />{{ group }}
+            </template>
+          </dd>
+        </div>
+      </dl>
+
+      <p v-if="statsNote" class="profile-note">
+        {{ statsNote }}
+      </p>
+    </section>
+
+    <!-- One bar for the listing itself: what is being shown, and how. -->
+    <div class="toolbar" data-enter>
+      <div class="toolbar-heading">
+        <h2 class="toolbar-title">
+          My Library
+        </h2>
+        <span v-if="countLabel" class="toolbar-count">{{ countLabel }}</span>
+      </div>
+
+      <!-- Visibility is one choice out of three, so it reads as a segmented control. -->
+      <div class="segmented" role="group" aria-label="Visibility">
+        <button
+          v-for="item in VISIBILITIES"
+          :key="item.value"
+          type="button"
+          class="segment"
+          :class="visibility === item.value ? 'is-active' : ''"
+          :aria-pressed="visibility === item.value"
+          @click="visibility = item.value"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
+      <div class="select-wrap">
+        <select v-model="sort" class="select-field" :aria-label="`Sort: ${activeSortLabel}`">
+          <option v-for="item in LIBRARY_SORTS" :key="item.value" :value="item.value">
+            {{ item.label }}
+          </option>
+        </select>
+        <svg
+          class="select-chevron"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </div>
     </div>
 
+    <!-- Skeletons carry the shape of a card, so the grid does not jump when rows land. -->
     <div
-      v-if="list.loading.value"
+      v-if="isLoading"
       class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
       data-enter
     >
-      <div
-        v-for="n in 8"
-        :key="`skeleton-${n}`"
-        class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
-      />
+      <div v-for="n in 8" :key="`skeleton-${n}`" class="skeleton-card">
+        <span class="skeleton-cover" />
+        <span class="skeleton-body">
+          <span class="skeleton-line" style="width: 78%" />
+          <span class="skeleton-line" style="width: 52%" />
+          <span class="skeleton-line skeleton-line-last" style="width: 38%" />
+        </span>
+      </div>
     </div>
 
-    <div v-else-if="list.errorMessage.value" class="card-surface mt-lg p-lg" data-enter>
-      <p class="text-body-sm text-ink">
+    <div v-else-if="list.errorMessage.value" class="state-card is-error mt-lg" data-enter>
+      <p class="text-title text-ink">
+        This did not load
+      </p>
+      <p class="state-text">
         {{ list.errorMessage.value }}
       </p>
       <button class="btn-utility mt-md" type="button" @click="list.loadFirst()">
@@ -92,12 +567,53 @@ watch(quizzes, async (rows) => {
       </button>
     </div>
 
-    <div v-else-if="!quizzes.length" class="card-surface mt-lg p-xl text-center" data-enter>
+    <!-- An empty library and an empty filter result need different exits. -->
+    <div v-else-if="!quizzes.length && hasFilters" class="state-card mt-lg" data-enter>
+      <span class="state-icon">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.2-3.2" />
+        </svg>
+      </span>
+      <p class="text-title text-ink">
+        No matches
+      </p>
+      <p class="state-text">
+        No quiz in your library is set to this visibility.
+      </p>
+      <button class="btn-utility mt-md" type="button" @click="clearFilters">
+        Show all
+      </button>
+    </div>
+
+    <div v-else-if="!quizzes.length" class="state-card mt-lg" data-enter>
+      <span class="state-icon">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h3l2 2.5h6A2.5 2.5 0 0 1 20 10v6.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z" />
+          <path d="M12 11v5" />
+          <path d="M9.5 13.5h5" />
+        </svg>
+      </span>
       <p class="text-title text-ink">
         Nothing here yet
       </p>
-      <p class="mx-auto mt-xs max-w-[420px] text-body-sm text-ink-muted">
-        Build your first quiz from scratch, or import questions from text, CSV or JSON.
+      <p class="state-text">
+        Your library holds every quiz you build. Start with one question.
       </p>
       <RouterLink :to="{ name: 'create-start' }" class="btn-primary mt-md">
         Create a quiz
@@ -105,8 +621,70 @@ watch(quizzes, async (rows) => {
     </div>
 
     <template v-else>
-      <div ref="gridEl" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-        <QuizCard v-for="quiz in quizzes" :key="quiz.id" :quiz="quiz" data-reveal />
+      <div v-if="rangeLabel" class="mt-lg flex items-center justify-between gap-sm">
+        <p class="text-caption text-ink-3">
+          {{ rangeLabel }}
+        </p>
+        <span v-if="list.loadingMore.value" class="text-caption text-ink-3">
+          Loading more…
+        </span>
+      </div>
+
+      <!-- Same grid as the home feed, so a card is the same size on both screens. -->
+      <div
+        ref="gridEl"
+        class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <QuizCard
+          v-for="quiz in cards"
+          :key="quiz.id"
+          :quiz="quiz"
+          show-owner-badges
+          data-reveal-card
+        >
+          <template #actions>
+            <RouterLink
+              :to="{ name: 'edit-quiz', params: { id: quiz.id } }"
+              class="card-action"
+              :title="`Edit ${quiz.title}`"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+              <span class="sr-only">Edit {{ quiz.title }}</span>
+            </RouterLink>
+            <button
+              type="button"
+              class="card-action card-action-danger"
+              :title="`Delete ${quiz.title}`"
+              @click="askDelete(quiz)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16" />
+                <path d="M9 7V5h6v2" />
+                <path d="M6 7h12l-.9 12.1a1 1 0 0 1-1 .9H7.9a1 1 0 0 1-1-.9Z" />
+              </svg>
+              <span class="sr-only">Delete {{ quiz.title }}</span>
+            </button>
+          </template>
+        </QuizCard>
       </div>
 
       <div v-if="list.hasMore.value" class="mt-lg flex justify-center">
@@ -120,5 +698,583 @@ watch(quizzes, async (rows) => {
         </button>
       </div>
     </template>
+
+    <!--
+      Teleported: the page root carries a transform while the entrance animation runs,
+      and a fixed element inside a transformed ancestor is positioned against that
+      ancestor instead of the viewport.
+    -->
+    <Teleport to="body">
+      <div v-if="pendingDelete" class="dialog-backdrop" @click.self="cancelDelete">
+        <div
+          class="dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-quiz-title"
+        >
+          <p id="delete-quiz-title" class="text-heading-3 text-ink">
+            Delete this quiz?
+          </p>
+          <p class="mt-xs text-body-sm text-ink-2">
+            “{{ pendingDelete.title }}” and its questions go away for everyone. This cannot be undone.
+          </p>
+          <div class="mt-lg flex justify-end gap-xs">
+            <button class="btn-utility" type="button" :disabled="deleting" @click="cancelDelete">
+              Keep it
+            </button>
+            <button class="btn-danger" type="button" :disabled="deleting" @click="confirmDelete">
+              {{ deleting ? 'Deleting…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+/*
+  Author card: avatar, identity and actions on one row, the stats strip underneath on
+  its own line so the three tiles keep their width whatever the name is.
+*/
+.profile-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  /*
+    Only the columns are spaced by the grid. The rows below the identity carry their
+    own margins instead, because a single row gap cannot separate the stats strip from
+    the identity and the note from the stats by different amounts - the note used to
+    claw a gap back with a negative margin.
+  */
+  column-gap: 22px;
+  row-gap: 0;
+  padding: 26px 28px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  background-color: var(--paper);
+}
+
+.profile-avatar {
+  display: block;
+  border-radius: var(--r-full);
+  transition:
+    transform var(--t-ui) var(--ease),
+    box-shadow var(--t-ui) var(--ease);
+}
+
+.profile-avatar:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 0 4px var(--spotlight-soft);
+}
+
+.profile-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/*
+  Name and badges on one line. The row wraps, so a long name pushes the badges onto a
+  second line rather than squeezing them, and the row gap is what spaces them then.
+*/
+.profile-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 6px;
+}
+
+.profile-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.024em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}
+
+/*
+  One labelled fact per line, so the block reads as a small record rather than a run of
+  loose grey text. The key column has a fixed width, which is what lines the values up
+  under each other whatever the label says.
+*/
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.meta-key {
+  flex: none;
+  width: 52px;
+  color: var(--ink-3);
+}
+
+.meta-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A sentence of its own, so it carries no key column and no value column. */
+.meta-since {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* Never shrinks: the name gives up its width first, a badge is unreadable clipped. */
+.profile-badges {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/*
+  A badge states a fact about the account and nothing more, so it is smaller and
+  flatter than .chip, which is a control the reader can press elsewhere in the app.
+*/
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Standing in the product: worth the brand colour. */
+.badge-brand {
+  border-color: var(--spotlight-line);
+  background-color: var(--spotlight-soft);
+  color: var(--spotlight);
+}
+
+/* Plumbing, such as how the account signs in: stated, not advertised. */
+.badge-neutral {
+  border-color: var(--hairline);
+  background-color: var(--canvas);
+  color: var(--ink-2);
+}
+
+/* pre-wrap keeps the paragraph breaks the author typed into the intro. */
+.profile-bio {
+  max-width: 58ch;
+  margin-top: 16px;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The placeholder is a prompt, not content, so it never reads as an intro. */
+.profile-bio.is-empty {
+  color: var(--ink-3);
+}
+
+/* A link inside the intro: underlined rather than coloured alone, because the intro
+   is already grey text and colour on its own would be easy to miss. */
+.bio-link {
+  color: var(--spotlight);
+  text-decoration: underline;
+  text-decoration-color: var(--spotlight-line);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--t-ui) var(--ease);
+}
+
+.bio-link:hover {
+  text-decoration-color: var(--spotlight);
+}
+
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Its own band under the identity, far enough down to read as a separate statement. */
+.profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.stat {
+  flex: 1 1 140px;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background-color: var(--canvas);
+}
+
+.stat-label {
+  color: var(--ink-3);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.stat-value {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* A footnote to the strip above, so it stays closer to it than the strip is to the
+   identity. */
+.profile-note {
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* Below this width the actions cannot share the row without squeezing the name. */
+@media (max-width: 760px) {
+  .profile-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 22px 20px;
+  }
+
+  /* Off the identity row and onto their own, so they need the gap the grid no longer
+     provides. */
+  .profile-actions {
+    grid-column: 1 / -1;
+    margin-top: 18px;
+  }
+
+  .profile-stats {
+    margin-top: 22px;
+  }
+
+  .profile-name {
+    font-size: 26px;
+  }
+}
+
+/* Every listing control sits on one paper bar, aligned on a single 40px baseline. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background-color: var(--paper);
+}
+
+/* The auto margin is what pushes the filters to the right of the bar. */
+.toolbar-heading {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin-right: auto;
+  gap: 10px;
+  padding-left: 4px;
+}
+
+.toolbar-title {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+}
+
+.toolbar-count {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/*
+  Segmented control on a canvas track: the choice reads as one control with three
+  states instead of three separate buttons that happen to sit next to each other.
+*/
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-full);
+  background-color: var(--canvas);
+}
+
+.segment {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--r-full);
+  color: var(--ink-2);
+  font-size: 14px;
+  transition:
+    background-color var(--t-ui) var(--ease),
+    color var(--t-ui) var(--ease),
+    box-shadow var(--t-ui) var(--ease);
+}
+
+.segment:hover {
+  color: var(--ink);
+}
+
+.segment.is-active {
+  background-color: var(--paper);
+  color: var(--spotlight);
+  font-weight: 600;
+  box-shadow: var(--sh-1);
+}
+
+.select-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.select-field {
+  height: 40px;
+  padding: 0 34px 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-size: 14.5px;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    border-color var(--t-ui) var(--ease),
+    box-shadow var(--t-ui) var(--ease);
+}
+
+.select-field:hover {
+  border-color: var(--spotlight-line);
+}
+
+.select-field:focus {
+  outline: none;
+  border-color: var(--spotlight);
+  box-shadow: 0 0 0 4px var(--spotlight-soft);
+}
+
+.select-chevron {
+  position: absolute;
+  right: 12px;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/*
+  Owner actions float over the cover, so they are round paper chips rather than the
+  text pills the cover used to carry: two words each stacked into a grey brick.
+*/
+.card-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-full);
+  background-color: rgba(255, 255, 255, 0.94);
+  color: var(--ink-2);
+  box-shadow: var(--sh-1);
+  backdrop-filter: blur(6px);
+  transition:
+    color var(--t-ui) var(--ease),
+    border-color var(--t-ui) var(--ease),
+    background-color var(--t-ui) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.card-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+.card-action:hover {
+  border-color: var(--spotlight-line);
+  background-color: #ffffff;
+  color: var(--spotlight);
+}
+
+.card-action:active {
+  transform: scale(0.94);
+}
+
+/* Answer A is the only answer colour a control may wear, and only to destroy. */
+.card-action-danger:hover {
+  border-color: var(--ans-a);
+  color: var(--ans-a);
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background-color: var(--paper);
+  text-align: center;
+}
+
+.state-card.is-error {
+  border-color: var(--ans-a);
+  background-color: var(--ans-a-soft);
+}
+
+.state-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 16px;
+  border-radius: var(--r-full);
+  background-color: var(--wash);
+  color: var(--spotlight);
+}
+
+.state-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.state-text {
+  max-width: 420px;
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Card-shaped placeholder: cover block, two text lines, one meta line. */
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background-color: var(--paper);
+}
+
+.skeleton-cover {
+  display: block;
+  aspect-ratio: 16 / 10;
+  background-color: var(--canvas);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+}
+
+.skeleton-avatar {
+  display: block;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--r-full);
+  background-color: var(--canvas);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  display: block;
+  height: 12px;
+  border-radius: var(--r-sm);
+  background-color: var(--canvas);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-line + .skeleton-line {
+  margin-top: 10px;
+}
+
+.skeleton-line-tall {
+  height: 22px;
+}
+
+.skeleton-line-last {
+  margin-top: 10px;
+  height: 10px;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background-color: rgba(35, 36, 43, 0.32);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  background-color: var(--paper);
+  box-shadow: var(--sh-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-avatar,
+  .bio-link,
+  .segment,
+  .select-field,
+  .card-action {
+    transition: none;
+  }
+
+  .profile-avatar:hover {
+    transform: none;
+  }
+
+  .skeleton-avatar,
+  .skeleton-cover,
+  .skeleton-line {
+    animation: none;
+  }
+}
+</style>

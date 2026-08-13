@@ -168,7 +168,7 @@ On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }
 | Prefix | Operations | Covers |
 | --- | --- | --- |
 | `/v1/auth` | 7 | Register, login, refresh, logout, Google OAuth redirect flow and One Tap |
-| `/v1/users` | 9 | Own profile, public profile, password change, avatar, forgot / reset password |
+| `/v1/users` | 9 | Own profile (the email is immutable), public profile, password change, avatar, forgot / reset password |
 | `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
 | `/v1/games` | 8 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results |
 | `/v1/storage` | 1 | Presigned upload URL |
@@ -213,6 +213,8 @@ Two flows share the same profile verification:
 - **One Tap** — `POST /v1/auth/google/one-tap` verifies the `id_token` directly, with `GOOGLE_CLIENT_ID` as the expected audience.
 
 Both end in the same place: an account matched by Google id, and the usual cookie pair.
+
+**The profile email is immutable**, and `PATCH /v1/users/me` refuses an `email` field for that reason. The Google id is only the first lookup: when no row carries it — a link that was never persisted, a row restored from a seed — the flow falls back to matching by email. An address edited in the app no longer equals the one Google sends, so that fallback finds nothing and mints a second account for the same person. Freezing the address removes the whole class of drift; changing it later needs a deliberate flow that re-verifies the new address and keeps `google_id` attached to the same row.
 
 ## Errors and status codes
 

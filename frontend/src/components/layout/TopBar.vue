@@ -1,18 +1,47 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import BrandLogo from '@/components/base/BrandLogo.vue'
 
 const auth = useAuthStore()
 const ui = useUiStore()
+const route = useRoute()
 const router = useRouter()
 
 const mobileOpen = ref(false)
 const menuOpen = ref(false)
-const keyword = ref('')
+const searchOpen = ref(false)
 const menuRoot = ref(null)
+const inlineSearchEl = ref(null)
+
+function queryKeyword(value) {
+  return typeof value === 'string' ? value : ''
+}
+
+/**
+ * This is the only keyword input in the product: Discover has no search box of its own
+ * and reads the keyword out of the URL instead. Mirroring the URL back into the field
+ * keeps the two from ever disagreeing, so clearing the filters on Discover empties this
+ * box too, and the box is blank on every page that is not a search.
+ */
+const keyword = ref(route.name === 'discover' ? queryKeyword(route.query.keyword) : '')
+
+watch(
+  () => (route.name === 'discover' ? queryKeyword(route.query.keyword) : ''),
+  (value) => {
+    keyword.value = value
+  },
+)
+
+async function toggleInlineSearch() {
+  searchOpen.value = !searchOpen.value
+  if (!searchOpen.value) return
+
+  await nextTick()
+  inlineSearchEl.value?.focus()
+}
 
 // Labels are English only, matching the home_myquizz.html demo navigation.
 // Create is a plain nav item like the others; only its session requirement differs.
@@ -68,9 +97,19 @@ watch(menuOpen, (open) => {
 
 onBeforeUnmount(unbindMenuDismissers)
 
+/**
+ * Searching from Discover must not drop the filters already applied there, so the
+ * current query is carried over and only the keyword is replaced.
+ */
 function submitSearch() {
-  router.push({ name: 'discover', query: keyword.value ? { keyword: keyword.value } : {} })
+  const carried = route.name === 'discover' ? { ...route.query } : {}
+
+  router.push({
+    name: 'discover',
+    query: { ...carried, keyword: keyword.value || undefined },
+  })
   mobileOpen.value = false
+  searchOpen.value = false
 }
 
 async function handleLogout() {
@@ -121,12 +160,37 @@ async function handleLogout() {
             </svg>
             <input
               v-model="keyword"
-              class="w-full border-0 bg-transparent text-body-sm text-ink outline-none placeholder:text-ink-faint"
+              class="w-full border-0 bg-transparent text-body-sm text-ink outline-none placeholder:text-ink-3"
               type="search"
               placeholder="Search quizzes…"
             >
           </label>
         </form>
+
+        <!--
+          Between md and lg the bar has the full navigation but no room for the field,
+          and that range has no hamburger to fall back on, so search opens on demand.
+        -->
+        <button
+          class="icon-btn hidden md:grid lg:hidden"
+          type="button"
+          aria-label="Search quizzes"
+          :aria-expanded="searchOpen"
+          @click="toggleInlineSearch"
+        >
+          <svg
+            class="h-[17px] w-[17px]"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+        </button>
 
         <RouterLink :to="{ name: 'join-game' }" class="btn-primary hidden sm:inline-flex">
           Join game
@@ -236,6 +300,20 @@ async function handleLogout() {
             <path d="M3 6h18M3 12h18M3 18h18" />
           </svg>
         </button>
+      </div>
+    </div>
+
+    <div v-if="searchOpen" class="border-t border-hairline bg-surface lg:hidden">
+      <div class="container-page py-sm">
+        <form @submit.prevent="submitSearch">
+          <input
+            ref="inlineSearchEl"
+            v-model="keyword"
+            class="field"
+            type="search"
+            placeholder="Search quizzes…"
+          >
+        </form>
       </div>
     </div>
 

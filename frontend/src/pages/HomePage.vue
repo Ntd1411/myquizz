@@ -1,145 +1,207 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import QuizRail from '@/components/quiz/QuizRail.vue'
-import { searchQuizzes } from '@/api/quizzes.api'
-import { CATEGORIES, GAME_MODES } from '@/constants/quizMeta'
-import { revealOnScroll } from '@/composables/useMotion'
+import QuizCard from '@/components/quiz/QuizCard.vue'
+import { getHomeSections, getFeed } from '@/api/quizzes.api'
+import { useCursorList } from '@/composables/useCursorList'
+import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
+import { useAuthStore } from '@/stores/auth.store'
+import { revealAppended, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
 
-// The page opens directly on Trending. There is no hero band on purpose.
-// The backend caps `limit` at 24, which is one pool request for every rail here.
-// Server-driven rows from GET /quizzes/home replace this pool in the next PR.
-const POOL_LIMIT = 24
+/**
+ * Home screen, fully server driven.
+ *
+ * The rails come from GET /quizzes/home: the backend decides which sections exist,
+ * in which order and with which title (home_sections), already drops empty ones and
+ * only adds the "continue" row for a signed-in user. Nothing about a row is hardcoded
+ * here, so adding a section is a backend-only change.
+ *
+ * Below the rails sits the endless feed on GET /quizzes/feed, ranked by hot_score and
+ * paginated by its own cursor. It grows automatically when the sentinel under the last
+ * card reaches the viewport.
+ *
+ * The feed is deliberately unfiltered. The topic chips that used to sit above it were a
+ * hardcoded taxonomy matched against a free-text column, so most of them returned an
+ * empty page; a filter comes back once an endpoint can list the categories that really
+ * exist. Until then the server-side ranking is the whole product here.
+ */
+const auth = useAuthStore()
 
-// Category swatches and mode blurbs are static UI copy (src/constants/quizMeta.js).
-// Decoration only: a swatch never paints a CTA or a structural fill.
+const FEED_LIMIT = 12
+
+// Section types that map straight onto a discover sort. Anything else falls back to
+// plain discover, so an unknown section type still gets a working "See all".
+const SECTION_SORTS = ['trending', 'newest', 'oldest', 'most_played', 'name_asc', 'name_desc']
 
 const pageEl = ref(null)
-const staticEl = ref(null)
+const feedGridEl = ref(null)
+const sentinelEl = ref(null)
 
-// A single pool request feeds every rail on this page, so the home screen costs
-// one round trip instead of one per category.
-const pool = useQuery({
-  queryKey: ['quizzes', 'home-pool'],
-  queryFn: () => searchQuizzes({ limit: POOL_LIMIT, sort: 'newest' }),
+// The signed-in state changes the section list, so it belongs in the cache key.
+const audience = computed(() => (auth.isLoggedIn ? 'user' : 'guest'))
+
+const home = useQuery({
+  queryKey: ['quizzes', 'home', audience],
+  queryFn: () => getHomeSections(),
 })
 
-const quizzes = computed(() => pool.data.value?.quizzes ?? [])
+const sections = computed(() => home.data.value?.sections ?? [])
 
-const trending = computed(() =>
-  [...quizzes.value].sort((a, b) => (b.playCount ?? 0) - (a.playCount ?? 0)),
+// A rail is a row of four cards on a desktop viewport. A shorter one reads as a
+// half-empty shelf rather than a curated pick, so a section is held back until it
+// can fill the row. The backend already drops sections with no items at all.
+const MIN_RAIL_ITEMS = 4
+
+const rails = computed(() =>
+  sections.value.filter((section) => (section.items?.length ?? 0) >= MIN_RAIL_ITEMS),
 )
 
-// The backend has no dedicated "newest" endpoint yet, so sort the same search
-// result client-side by creation date. Swap this for a sort param once it exists.
-const newest = computed(() =>
-  [...quizzes.value].sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0)),
-)
-
-// Only categories that actually have quizzes get their own rail.
-const topicRails = computed(() =>
-  CATEGORIES.map((category) => ({
-    ...category,
-    items: quizzes.value.filter((quiz) => quiz.category === category.name),
-  })).filter((topic) => topic.items.length > 0),
-)
-
-function countFor(name) {
-  return quizzes.value.filter((quiz) => quiz.category === name).length
-}
-
-function topicId(name) {
-  return `topic-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-}
-
-/** Scrolls to a topic rail through Lenis when smooth scrolling is active. */
-function scrollToTopic(name) {
-  const target = document.getElementById(topicId(name))
-  if (!target) return
-  if (window.__lenis) {
-    window.__lenis.scrollTo(target, { offset: -72, duration: 1.2 })
-    return
+/**
+ * Turns a server section into its "See all" destination. The in-progress row has no
+ * list page, so it deliberately gets no link.
+ */
+function seeAllFor(section) {
+  if (section.type === 'continue') return null
+  if (SECTION_SORTS.includes(section.type)) {
+    return { name: 'discover', query: { sort: section.type } }
   }
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (section.type === 'category') {
+    return { name: 'discover', query: { category: section.title } }
+  }
+  return { name: 'discover' }
 }
+
+const feed = useCursorList(
+  (params) => getFeed(params),
+  () => ({ limit: FEED_LIMIT }),
+  { errorFallback: 'Could not load the feed.' },
+)
+
+const feedItems = feed.items
+
+useInfiniteScroll(sentinelEl, () => feed.loadMore())
+
+const feedReveals = []
 
 onMounted(() => {
-  // Rails animate their own title and cards, so this only covers the static
-  // sections (topic chips, game modes) further down the page.
-  revealOnScroll(pageEl.value, '[data-reveal]')
-  revealOnScroll(staticEl.value, '[data-reveal-static]', { y: 20, stagger: 0.06 })
+  // Rails animate their own header and cards; this only covers the static sections.
+  revealOnScroll(pageEl.value, '[data-reveal]', { y: 20, stagger: 0.06 })
+})
+
+// Every page appends into the same grid, so only the cards that are actually new may
+// be touched. Rebuilding the reveal over the whole grid re-hid the cards the reader had
+// already scrolled past, and those never came back: their trigger start sits behind the
+// scroll position, so the enter callback that fades them in is never called again.
+watch(feedItems, async (rows) => {
+  if (!rows.length) return
+
+  await nextTick()
+  feedReveals.push(revealAppended(feedGridEl.value, '[data-reveal-card]', { y: 16, stagger: 0.04 }))
+  // The page just got taller, so triggers further down need their start recomputed.
+  ScrollTrigger.refresh()
+})
+
+onBeforeUnmount(() => {
+  feedReveals.forEach((kill) => kill())
 })
 </script>
 
 <template>
   <div ref="pageEl" class="pb-xxl pt-md">
-    <QuizRail
-      title="Trending quizzes"
-      :items="trending"
-      :loading="pool.isLoading.value"
-      :see-all-to="{ name: 'discover' }"
-      see-all-label="See all"
-    />
+    <!-- Server-driven rails. -->
+    <template v-if="home.isLoading.value">
+      <QuizRail
+        v-for="n in 2"
+        :key="`rail-skeleton-${n}`"
+        title="Loading…"
+        :items="[]"
+        loading
+      />
+    </template>
 
-    <QuizRail
-      title="Newest quizzes"
-      :items="newest"
-      :loading="pool.isLoading.value"
-      :see-all-to="{ name: 'discover', query: { sort: 'newest' } }"
-      see-all-label="See all"
-    />
-
-    <section ref="staticEl" class="container-page py-lg">
-      <h2 class="section-title mb-[20px]" data-reveal-static>
-        Trending topics
-      </h2>
-      <div class="flex flex-wrap gap-[10px]" data-reveal-static>
-        <button
-          v-for="category in CATEGORIES"
-          :key="category.name"
-          type="button"
-          class="chip"
-          @click="scrollToTopic(category.name)"
-        >
-          <span class="h-[9px] w-[9px] rounded-full" :style="{ backgroundColor: category.color }" />
-          {{ category.name }}
-          <span class="text-[13px] text-ink-faint">{{ countFor(category.name) }}</span>
+    <div v-else-if="home.isError.value" class="container-page py-lg">
+      <div class="card-surface p-xl">
+        <p class="text-body-sm text-ans-a">
+          Could not load the home sections.
+        </p>
+        <button class="btn-utility mt-md" type="button" @click="home.refetch()">
+          Try again
         </button>
       </div>
-    </section>
-
-    <div v-for="topic in topicRails" :id="topicId(topic.name)" :key="topic.name">
-      <QuizRail
-        :title="topic.name"
-        :swatch-color="topic.color"
-        :items="topic.items"
-        :see-all-to="{ name: 'discover', query: { category: topic.name } }"
-        see-all-label="See all"
-      />
     </div>
 
-    <section class="container-page py-lg" data-reveal>
-      <h2 class="section-title mb-[20px]">
-        Game modes
-      </h2>
-      <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
-        <article
-          v-for="mode in GAME_MODES"
-          :key="mode.name"
-          class="card-surface px-lg py-[22px]"
-        >
-          <h3 class="text-title text-ink">
-            {{ mode.name }}
-          </h3>
-          <p class="mt-xxs text-body-sm text-ink-muted">
-            {{ mode.desc }}
-          </p>
-        </article>
-      </div>
-    </section>
+    <template v-else>
+      <QuizRail
+        v-for="section in rails"
+        :key="section.key"
+        :title="section.title"
+        :items="section.items"
+        :see-all-to="seeAllFor(section)"
+        see-all-label="See all"
+      />
+    </template>
 
-    <p v-if="pool.isError.value" class="container-page text-body-sm text-sticker-orange-deep">
-      Could not load quizzes. Please check your connection to the server.
-    </p>
+    <!-- Endless feed, ranked server side by hot_score. -->
+    <section class="container-page py-lg">
+      <div class="mb-[20px] flex flex-wrap items-baseline justify-between gap-sm" data-reveal>
+        <h2 class="section-title">
+          Fresh for you
+        </h2>
+        <RouterLink :to="{ name: 'discover' }" class="section-link whitespace-nowrap">
+          Browse everything
+        </RouterLink>
+      </div>
+
+      <div v-if="feed.loading.value" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          v-for="n in 8"
+          :key="`feed-skeleton-${n}`"
+          class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
+        />
+      </div>
+
+      <div v-else-if="feed.errorMessage.value" class="card-surface mt-lg p-xl">
+        <p class="text-body-sm text-ans-a">
+          {{ feed.errorMessage.value }}
+        </p>
+        <button class="btn-utility mt-md" type="button" @click="feed.loadFirst()">
+          Try again
+        </button>
+      </div>
+
+      <div v-else-if="!feedItems.length" class="card-surface mt-lg p-xl text-center">
+        <p class="text-body-md text-ink">
+          Nothing here yet.
+        </p>
+        <p class="mt-xxs text-body-sm text-ink-2">
+          New quizzes show up as soon as they are published.
+        </p>
+      </div>
+
+      <template v-else>
+        <div
+          ref="feedGridEl"
+          class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <QuizCard
+            v-for="quiz in feedItems"
+            :key="quiz.id"
+            :quiz="quiz"
+            data-reveal-card
+          />
+        </div>
+
+        <!-- Sentinel: reaching it asks for the next cursor page. -->
+        <div ref="sentinelEl" class="h-px w-full" aria-hidden="true" />
+
+        <p v-if="feed.loadingMore.value" class="mt-md text-center text-caption text-ink-3">
+          Loading more…
+        </p>
+        <p v-else-if="!feed.hasMore.value" class="mt-md text-center text-caption text-ink-3">
+          You have reached the end.
+        </p>
+      </template>
+    </section>
   </div>
 </template>

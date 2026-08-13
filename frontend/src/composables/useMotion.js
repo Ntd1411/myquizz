@@ -6,9 +6,22 @@ import Lenis from 'lenis'
 
 gsap.registerPlugin(ScrollTrigger, Flip)
 
+/**
+ * Motion budget, design v2.1.
+ *
+ * Only three things move: press feedback, the answer tiles dealing in, and the reveal
+ * of a result. Everything else is a CSS transition. Scroll reveals now play ONCE - the
+ * old reverse-on-scroll-up made the page flicker every time a list refetched, and a
+ * card that fades out while the user scrolls past it reads as a bug, not as polish.
+ */
+
 /** Honours the OS "reduce motion" setting. Every animation must check this first. */
 export const prefersReducedMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** GSAP approximations of the two CSS curves in the token set. */
+export const EASE_UI = 'power3.out'
+export const EASE_SPRING = 'back.out(1.4)'
 
 export { gsap, ScrollTrigger, Flip }
 
@@ -78,25 +91,24 @@ export function revealOnEnter(container, selector = '[data-enter]', options = {}
 
   return gsap.fromTo(
     targets,
-    { opacity: 0, y: options.y ?? 18 },
+    { opacity: 0, y: options.y ?? 12 },
     {
       opacity: 1,
       y: 0,
-      duration: options.duration ?? 0.55,
-      ease: 'power3.out',
-      stagger: options.stagger ?? 0.06,
+      duration: options.duration ?? 0.42,
+      ease: EASE_UI,
+      stagger: options.stagger ?? 0.05,
+      // Transform must be cleared or the CSS hover lift has nothing to animate from.
       clearProps: 'transform',
     },
   )
 }
 
 /**
- * Fades and lifts elements into view as they cross the viewport.
+ * Fades and lifts elements into view as they cross the viewport, once each.
  *
- * The animation plays on the way down and reverses on the way up, so scrolling back
- * and forth keeps showing it. Every target gets its own trigger through
- * ScrollTrigger.batch, so a long page reveals section by section instead of firing
- * everything at the container's own start position.
+ * ScrollTrigger.batch gives every target its own trigger, so a long page reveals
+ * section by section instead of firing everything at the container's start position.
  */
 export function revealOnScroll(container, selector = '[data-reveal]', options = {}) {
   if (!container || prefersReducedMotion()) return null
@@ -104,17 +116,13 @@ export function revealOnScroll(container, selector = '[data-reveal]', options = 
   const targets = gsap.utils.toArray(selector, container)
   if (!targets.length) return null
 
-  const y = options.y ?? 24
-  gsap.set(targets, { opacity: 0, y })
+  gsap.set(targets, { opacity: 0, y: options.y ?? 12 })
 
   return ScrollTrigger.batch(targets, {
     start: options.start ?? 'top 92%',
-    // Reverse on scroll-up instead of `once`, which would freeze the end state.
-    end: options.end ?? 'bottom 8%',
+    // Once only: no reverse, no replay, no flicker when the list refetches.
+    once: true,
     onEnter: (batch) => animateIn(batch, options),
-    onEnterBack: (batch) => animateIn(batch, options),
-    onLeave: (batch) => animateOut(batch, options, y),
-    onLeaveBack: (batch) => animateOut(batch, options, y),
   })
 }
 
@@ -122,54 +130,81 @@ function animateIn(targets, options) {
   gsap.to(targets, {
     opacity: 1,
     y: 0,
-    duration: options.duration ?? 0.7,
-    ease: 'power3.out',
-    stagger: options.stagger ?? 0.07,
+    duration: options.duration ?? 0.42,
+    ease: EASE_UI,
+    stagger: options.stagger ?? 0.06,
     overwrite: true,
-  })
-}
-
-function animateOut(targets, options, y) {
-  gsap.to(targets, {
-    opacity: 0,
-    y: y * 0.5,
-    duration: options.outDuration ?? 0.3,
-    ease: 'power2.in',
-    overwrite: true,
+    clearProps: 'transform',
   })
 }
 
 /**
- * Reveals a group of cards (a rail) when it scrolls into view, and reverses when the
- * group leaves the viewport again so the effect replays in both directions.
+ * Reveals list items that have just been appended, and only those.
+ *
+ * An endless list calls this again for every page, so anything already revealed has to
+ * be left alone. Re-hiding a card the reader has already scrolled past is exactly what
+ * leaves it stuck at opacity 0: its trigger start is behind the scroll position, so the
+ * enter callback that would fade it back in never runs. Each node is therefore stamped
+ * on its first pass and skipped from then on.
+ *
+ * Returns a kill function for the triggers this call created.
+ */
+export function revealAppended(container, selector = '[data-reveal-item]', options = {}) {
+  if (!container) return () => {}
+
+  const fresh = gsap.utils.toArray(selector, container).filter((el) => !el.dataset.revealed)
+  fresh.forEach((el) => {
+    el.dataset.revealed = 'true'
+  })
+
+  if (!fresh.length || prefersReducedMotion()) return () => {}
+
+  // A node appended above the trigger line would wait for a scroll that never comes,
+  // so it plays straight away; only nodes still below the line get a trigger.
+  const line = window.innerHeight * (options.threshold ?? 0.92)
+  const visible = fresh.filter((el) => el.getBoundingClientRect().top <= line)
+  const pending = fresh.filter((el) => el.getBoundingClientRect().top > line)
+
+  gsap.set(fresh, { opacity: 0, y: options.y ?? 16 })
+
+  if (visible.length) animateIn(visible, options)
+  if (!pending.length) return () => {}
+
+  const batch = ScrollTrigger.batch(pending, {
+    start: options.start ?? 'top 92%',
+    once: true,
+    onEnter: (group) => animateIn(group, options),
+  })
+
+  return () => batch.forEach((trigger) => trigger.kill())
+}
+
+/**
+ * Reveals a group of cards (a rail) the first time it scrolls into view.
  * Returns a kill function so the caller can clean up on unmount or data change.
  */
 export function revealGroup(trigger, targets, options = {}) {
   if (!trigger || !targets?.length || prefersReducedMotion()) return () => {}
 
-  const y = options.y ?? 26
-
   const tween = gsap.fromTo(
     targets,
-    { opacity: 0, y },
+    { opacity: 0, y: options.y ?? 12 },
     {
       opacity: 1,
       y: 0,
-      duration: options.duration ?? 0.7,
-      ease: 'power3.out',
-      stagger: options.stagger ?? 0.08,
+      duration: options.duration ?? 0.42,
+      ease: EASE_UI,
+      stagger: options.stagger ?? 0.06,
       paused: true,
+      clearProps: 'transform',
     },
   )
 
   const trig = ScrollTrigger.create({
     trigger,
     start: options.start ?? 'top 92%',
-    end: options.end ?? 'bottom 8%',
+    once: true,
     onEnter: () => tween.play(),
-    onEnterBack: () => tween.play(),
-    onLeave: () => tween.reverse(),
-    onLeaveBack: () => tween.reverse(),
   })
 
   return () => {
@@ -177,4 +212,58 @@ export function revealGroup(trigger, targets, options = {}) {
     tween.kill()
     gsap.set(targets, { clearProps: 'transform,opacity' })
   }
+}
+
+/**
+ * Answer tiles dealing in when a question opens: 380ms, 60ms apart, with a small
+ * overshoot. This is the one place in the product allowed to feel playful, because it
+ * is also the moment the player has to re-read the screen from scratch.
+ */
+export function dealIn(targets, options = {}) {
+  const list = gsap.utils.toArray(targets)
+  if (!list.length) return null
+
+  if (prefersReducedMotion()) {
+    gsap.set(list, { opacity: 1, y: 0, scale: 1 })
+    return null
+  }
+
+  return gsap.fromTo(
+    list,
+    { opacity: 0, y: 14, scale: 0.985 },
+    {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      duration: options.duration ?? 0.38,
+      ease: options.ease ?? EASE_SPRING,
+      stagger: options.stagger ?? 0.06,
+      clearProps: 'transform',
+    },
+  )
+}
+
+/**
+ * Result reveal: plays exactly once, when grading arrives. Never replay it on a
+ * refetch - the player would think a second round of scores came in.
+ */
+export function revealResult(target, options = {}) {
+  if (!target) return null
+
+  if (prefersReducedMotion()) {
+    gsap.set(target, { opacity: 1, y: 0 })
+    return null
+  }
+
+  return gsap.fromTo(
+    target,
+    { opacity: 0, y: 10 },
+    {
+      opacity: 1,
+      y: 0,
+      duration: options.duration ?? 0.42,
+      ease: EASE_UI,
+      clearProps: 'transform',
+    },
+  )
 }

@@ -41,12 +41,18 @@ export async function getUser(
 
     const user = await getUserService(userId)
 
+    // Public shape of an account, built by hand so a new column never leaks by
+    // accident. role and created_at belong to it: a profile header states when the
+    // account joined, and a staff role is a public fact about who is answering.
+    // phone, google_id, auth_provider, password and deleted_at stay private.
     const userData = {
       id: user.id,
       fullname: user.fullname,
       email: user.email,
       avatar: user.avatar,
-      description: user.description
+      description: user.description,
+      role: user.role,
+      created_at: user.created_at
     }
 
     return success(res, { user: userData })
@@ -105,15 +111,15 @@ export async function updateProfile(
 ) {
   try {
     const userId = req.user?.id as number
-    const { fullname, email, phone, description } = req.body as {
+
+    const { fullname, phone, description } = req.body as {
       fullname?: string
-      email?: string
       phone?: string
       description?: string
     }
 
     const { password: _password, deleted_at: _deleted_at, ...updatedUser } =
-      await updateProfileService(userId, fullname, email, phone, description)
+      await updateProfileService(userId, fullname, phone, description)
 
     return success(res, { user: updatedUser })
   } catch (error) {

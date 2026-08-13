@@ -17,6 +17,18 @@ const GSI_SRC = 'https://accounts.google.com/gsi/client'
 
 let scriptPromise = null
 
+// GIS keeps one global identity context per page load. Calling initialize() again
+// replaces the previous configuration and logs a warning, which is what happened
+// every time the login route was mounted a second time. So the library is configured
+// once per client id, and the callback it receives is a stable dispatcher that
+// forwards to whichever consumer is mounted at that moment.
+let initializedClientId = null
+let activeHandler = null
+
+function dispatchCredential(response) {
+  activeHandler?.(response)
+}
+
 /** Loads the GIS script once per page load. */
 function loadGsi() {
   if (window.google?.accounts?.id) return Promise.resolve(window.google)
@@ -73,14 +85,20 @@ export function useGoogleOneTap({ buttonEl, prompt = true, enabled = true, onSuc
     try {
       const google = await loadGsi()
 
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleCredential,
-        // The backend verifies the token, so FedCM/auto-select are safe here.
-        auto_select: false,
-        cancel_on_tap_outside: true,
-        use_fedcm_for_prompt: true,
-      })
+      // This instance is the live one, so it takes over the credential callback.
+      activeHandler = handleCredential
+
+      if (initializedClientId !== clientId) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: dispatchCredential,
+          // The backend verifies the token, so FedCM/auto-select are safe here.
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          use_fedcm_for_prompt: true,
+        })
+        initializedClientId = clientId
+      }
 
       if (buttonEl?.value) {
         google.accounts.id.renderButton(buttonEl.value, {
@@ -102,6 +120,10 @@ export function useGoogleOneTap({ buttonEl, prompt = true, enabled = true, onSuc
   })
 
   onBeforeUnmount(() => {
+    // Only release the dispatcher if this instance still owns it. A newer consumer
+    // that mounted before this one unmounted must keep its own callback.
+    if (activeHandler === handleCredential) activeHandler = null
+
     // Closing the prompt avoids a stale overlay after navigating away.
     window.google?.accounts?.id?.cancel()
   })

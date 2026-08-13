@@ -19,10 +19,10 @@ defineEmits(['update:modelValue'])
 
 <template>
   <label class="block">
-    <span class="mb-xxs block text-caption font-medium text-ink-secondary">{{ label }}</span>
+    <span class="mb-xxs block text-caption font-medium text-ink-2">{{ label }}</span>
     <input
       class="field"
-      :class="error ? 'border-sticker-orange' : ''"
+      :class="error ? 'border-ans-a' : ''"
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"
@@ -31,6 +31,7 @@ defineEmits(['update:modelValue'])
       v-bind="$attrs"
       @input="$emit('update:modelValue', $event.target.value)"
     >
-    <span v-if="error" class="mt-xxs block text-caption text-sticker-orange-deep">{{ error }}</span>
+    <!-- Answer A is the error colour. Nothing else in the system is allowed to be red. -->
+    <span v-if="error" class="mt-xxs block text-caption text-ans-a">{{ error }}</span>
   </label>
 </template>

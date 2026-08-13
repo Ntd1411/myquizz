@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import QuizCard from './QuizCard.vue'
-import SeeAllCard from './SeeAllCard.vue'
 import { revealGroup } from '@/composables/useMotion'
 
 /**
@@ -37,13 +36,9 @@ const cardWidth = ref(288)
 const atStart = ref(true)
 const atEnd = ref(false)
 
-const slides = computed(() => {
-  const list = props.items.map((quiz) => ({ kind: 'quiz', key: `quiz-${quiz.id}`, quiz }))
-  if (props.seeAllTo && props.items.length) {
-    list.push({ kind: 'see-all', key: 'see-all' })
-  }
-  return list
-})
+// Quiz cards only. The header link is the single way into the full listing; a
+// trailing card duplicated it and ate one card slot on every rail.
+const slides = computed(() => props.items.map((quiz) => ({ key: `quiz-${quiz.id}`, quiz })))
 
 const total = computed(() => slides.value.length)
 const canGoPrev = computed(() => !atStart.value)
@@ -58,13 +53,33 @@ function perViewFor(width) {
 }
 
 /** Recomputes how many cards fit and how wide each one must be. */
-function measure() {
+async function measure() {
   const track = trackEl.value
-  if (!track) return
+  if (!track) {
+    // The track is unmounted while loading and while the rail is empty. The edge
+    // state still has to be refreshed, or the arrows stay on screen over nothing.
+    updateEdges()
+    return
+  }
 
-  const width = track.clientWidth
+  // clientWidth includes the track's own horizontal padding, so the cards must be
+  // sized against the content box. Sizing against clientWidth made the row a few
+  // pixels wider than its container, which left the rail permanently scrollable
+  // and kept the next arrow visible even when every card already fitted.
+  const style = window.getComputedStyle(track)
+  const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+  const width = track.clientWidth - padding
+
   perView.value = perViewFor(width)
   cardWidth.value = Math.floor((width - GAP * (perView.value - 1)) / perView.value)
+
+  // The card width lands on the items as an inline style, so scrollWidth only
+  // reports the real content size once Vue has flushed it. Reading the edges in
+  // the same tick measured the previous layout instead: on first mount that was
+  // the 288px default, which overflows a four-card rail and left a next arrow
+  // that pointed at nothing and could never clear itself, because a rail that
+  // cannot scroll never fires the scroll event that would recompute the edges.
+  await nextTick()
   updateEdges()
 }
 
@@ -77,8 +92,17 @@ function updateEdges() {
     return
   }
   // One pixel of slack absorbs fractional scroll offsets on zoomed displays.
+  const maxScroll = track.scrollWidth - track.clientWidth
+
+  // Nothing to scroll: report both edges so neither arrow renders.
+  if (maxScroll <= 1) {
+    atStart.value = true
+    atEnd.value = true
+    return
+  }
+
   atStart.value = track.scrollLeft <= 1
-  atEnd.value = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1
+  atEnd.value = track.scrollLeft >= maxScroll - 1
 }
 
 /** Scrolls by one full page of cards, which is what the arrows do. */
@@ -239,13 +263,7 @@ watch(
             class="rail-item"
             :style="{ flex: `0 0 ${cardWidth}px`, width: `${cardWidth}px` }"
           >
-            <SeeAllCard
-              v-if="slide.kind === 'see-all'"
-              :to="seeAllTo"
-              :label="seeAllLabel"
-              :sublabel="title"
-            />
-            <QuizCard v-else :quiz="slide.quiz" />
+            <QuizCard :quiz="slide.quiz" />
           </div>
         </div>
       </div>

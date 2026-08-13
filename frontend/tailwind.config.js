@@ -1,63 +1,114 @@
 /** @type {import('tailwindcss').Config} */
-// Design tokens are transcribed directly from the MyQuizz "Frontend style" spec.
-// Rule of thumb: exactly ONE structural accent (primary blue). The sticker palette
-// is decoration only and must never paint a CTA or a structural fill.
+// Design tokens are transcribed from the MyQuizz "Frontend style" spec, design v2.1
+// "Daylight Studio" (design/styleguide-v2.html is the runnable reference).
+//
+// Three rules drive everything below:
+// 1. No dark surface exists. `ink` is a text colour and must never paint a background.
+// 2. Spotlight sits outside the answer quartet, so a button is never read as an answer.
+// 3. The four answer colours are product material: solid on answer tiles, tinted on tags.
 export default {
   content: ['./index.html', './src/**/*.{vue,js}'],
   theme: {
     extend: {
       colors: {
-        canvas: '#ffffff',
-        'canvas-soft': '#f6f5f4',
-        surface: '#ffffff',
-        hairline: '#e6e6e6',
-        primary: {
-          DEFAULT: '#0075de',
-          active: '#005bab',
+        // Surfaces.
+        paper: '#ffffff',
+        canvas: '#fafafc',
+        wash: {
+          DEFAULT: '#f4f1fe',
+          alt: '#eef4ff',
         },
-        // Deep indigo "night" band. Reserved for a single hero moment.
-        secondary: '#213183',
+        hairline: '#e6e7ee',
+
+        // Brand. One primary action per screen, always this violet.
+        spotlight: {
+          DEFAULT: '#6c4cf1',
+          press: '#573ad4',
+          soft: '#efeaff',
+          line: '#cfc4fb',
+        },
+
+        // Text only.
         ink: {
-          DEFAULT: 'rgba(0,0,0,0.95)',
-          secondary: '#31302e',
-          muted: '#615d59',
-          faint: '#a39e98',
+          DEFAULT: '#23242b',
+          2: '#565968',
+          3: '#8e92a4',
+          // Legacy v1 aliases, kept so older screens keep rendering during migration.
+          secondary: '#565968',
+          muted: '#565968',
+          faint: '#8e92a4',
         },
-        // Decoration only.
+
+        // The answer quartet. Solid paints answers, soft paints tags and badges.
+        ans: {
+          a: '#ef4b45',
+          'a-soft': '#fdeceb',
+          b: '#2f6be0',
+          'b-soft': '#eaf1fe',
+          c: '#f2b32e',
+          'c-soft': '#fef5e3',
+          d: '#1ba968',
+          'd-soft': '#e7f7f0',
+        },
+
+        // Legacy v1 names still referenced by screens not yet reworked. They now point
+        // at v2.1 values so nothing renders off-palette. Delete once unused.
+        surface: '#ffffff',
+        'canvas-soft': '#fafafc',
+        primary: {
+          DEFAULT: '#6c4cf1',
+          active: '#573ad4',
+        },
+
+        // Legacy sticker palette from v1. Every entry now resolves to the nearest v2.1
+        // colour, so screens that still reference it stay on-palette instead of losing
+        // their colour outright. Remove each entry as its last usage disappears.
         sticker: {
-          sky: '#62aef0',
-          purple: '#d6b6f6',
-          'purple-deep': '#391c57',
-          pink: '#ff64c8',
-          orange: '#dd5b00',
-          'orange-deep': '#793400',
-          teal: '#2a9d99',
-          green: '#1aae39',
-          brown: '#523410',
+          sky: '#2f6be0',
+          teal: '#1ba968',
+          green: '#1ba968',
+          orange: '#ef4b45',
+          'orange-deep': '#ef4b45',
+          pink: '#ef4b45',
+          'purple-deep': '#6c4cf1',
+          brown: '#565968',
         },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'system-ui', 'Segoe UI', 'Helvetica', 'Arial', 'sans-serif'],
+        // One text family. Hierarchy comes from size, weight and tracking.
+        sans: ['Instrument Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        // Every number: PIN, timer, score, counts. Never a sentence.
+        numeric: ['Martian Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       fontSize: {
-        // [size, { lineHeight, letterSpacing }] straight from the typography scale.
-        'display-1': ['64px', { lineHeight: '1', letterSpacing: '-2.125px', fontWeight: '700' }],
-        'display-2': ['54px', { lineHeight: '1.04', letterSpacing: '-1.875px', fontWeight: '700' }],
-        'heading-1': ['40px', { lineHeight: '1.1', letterSpacing: '-1px', fontWeight: '700' }],
-        'heading-2': ['26px', { lineHeight: '1.23', letterSpacing: '-0.625px', fontWeight: '700' }],
-        'heading-3': ['22px', { lineHeight: '1.27', letterSpacing: '-0.25px', fontWeight: '700' }],
-        title: ['20px', { lineHeight: '1.4', letterSpacing: '-0.125px', fontWeight: '600' }],
-        'body-md': ['16px', { lineHeight: '1.5' }],
-        'body-sm': ['15px', { lineHeight: '1.33' }],
-        caption: ['14px', { lineHeight: '1.43' }],
-        eyebrow: ['12px', { lineHeight: '1.33', letterSpacing: '0.125px', fontWeight: '600' }],
+        'display-1': [
+          'clamp(34px, 5vw, 52px)',
+          { lineHeight: '1.1', letterSpacing: '-0.022em', fontWeight: '700' },
+        ],
+        'display-2': [
+          'clamp(30px, 4.2vw, 44px)',
+          { lineHeight: '1.1', letterSpacing: '-0.022em', fontWeight: '700' },
+        ],
+        'heading-1': [
+          'clamp(26px, 3.2vw, 34px)',
+          { lineHeight: '1.1', letterSpacing: '-0.022em', fontWeight: '700' },
+        ],
+        'heading-2': ['26px', { lineHeight: '1.15', letterSpacing: '-0.022em', fontWeight: '700' }],
+        'heading-3': ['22px', { lineHeight: '1.2', letterSpacing: '-0.022em', fontWeight: '700' }],
+        title: ['17px', { lineHeight: '1.3', letterSpacing: '-0.012em', fontWeight: '700' }],
+        'body-md': ['16px', { lineHeight: '1.55' }],
+        'body-sm': ['15px', { lineHeight: '1.5' }],
+        caption: ['14.5px', { lineHeight: '1.45' }],
+        // Micro label: uppercase, numeric family, wide tracking.
+        eyebrow: ['11px', { lineHeight: '1.3', letterSpacing: '0.12em', fontWeight: '500' }],
       },
       borderRadius: {
-        xs: '4px',
-        sm: '5px',
-        md: '8px',
-        lg: '12px',
-        xl: '16px',
+        // xs is a legacy alias; v2.1 starts the scale at 8px.
+        xs: '8px',
+        sm: '8px',
+        md: '12px',
+        lg: '16px',
+        xl: '22px',
         full: '9999px',
       },
       spacing: {
@@ -70,11 +121,20 @@ export default {
         xxl: '32px',
       },
       boxShadow: {
-        // Level 1 - barely-there layered micro shadow.
-        soft: '0 0.175px 1.041px rgba(0,0,0,0.01), 0 0.8px 2.925px rgba(0,0,0,0.02), 0 2.025px 7.847px rgba(0,0,0,0.027), 0 4px 18px rgba(0,0,0,0.04)',
-        // Level 2 - modals and popovers.
-        elevated:
-          '0 0.175px 1.041px rgba(0,0,0,0.01), 0 0.8px 2.925px rgba(0,0,0,0.02), 0 2.025px 7.847px rgba(0,0,0,0.027), 0 4px 18px rgba(0,0,0,0.04), 0 23px 52px rgba(0,0,0,0.05)',
+        // Soft and layered. Hard offset blocks were dropped in v2.1.
+        soft: '0 1px 2px rgba(35,36,43,0.04), 0 4px 12px rgba(35,36,43,0.05)',
+        elevated: '0 2px 6px rgba(35,36,43,0.05), 0 14px 34px rgba(35,36,43,0.09)',
+        brand: '0 2px 6px rgba(108,76,241,0.18), 0 10px 24px rgba(108,76,241,0.2)',
+      },
+      transitionTimingFunction: {
+        // Calm for regular UI, gentle settle for the play surfaces.
+        ui: 'cubic-bezier(0.2, 0.7, 0.3, 1)',
+        spring: 'cubic-bezier(0.34, 1.42, 0.64, 1)',
+      },
+      transitionDuration: {
+        fast: '140ms',
+        ui: '220ms',
+        slow: '420ms',
       },
       maxWidth: {
         container: '1200px',

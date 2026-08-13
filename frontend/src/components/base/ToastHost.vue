@@ -15,8 +15,8 @@ const ui = useUiStore()
       <div
         v-for="item in ui.toasts"
         :key="item.id"
-        class="pointer-events-auto rounded-md px-md py-sm text-body-sm font-medium text-white shadow-elevated"
-        :class="item.variant === 'error' ? 'bg-sticker-orange-deep' : 'bg-ink-secondary'"
+        class="toast pointer-events-auto font-medium shadow-soft"
+        :class="item.variant === 'error' ? 'border-ans-a bg-ans-a-soft text-ans-a' : ''"
         role="status"
       >
         {{ item.message }}
