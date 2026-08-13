@@ -72,12 +72,11 @@ export const userPaths: PathMap = {
     },
     patch: {
       summary: 'Update the current user',
-      description: `Partially updates the signed-in profile. Only truthy fields are written, so an empty string clears nothing and is treated as absent, and a body that carries no writable field answers 400. The uniqueness check on email and phone looks at every account including your own, so resending your current email answers 400 as well. The row returned is read back from the database after the write. ${AUTH_NOTE}`,
+      description: `Partially updates the signed-in profile. Only truthy fields are written, so an empty string clears nothing and is treated as absent, and a body that carries no writable field answers 400. The email cannot be changed and is not accepted: Google sign-in falls back to matching an account by address, so an edited email would strand the profile and create a duplicate on the next sign-in. The body is strict, so sending an email key answers 400 instead of being silently ignored. The uniqueness check on phone looks at every account including your own, so resending your current phone answers 400 as well. The row returned is read back from the database after the write. ${AUTH_NOTE}`,
       tags: [userTag.name],
       requestBody: jsonBody(
         object({
           fullname: { type: 'string', minLength: 2, maxLength: 100 },
-          email: { type: 'string', format: 'email' },
           phone: { type: 'string', description: '7-15 digits' },
           description: { type: 'string', maxLength: 200 }
         }),
@@ -95,12 +94,11 @@ export const userPaths: PathMap = {
           example: successExample({ user: exampleUser })
         }),
         400: errorResponse(
-          'Nothing to write, or the new email or phone belongs to somebody else',
+          'Nothing to write, the body carries a field that cannot be edited, or the new phone belongs to somebody else',
           [
             'No fields to update',
-            'Email is already in use',
             'Phone number is already in use',
-            validationError({ email: 'Email must be valid' }),
+            validationError({ email: 'Unrecognized key: "email"' }),
             validationError({ phone: 'Phone must be 7-15 digits' }),
             validationError({
               description: 'Description must be at most 200 characters'

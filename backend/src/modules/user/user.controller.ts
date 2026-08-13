@@ -111,15 +111,15 @@ export async function updateProfile(
 ) {
   try {
     const userId = req.user?.id as number
-    const { fullname, email, phone, description } = req.body as {
+
+    const { fullname, phone, description } = req.body as {
       fullname?: string
-      email?: string
       phone?: string
       description?: string
     }
 
     const { password: _password, deleted_at: _deleted_at, ...updatedUser } =
-      await updateProfileService(userId, fullname, email, phone, description)
+      await updateProfileService(userId, fullname, phone, description)
 
     return success(res, { user: updatedUser })
   } catch (error) {

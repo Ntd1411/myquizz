@@ -100,20 +100,12 @@ export async function uploadAvatarService(
 export async function updateProfileService(
   userId: number,
   fullname?: string,
-  email?: string,
   phone?: string,
   description?: string
 ): Promise<User> {
   const updates: Record<string, string> = {}
 
   if (fullname) updates.fullname = fullname
-  if (email) {
-    const user = await userRepository.findByEmail(email)
-    if (user) {
-      throw new AppError(400, 'Email is already in use')
-    }
-    updates.email = email
-  }
   if (phone) {
     const user = await userRepository.findByPhone(phone)
     if (user) {
