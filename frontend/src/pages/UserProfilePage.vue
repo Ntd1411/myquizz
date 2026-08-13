@@ -7,6 +7,7 @@ import { getQuizzesByOwner } from '@/api/quizzes.api'
 import { getPublicUser } from '@/api/users.api'
 import { PROFILE_SORTS } from '@/constants/quizMeta'
 import { groupDigits, formatCount } from '@/utils/formatNumber'
+import { toTextParts } from '@/utils/linkify'
 import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
 import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
@@ -71,6 +72,10 @@ const avatarUrl = computed(() => user.value?.avatar || '')
 const email = computed(() => user.value?.email || '')
 
 const bio = computed(() => user.value?.description?.trim() || '')
+
+// A URL pasted into the intro is clickable here too, through the same helper the
+// library and the settings page use.
+const bioParts = computed(() => toTextParts(bio.value))
 
 // Join date, straight from the public row and rendered on its own line under the
 // contact line: two separate facts, two lines.
@@ -215,16 +220,35 @@ watch(quizzes, async (rows) => {
             </p>
           </div>
 
-          <p v-if="email" class="profile-meta">
-            <a class="profile-email" :href="`mailto:${email}`">{{ email }}</a>
-          </p>
+          <!-- One labelled fact per line. There is no phone row: /users/:id never
+               returns one, and no second request goes looking for it. -->
+          <div class="profile-meta">
+            <p v-if="email" class="meta-row">
+              <span class="meta-key">Email:</span>
+              <a class="meta-value meta-link" :href="`mailto:${email}`">{{ email }}</a>
+            </p>
 
-          <p v-if="memberSince" class="profile-since">
-            {{ memberSince }}
-          </p>
+            <p v-if="memberSince" class="meta-row meta-since">
+              {{ memberSince }}
+            </p>
+          </div>
 
           <p class="profile-bio" :class="bio ? '' : 'is-empty'">
-            {{ bio || 'This creator has not written an intro yet.' }}
+            <template v-if="bio">
+              <template v-for="part in bioParts" :key="part.key">
+                <a
+                  v-if="part.type === 'link'"
+                  :href="part.href"
+                  class="bio-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ part.text }}</a>
+                <span v-else>{{ part.text }}</span>
+              </template>
+            </template>
+            <template v-else>
+              This creator has not written an intro yet.
+            </template>
           </p>
         </div>
 
@@ -396,37 +420,54 @@ watch(quizzes, async (rows) => {
 }
 
 /*
-  Contact line, then the join date underneath. They are one block of small print, so
-  they sit tight against each other and keep their distance from the name above and
-  the badges below.
+  One labelled fact per line, so the block reads as a small record rather than a run of
+  loose grey text. The key column has a fixed width, which is what lines the values up
+  under each other whatever the label says.
 */
 .profile-meta {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.meta-row {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  min-width: 0;
+  color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.45;
 }
 
-.profile-email {
-  max-width: 100%;
+.meta-key {
+  flex: none;
+  width: 52px;
+  color: var(--ink-3);
+}
+
+.meta-value {
+  min-width: 0;
   overflow: hidden;
-  color: var(--ink-2);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* mailto: the only value on this card a visitor can act on. */
+.meta-link {
   transition: color var(--t-ui) var(--ease);
 }
 
-.profile-email:hover {
+.meta-link:hover {
   color: var(--spotlight);
 }
 
-.profile-since {
+/* A sentence of its own, so it carries no key column and no value column. */
+.meta-since {
+  margin-top: 2px;
   color: var(--ink-3);
   font-size: 13px;
-  line-height: 1.45;
 }
 
 /* Never shrinks: the name gives up its width first, a badge is unreadable clipped. */
@@ -462,17 +503,34 @@ watch(quizzes, async (rows) => {
   color: var(--spotlight);
 }
 
+/* pre-wrap keeps the paragraph breaks the author typed into the intro. */
 .profile-bio {
   max-width: 58ch;
   margin-top: 16px;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* The placeholder is a statement about the account, not content it wrote. */
 .profile-bio.is-empty {
   color: var(--ink-3);
+}
+
+/* A link inside the intro: underlined rather than coloured alone, because the intro
+   is already grey text and colour on its own would be easy to miss. */
+.bio-link {
+  color: var(--spotlight);
+  text-decoration: underline;
+  text-decoration-color: var(--spotlight-line);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--t-ui) var(--ease);
+}
+
+.bio-link:hover {
+  text-decoration-color: var(--spotlight);
 }
 
 .profile-actions {
@@ -702,7 +760,8 @@ watch(quizzes, async (rows) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .profile-email,
+  .meta-link,
+  .bio-link,
   .select-field {
     transition: none;
   }

@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/vue-query'
 import QuizCard from '@/components/quiz/QuizCard.vue'
 import UserAvatar from '@/components/base/UserAvatar.vue'
 import { getMyQuizzes, deleteQuiz } from '@/api/quizzes.api'
-import { getPublicUser } from '@/api/users.api'
+import { getMe } from '@/api/users.api'
 import { toErrorMessage } from '@/api/envelope'
 import { LIBRARY_SORTS } from '@/constants/quizMeta'
 import { groupDigits, formatCount } from '@/utils/formatNumber'
+import { toTextParts } from '@/utils/linkify'
 import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -18,7 +19,7 @@ import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useM
  * tick: neither one awaits the other, so the page costs one round trip, not two.
  *
  *   GET /quizzes/me  -> the listing, through useCursorList
- *   GET /users/:id   -> the author card, through vue-query
+ *   GET /users/me    -> the author card, through vue-query
  *
  * GET /quizzes/me is the only listing that returns the signed-in user's private
  * quizzes and quizzes without questions. The public profile listing would hide exactly
@@ -26,13 +27,15 @@ import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useM
  * only asked for the author.
  *
  * Where each field of the author card comes from:
- *   GET /users/:id  -> id, fullname, email, avatar, description. This is the row every
- *                      card links to, so the header shows exactly what a visitor sees.
- *   session row     -> created_at, role, auth_provider. The first two are public and
- *                      ride along on /users/:id as well, but the owner of this page is
- *                      always the signed-in user, so the store already holds them
- *                      before that request lands. auth_provider is session-only: how
- *                      an account signs in is nobody else's business.
+ *   GET /users/me   -> the whole own row: id, fullname, email, phone, avatar,
+ *                      description, role, auth_provider, created_at. The public
+ *                      /users/:id row is the wrong source here - it strips the phone
+ *                      and the account facts, and this card is only ever read by the
+ *                      person the row belongs to.
+ *   session row     -> the same fields as a fallback. It is already in the store when
+ *                      the page mounts, so the card is never blank while the request
+ *                      is in flight, and it covers the card entirely if that request
+ *                      fails.
  *   listing meta    -> the quiz count. Questions and plays are summed from the rows on
  *                      screen because the backend reports no library-wide totals for
  *                      them, which is what the note under the stats says.
@@ -90,12 +93,16 @@ const ownerId = computed(() => auth.user?.id ?? null)
  * Author request. It is created here, next to the list, and vue-query fires it while
  * the first listing page is still in flight - the two never queue behind each other.
  *
- * A failure is not fatal: the session already carries the same name, avatar, email and
- * intro, so the card falls back to it instead of leaving a hole at the top of the page.
+ * The endpoint takes no id: the session cookie decides whose row comes back, which is
+ * why the query key carries none either. It is still gated on the session being
+ * resolved, so a signed-out store never fires a request that can only answer 401.
+ *
+ * A failure is not fatal: the session already carries the same fields, so the card
+ * falls back to it instead of leaving a hole at the top of the page.
  */
 const profile = useQuery({
-  queryKey: ['users', 'public', ownerId],
-  queryFn: () => getPublicUser(ownerId.value),
+  queryKey: ['users', 'me'],
+  queryFn: () => getMe(),
   enabled: computed(() => Boolean(ownerId.value)),
   retry: false,
   staleTime: 5 * 60 * 1000,
@@ -120,9 +127,9 @@ const list = useCursorList(
 const quizzes = list.items
 
 /**
- * The full author row behind the header card. The fetched public row wins field by
- * field, the session row is what keeps the card filled while that request is still
- * running and what covers it entirely if the request fails.
+ * The full author row behind the header card. The fetched row wins field by field, the
+ * session row is what keeps the card filled while that request is still running and
+ * what covers it entirely if the request fails.
  */
 const author = computed(() => {
   const fetched = profile.data.value
@@ -135,7 +142,12 @@ const author = computed(() => {
     fullname: row.fullname ?? session?.fullname ?? '',
     avatar: row.avatar ?? session?.avatar ?? null,
     email: row.email ?? session?.email ?? '',
+    phone: row.phone ?? session?.phone ?? '',
     description: row.description ?? session?.description ?? '',
+    role: row.role ?? session?.role ?? '',
+    // Snake case on purpose: these two are raw backend columns, not mapped fields.
+    authProvider: row.auth_provider ?? session?.auth_provider ?? '',
+    createdAt: row.created_at ?? session?.created_at ?? session?.createdAt ?? null,
   }
 })
 
@@ -145,17 +157,22 @@ const authorAvatar = computed(() => author.value?.avatar || '')
 
 const authorBio = computed(() => author.value?.description?.trim() || '')
 
+const authorPhone = computed(() => author.value?.phone || '')
+
+// A URL pasted into the intro is clickable here, through the same helper the public
+// profile and the settings page use.
+const bioParts = computed(() => toTextParts(authorBio.value))
+
 const authorRoute = computed(() =>
   author.value ? { name: 'user-profile', params: { id: author.value.id } } : null,
 )
 
 /**
- * Account facts the public row does not carry. They come from the session, so they are
- * only ever shown for the person actually signed in - which on this page is always the
- * owner of the library.
+ * Read off the same author row as everything else in the card, so the join date and
+ * the name can never come from two different accounts.
  */
 const memberSince = computed(() => {
-  const raw = auth.user?.created_at ?? auth.user?.createdAt
+  const raw = author.value?.createdAt
   if (!raw) return ''
 
   const joined = new Date(raw)
@@ -173,8 +190,8 @@ const memberSince = computed(() => {
  */
 const accountBadges = computed(() => {
   const badges = []
-  const role = auth.user?.role
-  const provider = auth.user?.auth_provider
+  const role = author.value?.role
+  const provider = author.value?.authProvider
 
   if (role && role !== 'user') {
     badges.push({
@@ -185,7 +202,7 @@ const accountBadges = computed(() => {
   }
 
   if (provider === 'google') {
-    badges.push({ key: 'provider', label: 'Google account', tone: 'neutral' })
+    badges.push({ key: 'provider', label: 'Google', tone: 'neutral' })
   }
 
   return badges
@@ -414,16 +431,40 @@ watch(
           </p>
         </div>
 
-        <p v-if="author.email" class="profile-email">
-          {{ author.email }}
-        </p>
+        <!-- One labelled fact per line. The phone is the private half of the row, so
+             it appears here and nowhere a visitor can reach. -->
+        <div class="profile-meta">
+          <p v-if="author.email" class="meta-row">
+            <span class="meta-key">Email:</span>
+            <span class="meta-value">{{ author.email }}</span>
+          </p>
 
-        <p v-if="memberSince" class="profile-since">
-          {{ memberSince }}
-        </p>
+          <p v-if="authorPhone" class="meta-row">
+            <span class="meta-key">Phone:</span>
+            <span class="meta-value">{{ authorPhone }}</span>
+          </p>
+
+          <p v-if="memberSince" class="meta-row meta-since">
+            {{ memberSince }}
+          </p>
+        </div>
 
         <p class="profile-bio" :class="authorBio ? '' : 'is-empty'">
-          {{ authorBio || 'No intro yet. Add one so players know who is behind your quizzes.' }}
+          <template v-if="authorBio">
+            <template v-for="part in bioParts" :key="part.key">
+              <a
+                v-if="part.type === 'link'"
+                :href="part.href"
+                class="bio-link"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{{ part.text }}</a>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </template>
+          <template v-else>
+            No intro yet. Add one so players know who is behind your quizzes.
+          </template>
         </p>
       </div>
 
@@ -757,25 +798,45 @@ watch(
 }
 
 /*
-  Contact line, then the join date underneath. They are one block of small print, so
-  they sit tight against each other and keep their distance from the name above and
-  the badges below.
+  One labelled fact per line, so the block reads as a small record rather than a run of
+  loose grey text. The key column has a fixed width, which is what lines the values up
+  under each other whatever the label says.
 */
-.profile-email {
-  max-width: 100%;
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin-top: 12px;
-  overflow: hidden;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.45;
+}
+
+.meta-key {
+  flex: none;
+  width: 52px;
+  color: var(--ink-3);
+}
+
+.meta-value {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profile-since {
+/* A sentence of its own, so it carries no key column and no value column. */
+.meta-since {
+  margin-top: 2px;
   color: var(--ink-3);
   font-size: 13px;
-  line-height: 1.45;
 }
 
 /* Never shrinks: the name gives up its width first, a badge is unreadable clipped. */
@@ -818,17 +879,34 @@ watch(
   color: var(--ink-2);
 }
 
+/* pre-wrap keeps the paragraph breaks the author typed into the intro. */
 .profile-bio {
   max-width: 58ch;
   margin-top: 16px;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* The placeholder is a prompt, not content, so it never reads as an intro. */
 .profile-bio.is-empty {
   color: var(--ink-3);
+}
+
+/* A link inside the intro: underlined rather than coloured alone, because the intro
+   is already grey text and colour on its own would be easy to miss. */
+.bio-link {
+  color: var(--spotlight);
+  text-decoration: underline;
+  text-decoration-color: var(--spotlight-line);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--t-ui) var(--ease);
+}
+
+.bio-link:hover {
+  text-decoration-color: var(--spotlight);
 }
 
 .profile-actions {
@@ -1182,6 +1260,7 @@ watch(
 
 @media (prefers-reduced-motion: reduce) {
   .profile-avatar,
+  .bio-link,
   .segment,
   .select-field,
   .card-action {

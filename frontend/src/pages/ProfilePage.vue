@@ -13,6 +13,7 @@ import {
   deactivateAccount,
   forgotPassword,
 } from '@/api/users.api'
+import { toTextParts } from '@/utils/linkify'
 import { revealOnEnter } from '@/composables/useMotion'
 
 /**
@@ -24,20 +25,22 @@ import { revealOnEnter } from '@/composables/useMotion'
  *   DELETE /users/me                deactivate (soft delete)
  *
  * The header is the same card the library and the public profile show, so the reader
- * edits exactly what other people see, in the layout they see it in. Everything that
- * can be changed carries a pencil; anything without one is fixed.
+ * edits exactly what other people see, in the layout they see it in. There is no
+ * separate edit screen: a pencil swaps that one line for an input in place, the rest
+ * of the card stays readable, and Save appears at the top of the card as soon as any
+ * value differs from the stored one.
  *
  * The page reads the session store rather than fetching: this is always the signed-in
  * account, and /users/me already ran before the first navigation.
  *
- * Email is missing from the form on purpose. Google sign-in falls back to matching an
- * account by address, so an edited email would strand the account and mint a duplicate
- * on the next sign-in. The backend now refuses the field outright, and the row is shown
- * here as locked rather than hidden, because a missing address reads like a bug.
+ * Email has no pencil. Google sign-in falls back to matching an account by address, so
+ * an edited email would strand the account and mint a duplicate on the next sign-in.
+ * The backend refuses the field outright; here it is simply not editable.
  *
  * Client-side rules mirror updateProfileSchema exactly so a valid form never gets a
  * 400 back: fullname 2-100, phone 7-15 digits with an optional "+", description at most
- * 200 characters.
+ * 200 characters. They run while typing, not on submit, so the error sits under the
+ * field that caused it.
  */
 const LIMITS = { nameMin: 2, nameMax: 100, descriptionMax: 200, passwordMin: 8 }
 const PHONE_PATTERN = /^\+?[0-9]{7,15}$/
@@ -45,14 +48,18 @@ const PHONE_PATTERN = /^\+?[0-9]{7,15}$/
 // "Member since August 2026": a join date needs no day to be useful.
 const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
 
+const PROFILE_FIELDS = ['fullname', 'phone', 'description']
+
 const auth = useAuthStore()
 const ui = useUiStore()
 const router = useRouter()
 
 const pageEl = ref(null)
 
-// The three editable fields, and the inputs a pencil jumps to.
+// The three editable values, plus which of them are currently swapped for an input.
 const form = reactive({ fullname: '', phone: '', description: '' })
+const open = reactive({ fullname: false, phone: false, description: false })
+
 const nameInput = ref(null)
 const phoneInput = ref(null)
 const bioInput = ref(null)
@@ -62,7 +69,6 @@ const FOCUS_TARGETS = {
   description: bioInput,
 }
 
-const editing = ref(false)
 const profileError = ref('')
 const savingProfile = ref(false)
 
@@ -105,6 +111,10 @@ const memberSince = computed(() => {
   return `Member since ${MONTH_YEAR.format(joined)}`
 })
 
+// Links pasted into the intro are clickable, here and on the two cards that show the
+// same intro to other people.
+const bioParts = computed(() => toTextParts(bio.value))
+
 /**
  * Same rule as the library card: a badge only earns its space when it says something,
  * so a local account with the plain 'user' role shows none. The field names are the
@@ -127,16 +137,18 @@ const accountBadges = computed(() => {
   }
 
   if (isGoogleAccount.value) {
-    badges.push({ key: 'provider', label: 'Google account', tone: 'neutral' })
+    badges.push({ key: 'provider', label: 'Google', tone: 'neutral' })
   }
 
   return badges
 })
 
+function storedValue(field) {
+  return auth.user?.[field] ?? ''
+}
+
 function fillFromStore() {
-  form.fullname = auth.user?.fullname ?? ''
-  form.phone = auth.user?.phone ?? ''
-  form.description = auth.user?.description ?? ''
+  for (const field of PROFILE_FIELDS) form[field] = storedValue(field)
 }
 
 onMounted(() => {
@@ -144,76 +156,96 @@ onMounted(() => {
   revealOnEnter(pageEl.value)
 })
 
-// The session probe may land after this page mounts on a hard refresh. Never clobber
-// what the user is currently typing.
+// The session probe may land after this page mounts on a hard refresh. Never clobber a
+// field the user is currently typing in.
 watch(
   () => auth.user,
   () => {
-    if (!editing.value) fillFromStore()
+    for (const field of PROFILE_FIELDS) {
+      if (!open[field]) form[field] = storedValue(field)
+    }
   },
 )
 
 /** Only changed fields are sent, so an untouched phone is never re-checked. */
 function buildProfilePatch() {
   const patch = {}
-  const fields = ['fullname', 'phone', 'description']
-  for (const field of fields) {
+  for (const field of PROFILE_FIELDS) {
     const next = form[field].trim()
-    const current = auth.user?.[field] ?? ''
-    if (next !== current) patch[field] = next
+    if (next !== storedValue(field)) patch[field] = next
   }
   return patch
 }
 
 const hasProfileChanges = computed(() => Object.keys(buildProfilePatch()).length > 0)
 
-function validateProfile(patch) {
-  if ('fullname' in patch) {
-    if (patch.fullname.length < LIMITS.nameMin) return `Full name must be at least ${LIMITS.nameMin} characters.`
-    if (patch.fullname.length > LIMITS.nameMax) return `Full name must be at most ${LIMITS.nameMax} characters.`
-  }
-  if ('phone' in patch && patch.phone && !PHONE_PATTERN.test(patch.phone)) {
-    return 'Phone must be 7 to 15 digits.'
-  }
-  if ('description' in patch && patch.description.length > LIMITS.descriptionMax) {
-    return `About you must be at most ${LIMITS.descriptionMax} characters.`
-  }
-  return ''
-}
-
 /**
- * A pencil opens the whole card rather than that one field: the three values sit in one
- * paragraph block, and swapping a single line for an input would reflow the card around
- * the reader mid-edit. The field asked for still gets the caret.
+ * Validation runs on every keystroke rather than on submit, but only for a field the
+ * reader has actually opened or changed - an account that predates the phone rule
+ * should not be scolded about a value it was never asked for.
  */
-async function startEdit(field) {
-  fillFromStore()
+const fieldErrors = computed(() => {
+  const errors = {}
+
+  const fullname = form.fullname.trim()
+  if (open.fullname || fullname !== storedValue('fullname')) {
+    if (fullname.length < LIMITS.nameMin) {
+      errors.fullname = `Full name must be at least ${LIMITS.nameMin} characters.`
+    } else if (fullname.length > LIMITS.nameMax) {
+      errors.fullname = `Full name must be at most ${LIMITS.nameMax} characters.`
+    }
+  }
+
+  const phoneValue = form.phone.trim()
+  if ((open.phone || phoneValue !== storedValue('phone')) && phoneValue) {
+    if (!PHONE_PATTERN.test(phoneValue)) {
+      errors.phone = 'Phone must be 7 to 15 digits, with an optional leading +.'
+    }
+  }
+
+  if (form.description.trim().length > LIMITS.descriptionMax) {
+    errors.description = `About you must be at most ${LIMITS.descriptionMax} characters.`
+  }
+
+  return errors
+})
+
+const hasFieldErrors = computed(() => Object.keys(fieldErrors.value).length > 0)
+
+/** A pencil turns one line into an input in place and puts the caret in it. */
+async function openField(field) {
   profileError.value = ''
-  editing.value = true
+  form[field] = storedValue(field)
+  open[field] = true
 
   await nextTick()
   FOCUS_TARGETS[field]?.value?.focus()
 }
 
-function cancelEdit() {
+function closeField(field) {
+  form[field] = storedValue(field)
+  open[field] = false
+}
+
+/**
+ * Leaving an untouched field puts the line back; a field with pending text stays open,
+ * because collapsing it would hide an edit the reader has not saved yet.
+ */
+function onFieldBlur(field) {
+  if (form[field].trim() === storedValue(field)) open[field] = false
+}
+
+function cancelEdits() {
   fillFromStore()
+  for (const field of PROFILE_FIELDS) open[field] = false
   profileError.value = ''
-  editing.value = false
 }
 
 async function saveProfile() {
   profileError.value = ''
-  const patch = buildProfilePatch()
-  if (!Object.keys(patch).length) {
-    editing.value = false
-    return
-  }
 
-  const invalid = validateProfile(patch)
-  if (invalid) {
-    profileError.value = invalid
-    return
-  }
+  const patch = buildProfilePatch()
+  if (!Object.keys(patch).length || hasFieldErrors.value) return
 
   savingProfile.value = true
   try {
@@ -221,7 +253,7 @@ async function saveProfile() {
     // patched: the header, the nav avatar and this card all read the same object.
     const updated = await updateMe(patch)
     auth.setUser(updated)
-    editing.value = false
+    for (const field of PROFILE_FIELDS) open[field] = false
     ui.toast('Your profile has been updated.', 'success')
   } catch (error) {
     // A duplicate phone comes back as a plain 400 from the backend.
@@ -341,7 +373,7 @@ async function confirmDeactivate() {
 </script>
 
 <template>
-  <div ref="pageEl" class="container-page max-w-[860px] pb-xxl pt-lg">
+  <div ref="pageEl" class="container-page pb-xxl pt-lg">
     <!-- The card a visitor sees, with a pencil on everything that can be changed. -->
     <section class="profile-card" data-enter>
       <div class="profile-avatar">
@@ -377,11 +409,10 @@ async function confirmDeactivate() {
           Account
         </p>
 
-        <!-- Read view -->
-        <template v-if="!editing">
-          <!-- A badge qualifies the name, so it rides on the same line instead of
-               claiming one of its own. -->
-          <div class="profile-headline">
+        <!-- Name: badges ride the same line, and the pencil swaps the heading for an
+             input without moving anything else. -->
+        <div class="profile-headline">
+          <template v-if="!open.fullname">
             <h1 class="profile-name">
               {{ displayName }}
             </h1>
@@ -401,7 +432,7 @@ async function confirmDeactivate() {
               class="edit-pen"
               type="button"
               title="Edit your name"
-              @click="startEdit('fullname')"
+              @click="openField('fullname')"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -417,67 +448,115 @@ async function confirmDeactivate() {
               </svg>
               <span class="sr-only">Edit your name</span>
             </button>
+          </template>
+
+          <input
+            v-else
+            ref="nameInput"
+            v-model="form.fullname"
+            class="inline-input inline-name"
+            type="text"
+            autocomplete="name"
+            aria-label="Full name"
+            placeholder="Your name"
+            :maxlength="LIMITS.nameMax"
+            @blur="onFieldBlur('fullname')"
+            @keydown.enter.prevent="saveProfile"
+            @keydown.esc="closeField('fullname')"
+          >
+        </div>
+
+        <p v-if="fieldErrors.fullname" class="inline-error">
+          {{ fieldErrors.fullname }}
+        </p>
+
+        <!--
+          One labelled fact per line, in the same order as the library and the public
+          profile. Email is identity rather than a setting, so it is the only row here
+          without a pencil.
+        -->
+        <div class="profile-meta">
+          <p class="meta-row">
+            <span class="meta-key">Email:</span>
+            <span class="meta-value">{{ email }}</span>
+          </p>
+
+          <div class="meta-row">
+            <span class="meta-key">Phone:</span>
+            <template v-if="!open.phone">
+              <span :class="phone ? 'meta-value' : 'meta-value is-empty'">
+                {{ phone || 'No phone number' }}
+              </span>
+              <button
+                class="edit-pen"
+                type="button"
+                title="Edit your phone number"
+                @click="openField('phone')"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                <span class="sr-only">Edit your phone number</span>
+              </button>
+            </template>
+
+            <input
+              v-else
+              ref="phoneInput"
+              v-model="form.phone"
+              class="inline-input inline-phone"
+              type="tel"
+              autocomplete="tel"
+              aria-label="Phone number"
+              placeholder="+84901234567"
+              @blur="onFieldBlur('phone')"
+              @keydown.enter.prevent="saveProfile"
+              @keydown.esc="closeField('phone')"
+            >
           </div>
 
-          <!-- No pencil here, and the lock says why. -->
-          <p class="profile-email">
-            <span class="profile-email-text">{{ email }}</span>
-            <span class="lock-chip" title="Your email identifies the account and cannot be changed">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="5" y="11" width="14" height="9" rx="2" />
-                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-              </svg>
-              Locked
-            </span>
+          <p v-if="fieldErrors.phone" class="inline-error">
+            {{ fieldErrors.phone }}
           </p>
 
-          <p v-if="memberSince" class="profile-since">
+          <p v-if="memberSince" class="meta-row meta-since">
             {{ memberSince }}
           </p>
+        </div>
 
-          <p class="profile-line">
-            <span :class="phone ? 'profile-value' : 'profile-value is-empty'">
-              {{ phone || 'No phone number' }}
-            </span>
-            <button
-              class="edit-pen"
-              type="button"
-              title="Edit your phone number"
-              @click="startEdit('phone')"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-              <span class="sr-only">Edit your phone number</span>
-            </button>
-          </p>
-
-          <div class="profile-bio-row">
+        <div class="profile-bio-row">
+          <template v-if="!open.description">
             <p class="profile-bio" :class="bio ? '' : 'is-empty'">
-              {{ bio || 'No intro yet. Add one so players know who is behind your quizzes.' }}
+              <template v-if="bio">
+                <template v-for="part in bioParts" :key="part.key">
+                  <a
+                    v-if="part.type === 'link'"
+                    :href="part.href"
+                    class="bio-link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >{{ part.text }}</a>
+                  <span v-else>{{ part.text }}</span>
+                </template>
+              </template>
+              <template v-else>
+                No intro yet. Add one so players know who is behind your quizzes.
+              </template>
             </p>
             <button
               class="edit-pen"
               type="button"
               title="Edit your intro"
-              @click="startEdit('description')"
+              @click="openField('description')"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -493,92 +572,54 @@ async function confirmDeactivate() {
               </svg>
               <span class="sr-only">Edit your intro</span>
             </button>
-          </div>
-        </template>
+          </template>
 
-        <!-- Edit view: the same three values, now as fields. -->
-        <form v-else class="edit-form" @submit.prevent="saveProfile">
-          <label class="form-field">
-            <span class="form-label">Full name</span>
-            <input
-              ref="nameInput"
-              v-model="form.fullname"
-              class="field"
-              type="text"
-              autocomplete="name"
-              placeholder="Your name"
-              :maxlength="LIMITS.nameMax"
-            >
-          </label>
-
-          <div class="form-field">
-            <span class="form-label">Email</span>
-            <p class="locked-field">
-              <span class="profile-email-text">{{ email }}</span>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="5" y="11" width="14" height="9" rx="2" />
-                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-              </svg>
-            </p>
-            <span class="form-hint">
-              Your email is how sign-in recognises this account, so it cannot be changed here.
-            </span>
-          </div>
-
-          <label class="form-field">
-            <span class="form-label">Phone</span>
-            <input
-              ref="phoneInput"
-              v-model="form.phone"
-              class="field"
-              type="tel"
-              autocomplete="tel"
-              placeholder="+84901234567"
-            >
-            <span class="form-hint">7 to 15 digits, an optional leading +.</span>
-          </label>
-
-          <label class="form-field">
-            <span class="form-label">About you</span>
+          <div v-else class="inline-bio-editor">
             <textarea
               ref="bioInput"
               v-model="form.description"
-              class="field min-h-[96px] resize-y"
-              placeholder="Introduce yourself: who you are and what you like to quiz about."
+              class="inline-input inline-bio"
+              aria-label="About you"
+              placeholder="Introduce yourself: who you are and what you like to quiz about. Links are clickable."
               :maxlength="LIMITS.descriptionMax"
+              @blur="onFieldBlur('description')"
+              @keydown.esc="closeField('description')"
             />
-            <span class="form-hint">
-              Shown on your public profile. {{ form.description.length }} / {{ LIMITS.descriptionMax }}
+            <span class="inline-count">
+              {{ form.description.length }} / {{ LIMITS.descriptionMax }}
             </span>
-          </label>
-
-          <p v-if="profileError" class="form-error">
-            {{ profileError }}
-          </p>
-
-          <div class="form-actions">
-            <button class="btn-primary" type="submit" :disabled="savingProfile || !hasProfileChanges">
-              {{ savingProfile ? 'Saving…' : 'Save changes' }}
-            </button>
-            <button class="btn-ghost" type="button" :disabled="savingProfile" @click="cancelEdit">
-              Cancel
-            </button>
           </div>
-        </form>
+        </div>
+
+        <p v-if="fieldErrors.description" class="inline-error">
+          {{ fieldErrors.description }}
+        </p>
+
+        <p v-if="profileError" class="inline-error">
+          {{ profileError }}
+        </p>
       </div>
 
-      <div v-if="!editing" class="profile-actions">
-        <button class="btn-utility" type="button" @click="startEdit('fullname')">
-          Edit profile
-        </button>
+      <!--
+        Save and Cancel only exist once something has actually changed. The link out is
+        not an edit, so it stays: this card is what a visitor sees, and the fastest way
+        to check that is to go and look at it.
+      -->
+      <div class="profile-actions">
+        <template v-if="hasProfileChanges">
+          <button
+            class="btn-primary"
+            type="button"
+            :disabled="savingProfile || hasFieldErrors"
+            @click="saveProfile"
+          >
+            {{ savingProfile ? 'Saving…' : 'Save' }}
+          </button>
+          <button class="btn-ghost" type="button" :disabled="savingProfile" @click="cancelEdits">
+            Cancel
+          </button>
+        </template>
+
         <RouterLink v-if="publicRoute" :to="publicRoute" class="btn-ghost">
           View public profile
         </RouterLink>
@@ -872,74 +913,50 @@ async function confirmDeactivate() {
 }
 
 /*
-  Contact line, then the join date underneath. They are one block of small print, so
-  they sit tight against each other and keep their distance from the name above.
+  One labelled fact per line, so the block reads as a small record rather than a run of
+  loose grey text. The key column has a fixed width, which is what lines the values up
+  under each other whatever the label says - and what keeps the pencils in a column.
 */
-.profile-email {
+.profile-meta {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin-top: 12px;
-  color: var(--ink-2);
-  font-size: 13.5px;
-  line-height: 1.45;
-}
-
-.profile-email-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* States why there is no pencil next to the address, rather than leaving a gap. */
-.lock-chip {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
+  flex-direction: column;
   gap: 4px;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: var(--r-full);
-  background-color: var(--canvas);
-  color: var(--ink-3);
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1;
+  margin-top: 12px;
 }
 
-.lock-chip svg {
-  width: 11px;
-  height: 11px;
-}
-
-.profile-since {
-  color: var(--ink-3);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-/* Editable single-value row: the value, then its pencil. */
-.profile-line {
+.meta-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin-top: 10px;
-}
-
-.profile-value {
-  overflow: hidden;
   color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.45;
+}
+
+.meta-key {
+  flex: none;
+  width: 52px;
+  color: var(--ink-3);
+}
+
+.meta-value {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 /* A prompt, not content: it never reads as a real value. */
-.profile-value.is-empty {
+.meta-value.is-empty {
   color: var(--ink-3);
+}
+
+/* A sentence of its own, so it carries no key column and no value column. */
+.meta-since {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 13px;
 }
 
 /* The pencil aligns with the first line of the intro, not with its middle. */
@@ -950,15 +967,30 @@ async function confirmDeactivate() {
   margin-top: 16px;
 }
 
+/* pre-wrap keeps the paragraph breaks the author typed into the intro. */
 .profile-bio {
   max-width: 58ch;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .profile-bio.is-empty {
   color: var(--ink-3);
+}
+
+.bio-link {
+  color: var(--spotlight);
+  text-decoration: underline;
+  text-decoration-color: var(--spotlight-line);
+  text-underline-offset: 2px;
+  transition: text-decoration-color var(--t-ui) var(--ease);
+}
+
+.bio-link:hover {
+  text-decoration-color: var(--spotlight);
 }
 
 /*
@@ -997,13 +1029,86 @@ async function confirmDeactivate() {
   box-shadow: 0 0 0 3px var(--spotlight-soft);
 }
 
+/*
+  In-place editors. Each one inherits the type of the line it replaces, so the card
+  keeps its shape while a value is being typed: the same size, the same weight, the
+  same place. Only a light frame says the text is now live.
+*/
+.inline-input {
+  width: 100%;
+  border: 1px solid var(--spotlight-line);
+  border-radius: var(--r-md);
+  background-color: var(--paper);
+  color: var(--ink);
+  transition:
+    border-color var(--t-ui) var(--ease),
+    box-shadow var(--t-ui) var(--ease);
+}
+
+.inline-input::placeholder {
+  color: var(--ink-3);
+}
+
+.inline-input:focus {
+  outline: none;
+  border-color: var(--spotlight);
+  box-shadow: 0 0 0 3px var(--spotlight-soft);
+}
+
+.inline-name {
+  max-width: 460px;
+  padding: 2px 12px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.024em;
+  line-height: 1.28;
+}
+
+.inline-phone {
+  max-width: 260px;
+  padding: 5px 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.inline-bio-editor {
+  display: block;
+  width: 100%;
+  max-width: 58ch;
+}
+
+.inline-bio {
+  display: block;
+  min-height: 92px;
+  padding: 8px 12px;
+  font-size: 15px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.inline-count {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+/* Errors sit under the row that caused them and appear while typing, not on submit. */
+.inline-error {
+  margin-top: 6px;
+  color: var(--ans-a);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .profile-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-/* Shared by the card form and both panels below, so every form has one rhythm. */
+/* Shared by both panels below, so every form has one rhythm. */
 .edit-form {
   display: grid;
   gap: 16px;
@@ -1028,27 +1133,6 @@ async function confirmDeactivate() {
   color: var(--ink-3);
   font-size: 12.5px;
   line-height: 1.4;
-}
-
-/* Reads as a field so the form stays aligned, but is flat: nothing here is typeable. */
-.locked-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  height: 40px;
-  padding: 0 14px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--r-md);
-  background-color: var(--canvas);
-  color: var(--ink-3);
-  font-size: 14px;
-}
-
-.locked-field svg {
-  flex: none;
-  width: 15px;
-  height: 15px;
 }
 
 .form-error {
@@ -1134,7 +1218,8 @@ async function confirmDeactivate() {
     margin-top: 18px;
   }
 
-  .profile-name {
+  .profile-name,
+  .inline-name {
     font-size: 26px;
   }
 }
@@ -1142,6 +1227,8 @@ async function confirmDeactivate() {
 @media (prefers-reduced-motion: reduce) {
   .avatar-edit,
   .edit-pen,
+  .inline-input,
+  .bio-link,
   .password-option,
   .password-option-caret {
     transition: none;
