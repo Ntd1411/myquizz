@@ -28,9 +28,11 @@ import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useM
  * Where each field of the author card comes from:
  *   GET /users/:id  -> id, fullname, email, avatar, description. This is the row every
  *                      card links to, so the header shows exactly what a visitor sees.
- *   session row     -> created_at, role, auth_provider. The public endpoint strips
- *                      them on purpose, and asking /users/me again would be a third
- *                      request for data the store already holds.
+ *   session row     -> created_at, role, auth_provider. The first two are public and
+ *                      ride along on /users/:id as well, but the owner of this page is
+ *                      always the signed-in user, so the store already holds them
+ *                      before that request lands. auth_provider is session-only: how
+ *                      an account signs in is nobody else's business.
  *   listing meta    -> the quiz count. Questions and plays are summed from the rows on
  *                      screen because the backend reports no library-wide totals for
  *                      them, which is what the note under the stats says.
@@ -162,13 +164,29 @@ const memberSince = computed(() => {
   return `Member since ${MONTH_YEAR.format(joined)}`
 })
 
-// Only worth a chip when it says something: a plain local account gets none.
+/**
+ * A badge only earns its space when it says something, so the default case - a local
+ * account with the plain 'user' role - shows none at all.
+ *
+ * The tone is part of the fact: a role is about standing in the product and wears the
+ * brand colour, a sign-in method is plumbing and stays neutral.
+ */
 const accountBadges = computed(() => {
   const badges = []
   const role = auth.user?.role
+  const provider = auth.user?.auth_provider
 
-  if (role && role !== 'user') badges.push(role.charAt(0).toUpperCase() + role.slice(1))
-  if (auth.user?.auth_provider === 'google') badges.push('Google account')
+  if (role && role !== 'user') {
+    badges.push({
+      key: 'role',
+      label: role.charAt(0).toUpperCase() + role.slice(1),
+      tone: 'brand',
+    })
+  }
+
+  if (provider === 'google') {
+    badges.push({ key: 'provider', label: 'Google account', tone: 'neutral' })
+  }
 
   return badges
 })
@@ -377,20 +395,31 @@ watch(
         <p class="eyebrow-label">
           Your work
         </p>
-        <h1 class="profile-name">
-          {{ authorName }}
-        </h1>
+        <!-- A badge qualifies the name, so it rides on the same line instead of
+             claiming one of its own. -->
+        <div class="profile-headline">
+          <h1 class="profile-name">
+            {{ authorName }}
+          </h1>
 
-        <p class="profile-meta">
-          <span v-if="author.email" class="profile-email">{{ author.email }}</span>
-          <template v-if="author.email && memberSince">
-            <span class="profile-dot" />
-          </template>
-          <span v-if="memberSince">{{ memberSince }}</span>
+          <p v-if="accountBadges.length" class="profile-badges">
+            <span
+              v-for="badge in accountBadges"
+              :key="badge.key"
+              class="badge"
+              :class="`badge-${badge.tone}`"
+            >
+              {{ badge.label }}
+            </span>
+          </p>
+        </div>
+
+        <p v-if="author.email" class="profile-email">
+          {{ author.email }}
         </p>
 
-        <p v-if="accountBadges.length" class="profile-badges">
-          <span v-for="badge in accountBadges" :key="badge" class="chip">{{ badge }}</span>
+        <p v-if="memberSince" class="profile-since">
+          {{ memberSince }}
         </p>
 
         <p class="profile-bio" :class="authorBio ? '' : 'is-empty'">
@@ -671,8 +700,15 @@ watch(
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 20px;
-  padding: 24px;
+  /*
+    Only the columns are spaced by the grid. The rows below the identity carry their
+    own margins instead, because a single row gap cannot separate the stats strip from
+    the identity and the note from the stats by different amounts - the note used to
+    claw a gap back with a negative margin.
+  */
+  column-gap: 22px;
+  row-gap: 0;
+  padding: 26px 28px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-xl);
   background-color: var(--paper);
@@ -697,8 +733,20 @@ watch(
   min-width: 0;
 }
 
+/*
+  Name and badges on one line. The row wraps, so a long name pushes the badges onto a
+  second line rather than squeezing them, and the row gap is what spaces them then.
+*/
+.profile-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 6px;
+}
+
 .profile-name {
-  margin-top: 4px;
+  min-width: 0;
   overflow: hidden;
   color: var(--ink);
   font-size: 30px;
@@ -708,42 +756,71 @@ watch(
   text-overflow: ellipsis;
 }
 
-.profile-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--ink-3);
-  font-size: 13.5px;
-  line-height: 1.3;
-}
-
+/*
+  Contact line, then the join date underneath. They are one block of small print, so
+  they sit tight against each other and keep their distance from the name above and
+  the badges below.
+*/
 .profile-email {
   max-width: 100%;
+  margin-top: 12px;
   overflow: hidden;
   color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profile-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: var(--r-full);
-  background-color: var(--hairline);
+.profile-since {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
+/* Never shrinks: the name gives up its width first, a badge is unreadable clipped. */
 .profile-badges {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+}
+
+/*
+  A badge states a fact about the account and nothing more, so it is smaller and
+  flatter than .chip, which is a control the reader can press elsewhere in the app.
+*/
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Standing in the product: worth the brand colour. */
+.badge-brand {
+  border-color: var(--spotlight-line);
+  background-color: var(--spotlight-soft);
+  color: var(--spotlight);
+}
+
+/* Plumbing, such as how the account signs in: stated, not advertised. */
+.badge-neutral {
+  border-color: var(--hairline);
+  background-color: var(--canvas);
+  color: var(--ink-2);
 }
 
 .profile-bio {
   max-width: 58ch;
-  margin-top: 10px;
+  margin-top: 16px;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.55;
@@ -760,50 +837,63 @@ watch(
   gap: 8px;
 }
 
+/* Its own band under the identity, far enough down to read as a separate statement. */
 .profile-stats {
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
-  gap: 8px;
+  gap: 12px;
+  margin-top: 26px;
 }
 
 .stat {
   flex: 1 1 140px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-radius: var(--r-md);
   background-color: var(--canvas);
 }
 
 .stat-label {
   color: var(--ink-3);
-  font-size: 12.5px;
+  font-size: 12px;
   letter-spacing: 0.01em;
+  line-height: 1.3;
 }
 
 .stat-value {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--ink);
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
 }
 
+/* A footnote to the strip above, so it stays closer to it than the strip is to the
+   identity. */
 .profile-note {
   grid-column: 1 / -1;
-  margin-top: -8px;
+  margin-top: 10px;
   color: var(--ink-3);
   font-size: 12.5px;
+  line-height: 1.4;
 }
 
 /* Below this width the actions cannot share the row without squeezing the name. */
 @media (max-width: 760px) {
   .profile-card {
     grid-template-columns: auto minmax(0, 1fr);
-    padding: 20px;
+    padding: 22px 20px;
   }
 
+  /* Off the identity row and onto their own, so they need the gap the grid no longer
+     provides. */
   .profile-actions {
     grid-column: 1 / -1;
+    margin-top: 18px;
+  }
+
+  .profile-stats {
+    margin-top: 22px;
   }
 
   .profile-name {
@@ -817,7 +907,7 @@ watch(
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 20px;
   padding: 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);

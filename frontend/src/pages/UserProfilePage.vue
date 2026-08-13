@@ -19,8 +19,9 @@ import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useM
  * screen costs one round trip rather than two:
  *
  *   GET /users/:id                 -> the whole public row: fullname, email, avatar,
- *                                     description. Everything the backend is willing
- *                                     to show about the account is rendered here.
+ *                                     description, role and created_at. Everything the
+ *                                     backend is willing to show about the account is
+ *                                     rendered here.
  *   GET /quizzes/users/id/:ownerId -> the listing
  *
  * That listing only ever returns public quizzes with at least one question, so an
@@ -32,9 +33,9 @@ import { revealOnEnter, revealOnScroll, ScrollTrigger } from '@/composables/useM
  * the rows on screen because no endpoint reports them per creator. The note under the
  * stats says so whenever a cursor page is still unloaded.
  *
- * Fields the backend deliberately withholds from /users/:id - created_at, role,
- * auth_provider, phone - are not shown here, and no second request tries to reach
- * them: on someone else's profile they are simply not public.
+ * Fields the backend deliberately withholds from /users/:id - auth_provider and phone -
+ * are not shown here, and no second request tries to reach them: how an account signs
+ * in and how to phone it are nobody else's business.
  */
 const props = defineProps({
   id: { type: String, required: true },
@@ -43,6 +44,9 @@ const props = defineProps({
 const auth = useAuthStore()
 
 const PAGE_SIZE = 24
+
+// "Member since August 2026": a join date needs no day to be useful.
+const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
 
 const pageEl = ref(null)
 const gridEl = ref(null)
@@ -67,6 +71,28 @@ const avatarUrl = computed(() => user.value?.avatar || '')
 const email = computed(() => user.value?.email || '')
 
 const bio = computed(() => user.value?.description?.trim() || '')
+
+// Join date, straight from the public row and rendered on its own line under the
+// contact line: two separate facts, two lines.
+const memberSince = computed(() => {
+  const raw = user.value?.created_at
+  if (!raw) return ''
+
+  const joined = new Date(raw)
+  if (Number.isNaN(joined.getTime())) return ''
+
+  return `Member since ${MONTH_YEAR.format(joined)}`
+})
+
+// Staff roles only. Everyone is a plain 'user', so printing that says nothing.
+const accountBadges = computed(() => {
+  const role = user.value?.role
+  if (!role || role === 'user') return []
+
+  return [
+    { key: 'role', label: role.charAt(0).toUpperCase() + role.slice(1), tone: 'brand' },
+  ]
+})
 
 // Route params are strings, the session id is a number: comparing them raw always
 // answered false and hid the "my library" shortcut from its owner.
@@ -140,7 +166,7 @@ watch(quizzes, async (rows) => {
     <!-- Header. A failing user request is the only "not found" case. -->
     <section v-if="profile.isLoading.value" class="profile-card">
       <span class="skeleton-avatar" />
-      <div class="profile-main">
+      <div class="profile-main skeleton-main">
         <span class="skeleton-line" style="width: 26%" />
         <span class="skeleton-line skeleton-line-tall" style="width: 44%" />
         <span class="skeleton-line" style="width: 60%" />
@@ -170,12 +196,31 @@ watch(quizzes, async (rows) => {
           <p class="eyebrow-label">
             Creator
           </p>
-          <h1 class="profile-name">
-            {{ displayName }}
-          </h1>
+          <!-- A badge qualifies the name, so it rides on the same line instead of
+               claiming one of its own. -->
+          <div class="profile-headline">
+            <h1 class="profile-name">
+              {{ displayName }}
+            </h1>
+
+            <p v-if="accountBadges.length" class="profile-badges">
+              <span
+                v-for="badge in accountBadges"
+                :key="badge.key"
+                class="badge"
+                :class="`badge-${badge.tone}`"
+              >
+                {{ badge.label }}
+              </span>
+            </p>
+          </div>
 
           <p v-if="email" class="profile-meta">
             <a class="profile-email" :href="`mailto:${email}`">{{ email }}</a>
+          </p>
+
+          <p v-if="memberSince" class="profile-since">
+            {{ memberSince }}
           </p>
 
           <p class="profile-bio" :class="bio ? '' : 'is-empty'">
@@ -302,8 +347,15 @@ watch(quizzes, async (rows) => {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 20px;
-  padding: 24px;
+  /*
+    Only the columns are spaced by the grid. The rows below the identity carry their
+    own margins instead, because a single row gap cannot separate the stats strip from
+    the identity and the note from the stats by different amounts - the note used to
+    claw a gap back with a negative margin.
+  */
+  column-gap: 22px;
+  row-gap: 0;
+  padding: 26px 28px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-xl);
   background-color: var(--paper);
@@ -320,8 +372,20 @@ watch(quizzes, async (rows) => {
   min-width: 0;
 }
 
+/*
+  Name and badges on one line. The row wraps, so a long name pushes the badges onto a
+  second line rather than squeezing them, and the row gap is what spaces them then.
+*/
+.profile-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 6px;
+}
+
 .profile-name {
-  margin-top: 4px;
+  min-width: 0;
   overflow: hidden;
   color: var(--ink);
   font-size: 30px;
@@ -331,14 +395,19 @@ watch(quizzes, async (rows) => {
   text-overflow: ellipsis;
 }
 
+/*
+  Contact line, then the join date underneath. They are one block of small print, so
+  they sit tight against each other and keep their distance from the name above and
+  the badges below.
+*/
 .profile-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 12px;
   font-size: 13.5px;
-  line-height: 1.3;
+  line-height: 1.45;
 }
 
 .profile-email {
@@ -354,9 +423,48 @@ watch(quizzes, async (rows) => {
   color: var(--spotlight);
 }
 
+.profile-since {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Never shrinks: the name gives up its width first, a badge is unreadable clipped. */
+.profile-badges {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/*
+  A badge states a fact about the account and nothing more, so it is smaller and
+  flatter than .chip, which is a control the reader can press elsewhere in the app.
+*/
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Standing in the product: worth the brand colour. */
+.badge-brand {
+  border-color: var(--spotlight-line);
+  background-color: var(--spotlight-soft);
+  color: var(--spotlight);
+}
+
 .profile-bio {
   max-width: 58ch;
-  margin-top: 10px;
+  margin-top: 16px;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.55;
@@ -373,50 +481,63 @@ watch(quizzes, async (rows) => {
   gap: 8px;
 }
 
+/* Its own band under the identity, far enough down to read as a separate statement. */
 .profile-stats {
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
-  gap: 8px;
+  gap: 12px;
+  margin-top: 26px;
 }
 
 .stat {
   flex: 1 1 140px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-radius: var(--r-md);
   background-color: var(--canvas);
 }
 
 .stat-label {
   color: var(--ink-3);
-  font-size: 12.5px;
+  font-size: 12px;
   letter-spacing: 0.01em;
+  line-height: 1.3;
 }
 
 .stat-value {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--ink);
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
 }
 
+/* A footnote to the strip above, so it stays closer to it than the strip is to the
+   identity. */
 .profile-note {
   grid-column: 1 / -1;
-  margin-top: -8px;
+  margin-top: 10px;
   color: var(--ink-3);
   font-size: 12.5px;
+  line-height: 1.4;
 }
 
 /* Below this width the actions cannot share the row without squeezing the name. */
 @media (max-width: 760px) {
   .profile-card {
     grid-template-columns: auto minmax(0, 1fr);
-    padding: 20px;
+    padding: 22px 20px;
   }
 
+  /* Off the identity row and onto their own, so they need the gap the grid no longer
+     provides. */
   .profile-actions {
     grid-column: 1 / -1;
+    margin-top: 18px;
+  }
+
+  .profile-stats {
+    margin-top: 22px;
   }
 
   .profile-name {
@@ -430,7 +551,7 @@ watch(quizzes, async (rows) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 20px;
   padding: 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
@@ -552,6 +673,12 @@ watch(quizzes, async (rows) => {
 
 .skeleton-line + .skeleton-line {
   margin-top: 10px;
+}
+
+/* The placeholder stands in for the identity block, so it starts on the same line as
+   the eyebrow it replaces. */
+.skeleton-main {
+  padding-top: 6px;
 }
 
 .skeleton-line-tall {
