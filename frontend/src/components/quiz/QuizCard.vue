@@ -11,6 +11,10 @@ import { groupDigits, formatCount } from '../../utils/formatNumber'
  * into a barcode in a grid), no author name next to the avatar (the face is enough at
  * this size, the name lives in the tooltip and on the detail page), and one single hover
  * behaviour shared by the grid and the rail so a card never feels like two components.
+ *
+ * The author face doubles as the link to the public creator profile. It cannot live
+ * inside the card link, so it is rendered as an overlay pinned exactly where the face
+ * sits in the meta row, and the row keeps a spacer of the same size in its place.
  */
 const props = defineProps({
   quiz: { type: Object, required: true },
@@ -70,6 +74,13 @@ const authorName = computed(() => owner.value?.fullname || owner.value?.username
 const authorAvatar = computed(() => owner.value?.avatar || '')
 
 /**
+ * The profile target. `owner` is the joined author block and is null once the account
+ * is gone, while `ownerId` is the raw column that every listing carries; without either
+ * one the face stays a plain avatar instead of linking into a 404.
+ */
+const ownerId = computed(() => owner.value?.id ?? props.quiz.ownerId ?? null)
+
+/**
  * Owner-only badges. `isPublic` is null whenever the endpoint does not report
  * visibility, which is not the same as a private quiz, so only an explicit `false`
  * paints the private badge. A quiz without questions cannot be hosted, which is worth
@@ -87,11 +98,11 @@ const badges = computed(() => {
 
 <template>
   <!--
-    The card itself is one big link. Owner actions live in a sibling overlay instead of
-    inside the link, because a button nested in an anchor is invalid markup and steals
-    the click from the router.
+    The card itself is one big link. The author link and the owner actions live in
+    sibling overlays instead of inside it, because a link or a button nested in an
+    anchor is invalid markup and the outer anchor steals the click.
   -->
-  <div class="relative h-full">
+  <div class="quiz-card-shell relative h-full">
     <RouterLink
       :to="{ name: 'quiz-detail', params: { id: quiz.id } }"
       class="quiz-card card-surface flex h-full select-none flex-col overflow-hidden"
@@ -172,7 +183,13 @@ const badges = computed(() => {
             <span class="-ml-[4px]">plays</span>
           </template>
 
+          <!--
+            With a known author the face is a link, so the row only reserves its box
+            here and the real avatar is rendered on top of the card.
+          -->
+          <span v-if="ownerId" class="ml-auto h-[24px] w-[24px]" aria-hidden="true" />
           <UserAvatar
+            v-else
             class="ml-auto"
             :name="authorName"
             :src="authorAvatar"
@@ -182,7 +199,18 @@ const badges = computed(() => {
       </div>
     </RouterLink>
 
-    <div v-if="$slots.actions" class="absolute right-[10px] top-[10px] flex gap-xxs">
+    <!-- Author shortcut, sitting exactly on the spacer the meta row left for it. -->
+    <RouterLink
+      v-if="ownerId"
+      :to="{ name: 'user-profile', params: { id: ownerId } }"
+      class="card-overlay owner-link absolute bottom-[16px] right-[18px]"
+      :title="`View ${authorName}`"
+    >
+      <UserAvatar :name="authorName" :src="authorAvatar" :size="24" />
+      <span class="sr-only">View the profile of {{ authorName }}</span>
+    </RouterLink>
+
+    <div v-if="$slots.actions" class="card-overlay absolute right-[10px] top-[10px] flex gap-xxs">
       <slot name="actions" />
     </div>
   </div>
@@ -192,16 +220,26 @@ const badges = computed(() => {
 /*
   One hover for every context. The card lifts 3px onto the soft two-layer shadow and
   drops its hairline, which reads as "picked up" instead of "highlighted".
+
+  The hover is driven by the shell rather than the link, so pointing at an overlay is
+  still pointing at the card: hovering the author face or an owner action used to end
+  the hover on the link underneath and drop the card back down.
 */
-.quiz-card {
+.quiz-card,
+.card-overlay {
   transition:
     transform var(--t-ui) var(--ease),
     box-shadow var(--t-ui) var(--ease),
     border-color var(--t-ui) var(--ease);
 }
 
-.quiz-card:hover {
+/* The overlays ride along with the lift, otherwise they slide off the card corner. */
+.quiz-card-shell:hover .quiz-card,
+.quiz-card-shell:hover .card-overlay {
   transform: translateY(-3px);
+}
+
+.quiz-card-shell:hover .quiz-card {
   border-color: transparent;
   box-shadow: var(--sh-2);
 }
@@ -215,18 +253,40 @@ const badges = computed(() => {
   transition: transform var(--t-slow) var(--ease);
 }
 
-.quiz-card:hover .quiz-card-cover {
+.quiz-card-shell:hover .quiz-card-cover {
   transform: scale(1.03);
+}
+
+/* The face is a target of its own, so it grows out of the card on hover. */
+.owner-link {
+  border-radius: var(--r-full);
+}
+
+.owner-link:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 3px var(--spotlight-soft);
+}
+
+.quiz-card-shell:hover .owner-link:hover {
+  transform: translateY(-3px) scale(1.12);
+}
+
+.owner-link:active {
+  transform: translateY(-3px) scale(1.02);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .quiz-card,
+  .card-overlay,
   .quiz-card-cover {
     transition: none;
   }
 
-  .quiz-card:hover,
-  .quiz-card:hover .quiz-card-cover {
+  .quiz-card-shell:hover .quiz-card,
+  .quiz-card-shell:hover .card-overlay,
+  .quiz-card-shell:hover .quiz-card-cover,
+  .owner-link:hover,
+  .quiz-card-shell:hover .owner-link:hover {
     transform: none;
   }
 }
