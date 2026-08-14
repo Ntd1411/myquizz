@@ -4,13 +4,15 @@
  * working copy of the draft and only emits a validated payload upwards, so the
  * pages stay thin (load / save / redirect).
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { IMAGE_ACCEPT, checkImageFile, uploadImage } from '@/api/storage.api'
 import { toErrorMessage } from '@/api/envelope'
 import { saveAutoDraft } from '@/composables/useQuizDraft'
 import { createDefaultCoverDataUrl, createDefaultCoverFile } from '@/utils/defaultCover'
 import { useUiStore } from '@/stores/ui.store'
+import BaseCombo from '@/components/base/BaseCombo.vue'
 import BrandLogo from '@/components/base/BrandLogo.vue'
+import ImageCropper from '@/components/quiz/ImageCropper.vue'
 import {
   CATEGORIES,
   LANGUAGES,
@@ -24,6 +26,7 @@ import {
   makeQuizMeta,
   validateQuizFields,
 } from '@/utils/quizImport'
+import { QUESTION_HEIGHT, QUESTION_WIDTH } from '@/utils/imageCrop'
 
 const props = defineProps({
   quiz: { type: Object, default: null },
@@ -45,9 +48,42 @@ const formError = ref('')
 const savedLabel = ref('')
 
 /*
+ * Category and time limit are dropdowns that can become an input: BaseCombo keeps the list
+ * for the answers nearly every quiz uses and turns its own box into an empty one when the
+ * author picks Custom, so nothing unfolds underneath the field.
+ */
+const categoryOptions = CATEGORIES.map((category) => ({ value: category, label: category }))
+
+// The list stops at 120 seconds; typed limits are held to something a player can sit
+// through and a countdown can render.
+const TIME_LIMIT_MIN = 5
+const TIME_LIMIT_MAX = 600
+
+const timeOptions = TIME_LIMITS.map((seconds) => ({
+  value: seconds,
+  label: `${seconds} seconds`,
+}))
+
+/**
+ * Held to the range when the field is left, not on every keystroke: typing "9" on the
+ * way to "90" must not be corrected to the minimum under the author's fingers.
+ */
+function clampTime(question) {
+  const seconds = Math.trunc(Number(question.time_limit))
+  question.time_limit = Number.isFinite(seconds)
+    ? Math.min(Math.max(seconds, TIME_LIMIT_MIN), TIME_LIMIT_MAX)
+    : TIME_LIMIT_MIN
+}
+
+/*
  * Errors are computed continuously but only revealed once the author has tried
  * to save: marking every empty field red on an untouched form is noise, and
  * hiding the reason for a blocked save is worse.
+ *
+ * There is no list of problems at the top of the page. It repeated what the marked
+ * fields already say, and five sentences stacked above a long form read as a wall
+ * rather than as directions: a refused save names the first problem in a toast, and
+ * every field carries its own message where the fix has to happen.
  */
 const showErrors = ref(false)
 const fieldErrors = computed(() => validateQuizFields(draft.value, items.value))
@@ -58,12 +94,6 @@ const questionErrors = computed(() =>
     (item, index) => (showErrors.value ? fieldErrors.value.questions[index] : null) ?? { options: [] },
   ),
 )
-const ISSUE_PREVIEW = 5
-const issues = computed(() => (showErrors.value ? allIssues.value.slice(0, ISSUE_PREVIEW) : []))
-const hiddenIssueCount = computed(() =>
-  showErrors.value ? Math.max(allIssues.value.length - ISSUE_PREVIEW, 0) : 0,
-)
-
 /*
  * Applying the props of the update page must not count as an edit, otherwise the
  * page would warn about unsaved changes for a quiz nobody touched yet.
@@ -138,6 +168,11 @@ function removeOption(question, index) {
     .map((position) => (position > index ? position - 1 : position))
 }
 
+/*
+ * A picture that is already stored comes along with the copy, because it is only a URL on
+ * the question. One that is still waiting in the browser does not: it is held against a
+ * question id, and uploading a single file under two keys is not what Duplicate promises.
+ */
 function duplicateQuestion(index) {
   const source = items.value[index]
   items.value.splice(index + 1, 0, {
@@ -145,12 +180,15 @@ function duplicateQuestion(index) {
     id: makeQuestion().id,
     answer_options: [...source.answer_options],
     correctIndexes: [...source.correctIndexes],
-    uploading: false,
   })
 }
 
 function removeQuestion(index) {
   if (items.value.length === 1) return
+
+  // A pending picture is keyed by question id, so it has to leave with the question or it
+  // would hold an object URL open and be uploaded for a question that no longer exists.
+  setPendingImage(items.value[index], null)
   items.value.splice(index, 1)
 }
 
@@ -187,20 +225,52 @@ function toggleCorrect(question, index) {
 const isCorrect = (question, index) => question.correctIndexes.includes(index)
 
 /*
- * Uploads are cancellable and report their own error next to the picker instead
- * of only as a toast, which disappears before the author can act on it.
+ * A cover chosen here stays in the browser until the quiz is saved: it is validated and
+ * previewed locally, and only presigned and uploaded by submit(). Nothing reaches object
+ * storage for a quiz that is abandoned, and replacing or re-cropping the cover any
+ * number of times still costs exactly one upload.
+ *
+ * Errors are reported next to the picker instead of only as a toast, which disappears
+ * before the author can act on it.
  */
-const coverUploading = ref(false)
 const coverError = ref('')
-// A quiz saved without a cover gets a generated one, uploaded during the save.
-// The submit button says so rather than looking stuck for a second.
+// The file input is opened from the icon button on the cover, so the preview no longer
+// has to be one giant label to be usable.
+const coverInput = ref(null)
+const cropOpen = ref(false)
+
+/*
+ * The pending cover, held as three separate things on purpose:
+ *  - source: the picture as the author supplied it, so every crop is taken from the
+ *    original instead of from the last crop, which would shed a little more of the
+ *    image on each pass.
+ *  - crop: the frame of the last crop, so the cropper reopens on it and a crop that was
+ *    tightened too far can be widened again.
+ *  - file / previewUrl: what will be uploaded on save, and what the preview shows now.
+ */
+const pendingCover = ref(null)
+
+/*
+ * The same arrangement for question pictures, keyed by question id and deliberately kept
+ * outside `items`: a File cannot survive JSON, so holding one on the question itself would
+ * put an empty object into the autosaved draft and a restored question would look as
+ * though it still carried a picture.
+ */
+const pendingImages = reactive(new Map())
+// Which question the open cropper belongs to, so only one dialog can exist at a time.
+const cropQuestionId = ref(null)
+
+// Every deferred upload happens inside the save, so one flag covers the cover and the
+// question pictures alike. The submit button says so rather than looking stuck.
 const preparingCover = ref(false)
-let coverAbort = null
-const questionAborts = new Map()
+
+// The cover no longer has an upload of its own to wait on: the only busy state it can
+// be in is the save that uploads it.
+const coverBusy = computed(() => props.busy || preparingCover.value)
 
 const submitText = computed(() => {
   if (props.busy) return props.busyLabel
-  return preparingCover.value ? 'Preparing cover…' : props.submitLabel
+  return preparingCover.value ? 'Uploading images…' : props.submitLabel
 })
 
 /*
@@ -229,55 +299,149 @@ watch(
   { immediate: true },
 )
 
-// An uploaded cover always wins over the generated one.
-const coverPreview = computed(() => draft.value.quiz_image || defaultCoverPreview.value)
+/*
+ * What the author is looking at: the cover just picked or cropped, then the one already
+ * stored on the quiz, then the generated one.
+ */
+const coverPreview = computed(
+  () => pendingCover.value?.previewUrl || draft.value.quiz_image || defaultCoverPreview.value,
+)
 
-function wasAborted(controller) {
-  return Boolean(controller?.signal.aborted)
+// The cropper always reads the original picture, never the result of the last crop.
+const cropSource = computed(
+  () => pendingCover.value?.sourceUrl || draft.value.quiz_image || defaultCoverPreview.value,
+)
+
+/** Frees the object URLs a pending image holds. One URL may fill both slots. */
+function releasePendingImage(pending) {
+  if (!pending) return
+
+  const urls = new Set()
+  if (pending.previewIsLocal) urls.add(pending.previewUrl)
+  if (pending.sourceIsLocal) urls.add(pending.sourceUrl)
+  urls.forEach((url) => URL.revokeObjectURL(url))
 }
 
-async function onCoverPicked(event) {
+function setPendingCover(next) {
+  releasePendingImage(pendingCover.value)
+  pendingCover.value = next
+  // The cover lives outside `draft`, so the watcher that tracks edits cannot see it and
+  // the page has to be told, or it would let the author leave without a warning.
+  emit('dirty', true)
+}
+
+function openCoverPicker() {
+  coverInput.value?.click()
+}
+
+/*
+ * Picking validates and previews, nothing more. The file is kept as it came so a later
+ * crop can read it without a download, and the presign happens once, in submit().
+ */
+function onCoverPicked(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
 
-  // The presign rules are checked before the round trip, so a wrong file type
-  // fails instantly and with a precise reason.
+  // Checked now rather than at save time: a file the bucket would reject has to be
+  // reported while the author is still looking at the picker.
   const problem = checkImageFile(file)
   if (problem) {
     coverError.value = problem
     return
   }
 
-  const controller = new AbortController()
-  coverAbort?.abort()
-  coverAbort = controller
-  coverUploading.value = true
   coverError.value = ''
+  // One URL in both slots: an untouched pick is its own preview, and releaseCover()
+  // revokes it exactly once.
+  const url = URL.createObjectURL(file)
+  setPendingCover({
+    file,
+    sourceUrl: url,
+    sourceIsLocal: true,
+    previewUrl: url,
+    previewIsLocal: true,
+    crop: null,
+  })
+}
 
-  try {
-    draft.value.quiz_image = await uploadImage(file, 'quizzes', { signal: controller.signal })
-  } catch (error) {
-    // A cancelled upload is a user decision, not a failure to report.
-    if (!wasAborted(controller)) {
-      coverError.value = toErrorMessage(error, 'Could not upload the cover image.')
-      ui.toast(coverError.value, 'error')
+/*
+ * The cropper reads the original picture, the generated preview included: a quiz that
+ * started without a cover can still end up with one the author framed themselves.
+ */
+function openCropper() {
+  if (!cropSource.value || coverBusy.value) return
+
+  coverError.value = ''
+  cropOpen.value = true
+}
+
+/*
+ * A crop is stored, not uploaded. Both the source and the frame are kept: reopening the
+ * cropper returns to this framing, and the next crop is taken from the original rather
+ * than from this output.
+ */
+function onCropApplied({ file, crop }) {
+  cropOpen.value = false
+
+  const current = pendingCover.value
+  const previewUrl = URL.createObjectURL(file)
+
+  if (current) {
+    // Only the output changes here, so the source and its URL have to survive: revoking
+    // the old preview is safe only when it is not the source itself.
+    if (current.previewIsLocal && current.previewUrl !== current.sourceUrl) {
+      URL.revokeObjectURL(current.previewUrl)
     }
-  } finally {
-    if (coverAbort === controller) {
-      coverAbort = null
-      coverUploading.value = false
-    }
+    pendingCover.value = { ...current, file, previewUrl, previewIsLocal: true, crop }
+    emit('dirty', true)
+    return
   }
+
+  // Cropping a cover that is already stored, or the generated one: that URL becomes the
+  // source and the crop becomes the first pending upload.
+  setPendingCover({
+    file,
+    sourceUrl: cropSource.value,
+    sourceIsLocal: false,
+    previewUrl,
+    previewIsLocal: true,
+    crop,
+  })
 }
 
-function cancelCoverUpload() {
-  coverAbort?.abort()
-  coverAbort = null
-  coverUploading.value = false
+/** Drops the pending cover and the stored one, back to the generated preview. */
+function removeCover() {
+  setPendingCover(null)
+  draft.value.quiz_image = ''
 }
 
-async function onQuestionImagePicked(question, event) {
+/*
+ * What one question shows now, and what its cropper should read: the pending pick first,
+ * then whatever is already stored on the question.
+ */
+function questionPreview(question) {
+  return pendingImages.get(question.id)?.previewUrl || question.question_image || ''
+}
+
+function questionCropSource(question) {
+  return pendingImages.get(question.id)?.sourceUrl || question.question_image || ''
+}
+
+function setPendingImage(question, next) {
+  releasePendingImage(pendingImages.get(question.id))
+  if (next) pendingImages.set(question.id, next)
+  else pendingImages.delete(question.id)
+  // Held outside `items`, so the watcher that tracks edits cannot see this one either.
+  emit('dirty', true)
+}
+
+/*
+ * A question picture behaves exactly like the cover now: picking validates and previews
+ * it and nothing more. Abandoning the editor uploads nothing, and replacing or
+ * re-cropping the picture any number of times still costs one upload.
+ */
+function onQuestionImagePicked(question, event) {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
@@ -288,41 +452,117 @@ async function onQuestionImagePicked(question, event) {
     return
   }
 
-  const controller = new AbortController()
-  questionAborts.get(question.id)?.abort()
-  questionAborts.set(question.id, controller)
-  question.uploading = true
   question.uploadError = ''
+  // One URL in both slots: an untouched pick is its own preview.
+  const url = URL.createObjectURL(file)
+  setPendingImage(question, {
+    file,
+    sourceUrl: url,
+    sourceIsLocal: true,
+    previewUrl: url,
+    previewIsLocal: true,
+    crop: null,
+  })
+}
 
-  try {
-    question.question_image = await uploadImage(file, 'questions', { signal: controller.signal })
-  } catch (error) {
-    if (!wasAborted(controller)) {
-      question.uploadError = toErrorMessage(error, 'Could not upload the question image.')
-      ui.toast(question.uploadError, 'error')
+function openQuestionCropper(question) {
+  if (!questionCropSource(question) || props.busy) return
+
+  question.uploadError = ''
+  cropQuestionId.value = question.id
+}
+
+/*
+ * As with the cover: the crop is stored rather than uploaded, the original is kept so the
+ * next crop is taken from it instead of from this output, and the frame is kept so the
+ * cropper reopens where the author left it.
+ */
+function onQuestionCropApplied(question, { file, crop }) {
+  cropQuestionId.value = null
+
+  const current = pendingImages.get(question.id)
+  const previewUrl = URL.createObjectURL(file)
+
+  if (current) {
+    // Only the output changes, so the source URL has to survive: revoking the old preview
+    // is safe only when it is not the source itself.
+    if (current.previewIsLocal && current.previewUrl !== current.sourceUrl) {
+      URL.revokeObjectURL(current.previewUrl)
     }
-  } finally {
-    if (questionAborts.get(question.id) === controller) {
-      questionAborts.delete(question.id)
-      question.uploading = false
-    }
+    pendingImages.set(question.id, { ...current, file, previewUrl, previewIsLocal: true, crop })
+    emit('dirty', true)
+    return
   }
+
+  // Cropping a picture that is already stored: that URL becomes the source.
+  setPendingImage(question, {
+    file,
+    sourceUrl: question.question_image,
+    sourceIsLocal: false,
+    previewUrl,
+    previewIsLocal: true,
+    crop,
+  })
 }
 
-function cancelQuestionUpload(question) {
-  questionAborts.get(question.id)?.abort()
-  questionAborts.delete(question.id)
-  question.uploading = false
+function removeQuestionImage(question) {
+  setPendingImage(question, null)
+  question.question_image = ''
+  question.uploadError = ''
 }
 
-// Leaving the editor must not keep uploads running against a gone component.
+/*
+ * The optional coaching text is folded away by default, but not when it would hide
+ * something: a hint that already exists, or a message about a value that is too long.
+ */
+function optionsOpen(question, errors) {
+  return Boolean(
+    question.question_hint || question.explanation || errors.question_hint || errors.explanation,
+  )
+}
+
+// Leaving the editor must not leak the object URLs its previews are holding.
 onBeforeUnmount(() => {
   clearTimeout(autosaveTimer)
   clearTimeout(coverPreviewTimer)
-  coverAbort?.abort()
-  questionAborts.forEach((controller) => controller.abort())
-  questionAborts.clear()
+  releasePendingImage(pendingCover.value)
+  pendingImages.forEach(releasePendingImage)
+  pendingImages.clear()
 })
+
+/*
+ * Save time is the only moment the editor writes to object storage: the cover the author
+ * picked is presigned and uploaded here, and the pending state is dropped once it holds
+ * a real URL.
+ */
+async function uploadPendingCover() {
+  const pending = pendingCover.value
+  if (!pending) return
+
+  draft.value.quiz_image = await uploadImage(pending.file, 'quizzes')
+  setPendingCover(null)
+}
+
+/*
+ * The same for every question picture waiting in the browser. They go up together rather
+ * than one after another: a quiz with a picture on ten questions would otherwise make the
+ * author sit through ten round trips in a row.
+ *
+ * Each question is cleared as its own upload lands, so a failure part way through keeps
+ * what already succeeded and the next save retries only what is missing.
+ */
+async function uploadPendingImages() {
+  const waiting = items.value.filter((question) => pendingImages.has(question.id))
+  if (!waiting.length) return
+
+  await Promise.all(
+    waiting.map(async (question) => {
+      const pending = pendingImages.get(question.id)
+      question.question_image = await uploadImage(pending.file, 'questions')
+      setPendingImage(question, null)
+    }),
+  )
+}
 
 /*
  * Every quiz ends up with a cover, whether the author picked one or not: the
@@ -348,6 +588,19 @@ async function submit() {
   }
 
   preparingCover.value = true
+
+  try {
+    // Independent uploads, and the author is waiting on all of them.
+    await Promise.all([uploadPendingCover(), uploadPendingImages()])
+  } catch (error) {
+    // The author chose these pictures, so saving without them would throw their choice
+    // away silently: the save stops and every pending file is kept for a retry.
+    preparingCover.value = false
+    formError.value = toErrorMessage(error, 'Could not upload the images. Nothing was saved.')
+    ui.toast(formError.value, 'error')
+    return
+  }
+
   try {
     await ensureCover()
   } catch (error) {
@@ -376,7 +629,15 @@ defineExpose({
 
 <template>
   <div>
+    <!--
+      The autosave line sits in the row it reports on, opposite the button that ends the
+      same piece of work. On a line of its own it pushed the whole form down every time
+      the timestamp appeared.
+    -->
     <header class="mb-lg flex flex-wrap items-center justify-end gap-sm">
+      <p v-if="savedLabel" class="mr-auto text-caption text-ink-faint">
+        {{ savedLabel }}
+      </p>
       <button type="button" class="btn btn-ghost" @click="emit('cancel')">
         Cancel
       </button>
@@ -390,25 +651,16 @@ defineExpose({
       </button>
     </header>
 
-    <div
-      v-if="formError || issues.length"
+    <!--
+      Only the failure of the save itself is announced here. The list of validation
+      problems that used to sit in this spot said nothing the marked fields do not
+      already say, so a refused save toasts the first one instead.
+    -->
+    <p
+      v-if="formError"
       class="mb-md rounded-md bg-red-50 px-md py-sm text-body-sm text-red-600"
     >
-      <p v-if="formError">
-        {{ formError }}
-      </p>
-      <ul v-if="issues.length" class="list-disc space-y-xxs pl-md">
-        <li v-for="(issue, issueIndex) in issues" :key="issueIndex">
-          {{ issue }}
-        </li>
-      </ul>
-      <p v-if="hiddenIssueCount" class="mt-xxs">
-        and {{ hiddenIssueCount }} more to fix.
-      </p>
-    </div>
-
-    <p v-else-if="savedLabel" class="mb-md text-caption text-ink-faint">
-      {{ savedLabel }}
+      {{ formError }}
     </p>
 
     <!-- Quiz metadata -->
@@ -418,6 +670,9 @@ defineExpose({
         <h2 class="text-heading-3 text-ink">
           Quiz details
         </h2>
+        <span class="ml-auto text-caption text-ink-faint">
+          <span class="text-ans-a">*</span> required
+        </span>
       </div>
 
       <div class="grid gap-md md:grid-cols-2">
@@ -430,13 +685,13 @@ defineExpose({
           <span class="mb-xxs block text-caption text-ink-secondary">Cover image</span>
 
           <!--
-            The image is the picker: a label around the hidden input, so a click
-            anywhere on the cover opens the file dialog and there is no button to
-            explain. Shown at 16:10 with the same height cap as the detail page, so
-            the framing here is the framing everywhere.
+            The cover is a preview, not a control: the two icon buttons in the corner
+            name what can be done with it, so nothing rests on guessing that the image
+            itself is clickable. Shown at 16:10 with the same height cap as the detail
+            page, so the framing here is the framing everywhere.
           -->
-          <label
-            class="group relative flex aspect-[16/10] max-h-[400px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-canvas-soft ring-1 ring-hairline"
+          <div
+            class="group relative flex aspect-[16/10] max-h-[400px] w-full items-center justify-center overflow-hidden rounded-lg bg-canvas-soft ring-1 ring-hairline"
           >
             <img
               v-if="coverPreview"
@@ -444,71 +699,144 @@ defineExpose({
               alt="Quiz cover"
               class="h-full w-full object-cover"
             >
+            <span v-else class="text-body-sm text-ink-faint">
+              No cover yet
+            </span>
 
             <!--
-              The prompt sits on the image: revealed on hover, and kept visible while
-              uploading or when there is nothing to look at yet.
+              A scrim on the bottom edge only, fading upwards into nothing. Its job is to
+              keep the two controls legible over a bright photograph, so it must not dim
+              the picture the author is judging.
             -->
-            <span
-              class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-body-sm font-semibold text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-              :class="coverUploading || !coverPreview ? 'opacity-100' : ''"
-            >
-              {{
-                coverUploading
-                  ? 'Uploading…'
-                  : draft.quiz_image
-                    ? 'Click to replace the cover'
-                    : 'Click to upload a cover'
-              }}
-            </span>
+            <div
+              class="pointer-events-none absolute inset-x-0 bottom-0 h-[96px] bg-gradient-to-t from-black/55 via-black/20 to-transparent opacity-0 transition-opacity duration-ui ease-ui group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"
+              :class="preparingCover ? 'opacity-100' : ''"
+            />
 
-            <span
-              v-if="coverPreview && !draft.quiz_image"
-              class="chip absolute left-[12px] top-[12px]"
+            <p
+              v-if="preparingCover"
+              class="absolute bottom-[18px] left-[16px] text-caption font-semibold text-white"
             >
-              Generated cover
-            </span>
+              Uploading cover…
+            </p>
+
+            <!--
+              Revealed with the scrim, but always visible below md: a touch screen has no
+              hover to reveal them with.
+            -->
+            <div
+              class="absolute bottom-[12px] right-[12px] flex items-center gap-xs opacity-0 transition-opacity duration-ui ease-ui group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"
+              :class="preparingCover ? 'opacity-100' : ''"
+            >
+              <button
+                type="button"
+                class="icon-btn-overlay"
+                title="Upload a new image"
+                aria-label="Upload a new image"
+                :disabled="coverBusy"
+                @click="openCoverPicker"
+              >
+                <svg
+                  class="h-[18px] w-[18px]"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 16V4M7 9l5-5 5 5" />
+                  <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="icon-btn-overlay"
+                title="Crop the current image to 1600×1000"
+                aria-label="Crop the current image"
+                :disabled="coverBusy || !cropSource"
+                @click="openCropper"
+              >
+                <svg
+                  class="h-[18px] w-[18px]"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M7 3v14h14" />
+                  <path d="M3 7h14v14" />
+                </svg>
+              </button>
+              <button
+                v-if="pendingCover || draft.quiz_image"
+                type="button"
+                class="icon-btn-overlay"
+                title="Remove this image"
+                aria-label="Remove this image"
+                :disabled="coverBusy"
+                @click="removeCover"
+              >
+                <svg
+                  class="h-[18px] w-[18px]"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4 7h16M10 11v6M14 11v6" />
+                  <path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+                </svg>
+              </button>
+            </div>
 
             <input
+              ref="coverInput"
               type="file"
               :accept="IMAGE_ACCEPT"
               class="hidden"
-              :disabled="coverUploading"
+              :disabled="coverBusy"
               @change="onCoverPicked"
             >
-          </label>
-
-          <!-- Outside the label on purpose: a click here must not reopen the dialog -->
-          <div class="mt-sm flex flex-wrap items-center gap-md">
-            <button
-              v-if="coverUploading"
-              type="button"
-              class="btn btn-ghost"
-              @click="cancelCoverUpload"
-            >
-              Cancel upload
-            </button>
-            <button
-              v-else-if="draft.quiz_image"
-              type="button"
-              class="btn btn-ghost"
-              @click="draft.quiz_image = ''"
-            >
-              Remove image
-            </button>
-            <span class="text-caption text-ink-faint">
-              JPG, PNG, GIF or WEBP up to 2MB, 1600×1000 for a cover that fits both the
-              cards and this page. Left empty, one is generated from the quiz name when
-              you save.
-            </span>
           </div>
+
+          <p class="mt-sm text-caption text-ink-faint">
+            JPG, PNG, GIF or WEBP up to 2MB, stored at 1600×1000 so one file serves both
+            the cards and this page. Left empty, one is generated from the quiz name.
+          </p>
+
+          <p v-if="pendingCover" class="mt-xxs text-caption text-ink-secondary">
+            This image is still only in your browser — it is uploaded when you save.
+          </p>
           <p v-if="coverError" class="mt-xxs text-caption text-ans-a">
             {{ coverError }}
           </p>
+
+          <!--
+            The original picture and the frame of the last crop: the cropper resumes the
+            previous framing rather than starting over, and never crops its own output.
+          -->
+          <ImageCropper
+            v-if="cropOpen"
+            title="Crop the cover image"
+            :src="cropSource"
+            :crop="pendingCover?.crop || null"
+            @apply="onCropApplied"
+            @cancel="cropOpen = false"
+          />
         </div>
 
         <label class="block md:col-span-2">
-          <span class="mb-xxs block text-caption text-ink-secondary">Quiz name</span>
+          <span class="mb-xxs block text-caption text-ink-secondary">
+            Quiz name <span class="text-ans-a" aria-hidden="true">*</span>
+          </span>
           <input
             v-model="draft.quiz_name"
             class="field"
@@ -542,14 +870,22 @@ defineExpose({
           </span>
         </label>
 
-        <label class="block">
-          <span class="mb-xxs block text-caption text-ink-secondary">Category</span>
-          <select v-model="draft.quiz_category" class="field">
-            <option v-for="category in CATEGORIES" :key="category" :value="category">
-              {{ category }}
-            </option>
-          </select>
-        </label>
+        <div>
+          <label class="block">
+            <span class="mb-xxs block text-caption text-ink-secondary">Category</span>
+            <BaseCombo
+              v-model="draft.quiz_category"
+              :options="categoryOptions"
+              :invalid="Boolean(quizErrors.quiz_category)"
+              :maxlength="LIMITS.categoryMax"
+              custom-placeholder="Name your own category"
+            />
+          </label>
+
+          <span v-if="quizErrors.quiz_category" class="mt-xxs block text-caption text-ans-a">
+            {{ quizErrors.quiz_category }}
+          </span>
+        </div>
 
         <label class="block">
           <span class="mb-xxs block text-caption text-ink-secondary">Language</span>
@@ -631,7 +967,9 @@ defineExpose({
 
         <div class="grid gap-md md:grid-cols-[2fr_1fr]">
           <label class="block">
-            <span class="mb-xxs block text-caption text-ink-secondary">Question</span>
+            <span class="mb-xxs block text-caption text-ink-secondary">
+              Question <span class="text-ans-a" aria-hidden="true">*</span>
+            </span>
             <input
               v-model="question.question_text"
               class="field"
@@ -657,98 +995,217 @@ defineExpose({
             </select>
           </label>
 
-          <label class="block">
-            <span class="mb-xxs block text-caption text-ink-secondary">Time limit</span>
-            <select v-model.number="question.time_limit" class="field">
-              <option v-for="seconds in TIME_LIMITS" :key="seconds" :value="seconds">
-                {{ seconds }} seconds
-              </option>
-            </select>
-          </label>
+          <div>
+            <label class="block">
+              <span class="mb-xxs block text-caption text-ink-secondary">
+                Time limit <span class="text-ans-a" aria-hidden="true">*</span>
+              </span>
+              <BaseCombo
+                v-model="question.time_limit"
+                :options="timeOptions"
+                :invalid="Boolean(questionErrors[index].time_limit)"
+                type="number"
+                :min="TIME_LIMIT_MIN"
+                :max="TIME_LIMIT_MAX"
+                :custom-placeholder="`Seconds, ${TIME_LIMIT_MIN} to ${TIME_LIMIT_MAX}`"
+                @blur="clampTime(question)"
+              />
+            </label>
+            <span
+              v-if="questionErrors[index].time_limit"
+              class="mt-xxs block text-caption text-ans-a"
+            >
+              {{ questionErrors[index].time_limit }}
+            </span>
+          </div>
 
           <div class="flex flex-wrap items-end gap-sm">
-            <label class="btn btn-utility cursor-pointer">
-              {{ question.uploading ? 'Uploading…' : question.question_image ? 'Replace image' : 'Add image' }}
+            <!--
+              Until there is a picture this is the only control. Once there is one, the
+              preview below carries the actions and this cell steps out of the way.
+            -->
+            <label
+              v-if="!questionPreview(question)"
+              class="btn btn-utility cursor-pointer"
+              :class="busy ? 'pointer-events-none opacity-50' : ''"
+            >
+              Add image
               <input
                 type="file"
                 :accept="IMAGE_ACCEPT"
                 class="hidden"
-                :disabled="question.uploading"
+                :disabled="busy"
                 @change="onQuestionImagePicked(question, $event)"
               >
             </label>
-            <button
-              v-if="question.uploading"
-              type="button"
-              class="btn btn-ghost"
-              @click="cancelQuestionUpload(question)"
-            >
-              Cancel
-            </button>
-            <button
-              v-else-if="question.question_image"
-              type="button"
-              class="btn btn-ghost"
-              @click="question.question_image = ''"
-            >
-              Remove
-            </button>
             <span v-if="question.uploadError" class="text-caption text-ans-a">
               {{ question.uploadError }}
             </span>
           </div>
         </div>
 
-        <img
-          v-if="question.question_image"
-          :src="question.question_image"
-          alt="Question illustration"
-          class="mt-md h-[160px] w-full rounded-md object-cover ring-1 ring-hairline"
+        <!--
+          Treated exactly like the cover: the picture is its own control, with a scrim on
+          the bottom edge and the actions in the corner, revealed on hover and always
+          visible on a touch screen. Shown at 16:9, the ratio it is stored at.
+        -->
+        <div
+          v-if="questionPreview(question)"
+          class="group relative mt-md aspect-[16/9] max-h-[280px] w-full overflow-hidden rounded-md bg-canvas-soft ring-1 ring-hairline"
         >
+          <img
+            :src="questionPreview(question)"
+            alt="Question illustration"
+            class="h-full w-full object-cover"
+          >
 
-        <!-- Optional coaching text: the hint is shown before answering, the
-             explanation with the answer key -->
-        <div class="mt-md grid gap-md md:grid-cols-2">
-          <label class="block">
-            <span class="mb-xxs block text-caption text-ink-secondary">
-              Hint <span class="text-ink-faint">(optional)</span>
-            </span>
-            <input
-              v-model="question.question_hint"
-              class="field"
-              :class="questionErrors[index].question_hint ? 'border-ans-a' : ''"
-              type="text"
-              :maxlength="LIMITS.hintMax"
-              placeholder="Nudge players in the right direction."
-            >
-            <span class="mt-xxs flex items-center justify-between gap-sm text-caption">
-              <span class="text-ans-a">{{ questionErrors[index].question_hint }}</span>
-              <span class="text-ink-faint">
-                {{ (question.question_hint || '').length }}/{{ LIMITS.hintMax }}
-              </span>
-            </span>
-          </label>
+          <div
+            class="pointer-events-none absolute inset-x-0 bottom-0 h-[80px] bg-gradient-to-t from-black/55 via-black/20 to-transparent opacity-0 transition-opacity duration-ui ease-ui group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"
+          />
 
-          <label class="block">
-            <span class="mb-xxs block text-caption text-ink-secondary">
-              Explanation <span class="text-ink-faint">(optional)</span>
-            </span>
-            <input
-              v-model="question.explanation"
-              class="field"
-              :class="questionErrors[index].explanation ? 'border-ans-a' : ''"
-              type="text"
-              :maxlength="LIMITS.explanationMax"
-              placeholder="Why this answer is the right one."
+          <div
+            class="absolute bottom-[12px] right-[12px] flex items-center gap-xs opacity-0 transition-opacity duration-ui ease-ui group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"
+          >
+            <!-- A label rather than a button, because the file input has to be its child. -->
+            <label
+              class="icon-btn-overlay cursor-pointer"
+              :class="busy ? 'pointer-events-none opacity-50' : ''"
+              title="Upload a new image"
+              aria-label="Upload a new image"
             >
-            <span class="mt-xxs flex items-center justify-between gap-sm text-caption">
-              <span class="text-ans-a">{{ questionErrors[index].explanation }}</span>
-              <span class="text-ink-faint">
-                {{ (question.explanation || '').length }}/{{ LIMITS.explanationMax }}
-              </span>
-            </span>
-          </label>
+              <svg
+                class="h-[18px] w-[18px]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 16V4M7 9l5-5 5 5" />
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              <input
+                type="file"
+                :accept="IMAGE_ACCEPT"
+                class="hidden"
+                :disabled="busy"
+                @change="onQuestionImagePicked(question, $event)"
+              >
+            </label>
+            <button
+              type="button"
+              class="icon-btn-overlay"
+              :title="`Crop the current image to ${QUESTION_WIDTH}×${QUESTION_HEIGHT}`"
+              aria-label="Crop the current image"
+              :disabled="busy"
+              @click="openQuestionCropper(question)"
+            >
+              <svg
+                class="h-[18px] w-[18px]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M7 3v14h14" />
+                <path d="M3 7h14v14" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="icon-btn-overlay"
+              title="Remove this image"
+              aria-label="Remove this image"
+              :disabled="busy"
+              @click="removeQuestionImage(question)"
+            >
+              <svg
+                class="h-[18px] w-[18px]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M10 11v6M14 11v6" />
+                <path d="M6 7l1 13h10l1-13M9 7V4h6v3" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        <p v-if="pendingImages.has(question.id)" class="mt-xxs text-caption text-ink-faint">
+          This image is still only in your browser — it is uploaded when you save.
+        </p>
+
+        <!-- One cropper at a time: cropQuestionId names the question it belongs to. -->
+        <ImageCropper
+          v-if="cropQuestionId === question.id"
+          title="Crop the question image"
+          :src="questionCropSource(question)"
+          :crop="pendingImages.get(question.id)?.crop || null"
+          :width="QUESTION_WIDTH"
+          :height="QUESTION_HEIGHT"
+          @apply="onQuestionCropApplied(question, $event)"
+          @cancel="cropQuestionId = null"
+        />
+
+        <!--
+          The hint is shown before answering and the explanation with the answer key, and
+          most questions use neither: folded away, they stop competing with the question
+          and its answers for the author's attention. It is forced open when it would
+          otherwise hide text that already exists or a problem that blocks the save.
+        -->
+        <details :open="optionsOpen(question, questionErrors[index])" class="mt-md">
+          <summary class="cursor-pointer text-caption text-ink-secondary">
+            Options
+          </summary>
+
+          <div class="mt-md grid gap-md md:grid-cols-2">
+            <label class="block">
+              <span class="mb-xxs block text-caption text-ink-secondary">Hint</span>
+              <input
+                v-model="question.question_hint"
+                class="field"
+                :class="questionErrors[index].question_hint ? 'border-ans-a' : ''"
+                type="text"
+                :maxlength="LIMITS.hintMax"
+                placeholder="Nudge players in the right direction."
+              >
+              <span class="mt-xxs flex items-center justify-between gap-sm text-caption">
+                <span class="text-ans-a">{{ questionErrors[index].question_hint }}</span>
+                <span class="text-ink-faint">
+                  {{ (question.question_hint || '').length }}/{{ LIMITS.hintMax }}
+                </span>
+              </span>
+            </label>
+
+            <label class="block">
+              <span class="mb-xxs block text-caption text-ink-secondary">Explanation</span>
+              <input
+                v-model="question.explanation"
+                class="field"
+                :class="questionErrors[index].explanation ? 'border-ans-a' : ''"
+                type="text"
+                :maxlength="LIMITS.explanationMax"
+                placeholder="Why this answer is the right one."
+              >
+              <span class="mt-xxs flex items-center justify-between gap-sm text-caption">
+                <span class="text-ans-a">{{ questionErrors[index].explanation }}</span>
+                <span class="text-ink-faint">
+                  {{ (question.explanation || '').length }}/{{ LIMITS.explanationMax }}
+                </span>
+              </span>
+            </label>
+          </div>
+        </details>
 
         <!-- Choice answers -->
         <div v-if="isChoice(question.question_type)" class="mt-md">
@@ -758,6 +1215,7 @@ defineExpose({
                 ? 'Answer options — tick the single correct one'
                 : 'Answer options — tick every correct one'
             }}
+            <span class="text-ans-a" aria-hidden="true">*</span>
           </p>
           <div class="grid gap-sm md:grid-cols-2">
             <div v-for="(option, optionIndex) in question.answer_options" :key="optionIndex">
@@ -828,7 +1286,9 @@ defineExpose({
 
         <!-- Free text answers -->
         <label v-else class="mt-md block">
-          <span class="mb-xxs block text-caption text-ink-secondary">Expected answer</span>
+          <span class="mb-xxs block text-caption text-ink-secondary">
+            Expected answer <span class="text-ans-a" aria-hidden="true">*</span>
+          </span>
           <textarea
             v-if="question.question_type === 'long_answer'"
             v-model="question.correctText"

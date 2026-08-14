@@ -57,7 +57,6 @@ export function makeQuestion(type = 'multiple_choice') {
     answer_options: ['', '', '', ''],
     correctIndexes: [],
     correctText: '',
-    uploading: false,
     uploadError: '',
   }
 }

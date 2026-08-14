@@ -205,7 +205,7 @@
   }
 
   .btn-primary {
-    @apply btn bg-spotlight text-white shadow-brand hover:bg-spotlight-press;
+    @apply btn bg-spotlight text-white hover:bg-spotlight-press;
   }
 
   .btn-secondary {
@@ -236,6 +236,34 @@
   .field:focus-within {
     border-color: var(--spotlight);
     box-shadow: 0 0 0 4px var(--spotlight-soft);
+  }
+
+  /*
+    Every engine draws its own arrow on a select, and Chrome sits its own hard against
+    the right border. The native mark is dropped for one chevron of ours, painted as a
+    background image with real room around it, so every dropdown in the product reads as
+    the same control. The wider right padding also stops a long option running under it.
+  */
+  select.field {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-[38px];
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23565968' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 14px center;
+    background-size: 14px;
+  }
+
+  /*
+    Both engines draw spinners inside a number box, which would crowd the chevron of a field
+    that also offers a list. The value is typed or picked, never nudged one step at a time.
+  */
+  input.field[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  input.field[type='number']::-webkit-inner-spin-button,
+  input.field[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
 
   .card-surface {
@@ -361,6 +389,30 @@
   }
 
   .icon-btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /*
+    Icon control that sits on top of a picture. A translucent white pill, because over a
+    photograph a bare glyph in any ink is unreadable at some point in the frame: the
+    shape carries the affordance and the image keeps its own contrast.
+  */
+  .icon-btn-overlay {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/60 bg-white/85 text-ink backdrop-blur-sm;
+    transition:
+      background-color var(--t-ui) var(--ease),
+      transform var(--t-fast) var(--ease);
+  }
+
+  .icon-btn-overlay:hover:not(:disabled) {
+    @apply bg-paper;
+  }
+
+  .icon-btn-overlay:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+
+  .icon-btn-overlay:disabled {
     @apply cursor-not-allowed opacity-50;
   }
 
