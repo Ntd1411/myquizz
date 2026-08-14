@@ -34,6 +34,26 @@ const routes = [
   // their account. A shared link can prefill the code with /join?code=ABC123.
   { path: '/join', name: 'join-game', component: () => import('@/pages/JoinGamePage.vue') },
 
+  // Setting up a room is its own screen, not a dialog: the mode decides which settings
+  // exist, so the form is too tall to sit on top of the quiz page.
+  {
+    path: '/host/new/:quizId',
+    name: 'host-setup',
+    component: () => import('@/pages/HostSetupPage.vue'),
+    props: true,
+    meta: { requiresAuth: true },
+  },
+
+  // Hosting is the opposite: the code in the URL is public, so the page still asks the
+  // server for a host token and only shows the lobby if the session belongs to this user.
+  {
+    path: '/host/:code',
+    name: 'host-lobby',
+    component: () => import('@/pages/HostLobbyPage.vue'),
+    props: true,
+    meta: { requiresAuth: true },
+  },
+
   // Public creator profile. Lists only published quizzes with questions, so it is
   // readable by guests and is not a replacement for the owner's own library.
   {

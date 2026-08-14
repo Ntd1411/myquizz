@@ -644,6 +644,25 @@ watch(
         >
           <template #actions>
             <RouterLink
+              :to="{ name: 'host-setup', params: { quizId: quiz.id } }"
+              class="card-action"
+              :title="`Host ${quiz.title}`"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M8 5.5v13l11-6.5Z" />
+              </svg>
+              <span class="sr-only">Host {{ quiz.title }}</span>
+            </RouterLink>
+
+            <RouterLink
               :to="{ name: 'edit-quiz', params: { id: quiz.id } }"
               class="card-action"
               :title="`Edit ${quiz.title}`"

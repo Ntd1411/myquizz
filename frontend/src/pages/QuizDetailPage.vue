@@ -6,7 +6,6 @@ import { getQuizById } from '@/api/quizzes.api'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import UserAvatar from '@/components/base/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { createDefaultCoverDataUrl } from '@/utils/defaultCover'
 import { revealOnEnter, revealOnScroll } from '@/composables/useMotion'
@@ -25,7 +24,6 @@ const props = defineProps({
 })
 
 const auth = useAuthStore()
-const ui = useUiStore()
 const router = useRouter()
 
 const pageEl = ref(null)
@@ -139,8 +137,9 @@ function goEdit() {
 }
 
 function hostGame() {
-  // Live hosting needs the socket screen, which is the next milestone.
-  ui.toast('Live hosting is coming in the next phase.')
+  // Room setup is a page of its own: the settings depend on the mode, so they do not fit
+  // in a dialog on top of this one.
+  router.push({ name: 'host-setup', params: { quizId: props.id } })
 }
 
 function goPlay() {
@@ -254,7 +253,7 @@ watch(
           </div>
 
           <p class="mt-xs text-caption text-ink-faint">
-            Live hosting arrives with the realtime game screen.
+            Hosting opens a room with its own code. Players join from /join, no account needed.
           </p>
         </div>
       </section>

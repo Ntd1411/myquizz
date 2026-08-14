@@ -17,7 +17,9 @@ export async function listGameModes() {
 
 export async function createGame({ quizId, sessionName, mode, config }) {
   const res = await http.post('/games', {
-    quiz_id: quizId,
+    // Route params and card ids travel as strings, but the schema wants a real number:
+    // `quiz_id: '12'` comes back as a validation error, not as a room.
+    quiz_id: Number(quizId),
     session_name: sessionName,
     mode: mode || undefined,
     config: config || undefined,
@@ -46,6 +48,17 @@ export async function joinGame(code, { playerName, guestId } = {}) {
   const res = await http.post(`/games/${encodeURIComponent(code)}/join`, body)
   const data = unwrap(res.data)
   return { player: data.player ?? null, socketToken: data.socketToken ?? null }
+}
+
+/**
+ * Host-only config patch outside the socket connection (page reload, socket down).
+ * The server never rejects a bad field: it drops it and reports it in `ignored`,
+ * so the caller has to show that list instead of assuming the patch was applied.
+ */
+export async function updateGameConfig(sessionId, config) {
+  const res = await http.patch(`/games/${sessionId}/config`, { config })
+  const data = unwrap(res.data)
+  return { config: data.config ?? null, changed: data.changed ?? [], ignored: data.ignored ?? [] }
 }
 
 export async function getHostToken(sessionId) {
