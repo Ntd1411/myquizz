@@ -18,10 +18,10 @@ export class UserRepository {
   // Update profile user
   async updateProfile(
     userId: number,
-    updates: Record<string, string>
+    updates: Record<string, string | null>
   ): Promise<boolean> {
     const fieldsToUpdate: string[] = []
-    const values: (string | number)[] = []
+    const values: (string | number | null)[] = []
     let paramIndex = 1
 
     for (const [key, value] of Object.entries(updates)) {
