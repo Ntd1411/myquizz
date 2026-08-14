@@ -6,22 +6,33 @@
  * reject bad input before spending a round trip.
  */
 
+import { CATEGORIES as CATEGORY_THEMES, LANGUAGES } from '@/constants/quizMeta'
+
 export const LIMITS = {
   nameMin: 3,
   nameMax: 100,
   descriptionMax: 500,
+  categoryMax: 50,
   questionTextMax: 200,
+  hintMax: 255,
+  explanationMax: 255,
   optionMax: 100,
   optionsMin: 2,
   optionsMax: 4,
+  // Mirrors TIME_LIMIT_MIN / TIME_LIMIT_MAX in backend/src/modules/quiz/quiz.schema.ts.
+  timeMin: 5,
+  timeMax: 600,
 }
 
-export const CATEGORIES = ['General', 'Science', 'Geography', 'Movies', 'Sports', 'Music']
+/*
+ * The taxonomy itself lives in constants/quizMeta.js, which owns the colour of
+ * every category. The editor only needs the names, so they are derived here
+ * instead of being typed out a second time: a category written by the editor has
+ * to be exactly what the browsing screens colour and filter on.
+ */
+export const CATEGORIES = CATEGORY_THEMES.map((category) => category.name)
 
-export const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'vi', label: 'Vietnamese' },
-]
+export { LANGUAGES }
 
 export const QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Multiple choice (one answer)' },
@@ -34,6 +45,19 @@ export const TIME_LIMITS = [10, 15, 20, 30, 45, 60, 90, 120]
 
 export const isChoice = (type) => type === 'multiple_choice' || type === 'multiple_select'
 
+/**
+ * The one place a time limit is held to its range: the editor clamps with it, every
+ * importer passes its value through it and validateQuizFields refuses anything outside
+ * it, so the three can no longer disagree about what a legal limit is. Something that is
+ * not a number at all falls back to the floor rather than to a hardcoded default.
+ */
+export function clampTimeLimit(value) {
+  const seconds = Math.trunc(Number(value))
+  if (!Number.isFinite(seconds)) return LIMITS.timeMin
+
+  return Math.min(Math.max(seconds, LIMITS.timeMin), LIMITS.timeMax)
+}
+
 let nextQuestionId = 1
 
 /** Fresh editor draft for one question. */
@@ -44,10 +68,12 @@ export function makeQuestion(type = 'multiple_choice') {
     question_text: '',
     time_limit: 30,
     question_image: '',
+    question_hint: '',
+    explanation: '',
     answer_options: ['', '', '', ''],
     correctIndexes: [],
     correctText: '',
-    uploading: false,
+    uploadError: '',
   }
 }
 
@@ -62,35 +88,80 @@ export function makeQuizMeta() {
   }
 }
 
+/**
+ * Keeps the slots the author actually has, never more than the maximum and never
+ * fewer than the minimum. Trailing empty slots are allowed: the payload builder
+ * drops them and the editor lets the author remove or add slots by hand.
+ */
 function padOptions(options) {
-  return [...options, '', '', '', ''].slice(0, LIMITS.optionsMax)
+  const slots = options.slice(0, LIMITS.optionsMax)
+  while (slots.length < LIMITS.optionsMin) slots.push('')
+  return slots
 }
 
-/** Normalises any API / imported question shape into an editor draft. */
+/**
+ * Reads an answer option whatever shape it arrives in: a plain string from an
+ * import file, or a { id, option_text } object as stored by the backend.
+ */
+function readOption(option) {
+  if (option === null || option === undefined) return ''
+  if (typeof option === 'string') return option
+  return String(option.option_text ?? option.text ?? '')
+}
+
+/**
+ * Normalises any question shape into an editor draft: the snake_case shape used
+ * by the import files and by the API, and the camelCase shape produced by
+ * api/quiz.mapper.js.
+ */
 export function toDraft(raw) {
-  const type = QUESTION_TYPES.some((item) => item.value === raw.question_type)
-    ? raw.question_type
-    : 'multiple_choice'
+  const rawType = raw.question_type ?? raw.type
+  const type = QUESTION_TYPES.some((item) => item.value === rawType) ? rawType : 'multiple_choice'
   const draft = makeQuestion(type)
-  draft.question_text = String(raw.question_text ?? raw.question ?? '').slice(0, LIMITS.questionTextMax)
-  draft.time_limit = Number(raw.time_limit) > 0 ? Number(raw.time_limit) : 30
-  draft.question_image = typeof raw.question_image === 'string' ? raw.question_image : ''
+
+  draft.question_text = String(raw.question_text ?? raw.question ?? raw.text ?? '').slice(
+    0,
+    LIMITS.questionTextMax,
+  )
+
+  const seconds = Number(raw.time_limit ?? raw.timeLimit)
+  draft.time_limit = seconds > 0 ? clampTimeLimit(seconds) : 30
+
+  const image = raw.question_image ?? raw.imageUrl
+  draft.question_image = typeof image === 'string' ? image : ''
+
+  // The API column is question_hint while api/quiz.mapper.js exposes it as hint,
+  // so both spellings are accepted.
+  const hint = raw.question_hint ?? raw.hint
+  draft.question_hint = typeof hint === 'string' ? hint.slice(0, LIMITS.hintMax) : ''
+  draft.explanation =
+    typeof raw.explanation === 'string' ? raw.explanation.slice(0, LIMITS.explanationMax) : ''
 
   if (isChoice(type)) {
-    const options = Array.isArray(raw.answer_options)
-      ? raw.answer_options.map((option) => String(option).slice(0, LIMITS.optionMax))
-      : []
-    draft.answer_options = padOptions(options)
-    draft.correctIndexes = Array.isArray(raw.correct_answer)
-      ? raw.correct_answer.map(Number).filter((index) => Number.isInteger(index) && index >= 0)
+    const source = Array.isArray(raw.answer_options)
+      ? raw.answer_options
+      : Array.isArray(raw.options)
+        ? raw.options
+        : []
+    draft.answer_options = padOptions(
+      source.map((option) => readOption(option).slice(0, LIMITS.optionMax)),
+    )
+
+    const indexes = Array.isArray(raw.correct_answer) ? raw.correct_answer : raw.correctIndexes
+    draft.correctIndexes = Array.isArray(indexes)
+      ? indexes.map(Number).filter((index) => Number.isInteger(index) && index >= 0)
       : []
   } else {
-    draft.correctText = typeof raw.correct_answer === 'string' ? raw.correct_answer : ''
+    const answer = typeof raw.correct_answer === 'string' ? raw.correct_answer : raw.correctText
+    draft.correctText = typeof answer === 'string' ? answer : ''
   }
   return draft
 }
 
-/** Turns an API quiz into { quiz, questions } editor state. */
+/**
+ * Turns a quiz into { quiz, questions } editor state. Accepts both the mapped
+ * detail from api/quizzes.api.js and a raw snake_case object from a JSON import.
+ */
 export function quizToDraft(source) {
   return {
     quiz: {
@@ -99,10 +170,10 @@ export function quizToDraft(source) {
         0,
         LIMITS.descriptionMax,
       ),
-      quiz_language: source?.quiz_language ?? 'en',
+      quiz_language: source?.quiz_language ?? source?.language ?? 'en',
       quiz_category: source?.quiz_category ?? source?.category ?? 'General',
-      quiz_image: source?.quiz_image ?? '',
-      is_public: source?.is_public ?? true,
+      quiz_image: source?.quiz_image ?? source?.imageUrl ?? '',
+      is_public: source?.is_public ?? source?.isPublic ?? true,
     },
     questions: (source?.questions ?? []).map(toDraft),
   }
@@ -142,7 +213,7 @@ export function parseText(text) {
     for (const line of lines) {
       if (line.startsWith('@')) {
         const seconds = Number(line.slice(1).trim())
-        if (seconds > 0) draft.time_limit = seconds
+        if (seconds > 0) draft.time_limit = clampTimeLimit(seconds)
         continue
       }
       if (line.startsWith('=')) {
@@ -226,7 +297,7 @@ function rowsToDrafts(rows) {
     const options = [o1, o2, o3, o4].filter(Boolean)
     const draft = makeQuestion()
     draft.question_text = String(questionText ?? '').slice(0, LIMITS.questionTextMax)
-    if (Number(time) > 0) draft.time_limit = Number(time)
+    if (Number(time) > 0) draft.time_limit = clampTimeLimit(time)
 
     const letters = String(correct ?? '')
       .split(/[;,|]/)
@@ -306,57 +377,149 @@ export function parseJson(text) {
  * Validation
  * ------------------------------------------------------------------ */
 
+/*
+ * Validation returns field-level errors, not a single sentence: the editor marks
+ * the exact input that is wrong and the pages still get a flat message list for
+ * their banner. Everything below is derived from one pass, so the banner and the
+ * inline markers can never disagree.
+ *
+ * Shape: { quiz: { <field>: message }, questions: [{ <field>: message,
+ * options: [message per slot] }] }
+ */
+
+function validateQuestion(question) {
+  const errors = { options: [] }
+
+  const text = (question.question_text ?? '').trim()
+  if (!text) errors.question_text = 'The question text is required.'
+  else if (text.length > LIMITS.questionTextMax) {
+    errors.question_text = `At most ${LIMITS.questionTextMax} characters.`
+  }
+
+  const seconds = Number(question.time_limit)
+  if (!Number.isInteger(seconds)) {
+    errors.time_limit = 'Pick a time limit in whole seconds.'
+  } else if (seconds < LIMITS.timeMin || seconds > LIMITS.timeMax) {
+    errors.time_limit = `Between ${LIMITS.timeMin} and ${LIMITS.timeMax} seconds.`
+  }
+
+  if ((question.question_hint ?? '').length > LIMITS.hintMax) {
+    errors.question_hint = `At most ${LIMITS.hintMax} characters.`
+  }
+
+  if ((question.explanation ?? '').length > LIMITS.explanationMax) {
+    errors.explanation = `At most ${LIMITS.explanationMax} characters.`
+  }
+
+  if (!isChoice(question.question_type)) {
+    if (!(question.correctText ?? '').trim()) {
+      errors.correct = 'The expected answer is required.'
+    }
+    return errors
+  }
+
+  const slots = (question.answer_options ?? []).map((option) => (option ?? '').trim())
+  errors.options = slots.map((option) =>
+    option.length > LIMITS.optionMax ? `At most ${LIMITS.optionMax} characters.` : '',
+  )
+
+  const filled = slots.filter(Boolean)
+  if (filled.length < LIMITS.optionsMin) {
+    errors.answer_options = `Fill in at least ${LIMITS.optionsMin} answer options.`
+  } else if (slots.length > LIMITS.optionsMax) {
+    errors.answer_options = `At most ${LIMITS.optionsMax} answer options.`
+  } else {
+    // The payload drops empty slots, so a hole between two answers would shift
+    // every correct index that comes after it.
+    const firstEmpty = slots.findIndex((option) => !option)
+    const seen = new Set()
+    const duplicated = filled.some((option) => {
+      const key = option.toLowerCase()
+      if (seen.has(key)) return true
+      seen.add(key)
+      return false
+    })
+
+    if (firstEmpty !== -1 && slots.slice(firstEmpty).some(Boolean)) {
+      errors.answer_options = 'Remove the empty option sitting between two answers.'
+    } else if (duplicated) {
+      errors.answer_options = 'Two answer options are identical.'
+    }
+  }
+
+  const correct = question.correctIndexes ?? []
+  if (!correct.length) {
+    errors.correct = 'Mark the correct answer.'
+  } else if (correct.some((position) => !slots[position])) {
+    errors.correct = 'A correct answer points at an empty option.'
+  } else if (question.question_type === 'multiple_select' && correct.length < 2) {
+    errors.correct = 'Multiple select needs at least two correct answers.'
+  } else if (question.question_type === 'multiple_choice' && correct.length > 1) {
+    errors.correct = 'Multiple choice allows a single correct answer.'
+  }
+
+  return errors
+}
+
+/** Field-level errors for the whole editor state. */
+export function validateQuizFields(quiz, questions) {
+  const quizErrors = {}
+
+  const name = (quiz.quiz_name ?? '').trim()
+  if (!name) quizErrors.quiz_name = 'The quiz name is required.'
+  else if (name.length < LIMITS.nameMin) {
+    quizErrors.quiz_name = `At least ${LIMITS.nameMin} characters.`
+  } else if (name.length > LIMITS.nameMax) {
+    quizErrors.quiz_name = `At most ${LIMITS.nameMax} characters.`
+  }
+
+  if ((quiz.quiz_description ?? '').length > LIMITS.descriptionMax) {
+    quizErrors.quiz_description = `At most ${LIMITS.descriptionMax} characters.`
+  }
+
+  if ((quiz.quiz_category ?? '').length > LIMITS.categoryMax) {
+    quizErrors.quiz_category = `At most ${LIMITS.categoryMax} characters.`
+  }
+
+  if (!quiz.quiz_language) quizErrors.quiz_language = 'Pick a language.'
+  if (!questions.length) quizErrors.questions = 'A quiz needs at least one question.'
+
+  return { quiz: quizErrors, questions: questions.map(validateQuestion) }
+}
+
+function questionMessages(errors) {
+  const messages = []
+  if (errors.question_text) messages.push(errors.question_text)
+  if (errors.time_limit) messages.push(errors.time_limit)
+  if (errors.question_hint) messages.push(`hint: ${errors.question_hint}`)
+  if (errors.explanation) messages.push(`explanation: ${errors.explanation}`)
+  if (errors.answer_options) messages.push(errors.answer_options)
+  errors.options.forEach((message, index) => {
+    if (message) messages.push(`option ${index + 1}: ${message}`)
+  })
+  if (errors.correct) messages.push(errors.correct)
+  return messages
+}
+
+/** Flattens field errors into displayable sentences, in editor order. */
+export function errorMessages(result) {
+  const messages = Object.values(result.quiz).filter(Boolean)
+  result.questions.forEach((errors, index) => {
+    questionMessages(errors).forEach((message) => {
+      messages.push(`Question ${index + 1}: ${message}`)
+    })
+  })
+  return messages
+}
+
 /** Per-question problems, used to block a bad import before the editor opens. */
 export function collectQuestionIssues(questions) {
-  const issues = []
-
-  questions.forEach((question, index) => {
-    const label = `Question ${index + 1}`
-    const text = question.question_text.trim()
-    if (!text) issues.push(`${label}: the question text is missing.`)
-    else if (text.length > LIMITS.questionTextMax) {
-      issues.push(`${label}: the question text is longer than ${LIMITS.questionTextMax} characters.`)
-    }
-
-    if (isChoice(question.question_type)) {
-      const filled = question.answer_options.map((option) => option.trim())
-      const options = filled.filter(Boolean)
-      if (options.length < LIMITS.optionsMin) {
-        issues.push(`${label}: needs at least ${LIMITS.optionsMin} answer options.`)
-      }
-      if (options.some((option) => option.length > LIMITS.optionMax)) {
-        issues.push(`${label}: an option is longer than ${LIMITS.optionMax} characters.`)
-      }
-      // Correct indexes point at the filtered list, so gaps must be rejected first.
-      const firstEmpty = filled.findIndex((option) => !option)
-      if (firstEmpty !== -1 && filled.slice(firstEmpty).some(Boolean)) {
-        issues.push(`${label}: the answer options have a gap between them.`)
-      }
-      if (!question.correctIndexes.length) issues.push(`${label}: no correct answer is marked.`)
-      else if (question.correctIndexes.some((position) => !filled[position])) {
-        issues.push(`${label}: a correct answer points at an empty option.`)
-      } else if (question.question_type === 'multiple_select' && question.correctIndexes.length < 2) {
-        issues.push(`${label}: multiple select needs at least two correct answers.`)
-      }
-    } else if (!question.correctText.trim()) {
-      issues.push(`${label}: the expected answer is missing.`)
-    }
-  })
-
-  return issues
+  return errorMessages({ quiz: {}, questions: questions.map(validateQuestion) })
 }
 
 /** Full check before create/update. Returns the first problem, or ''. */
 export function validateQuiz(quiz, questions) {
-  const name = quiz.quiz_name.trim()
-  if (name.length < LIMITS.nameMin) return `Quiz name must be at least ${LIMITS.nameMin} characters.`
-  if (name.length > LIMITS.nameMax) return `Quiz name must be at most ${LIMITS.nameMax} characters.`
-  if (quiz.quiz_description.length > LIMITS.descriptionMax) {
-    return `Description must be at most ${LIMITS.descriptionMax} characters.`
-  }
-  if (!quiz.quiz_language) return 'Please pick a language.'
-  if (!questions.length) return 'A quiz needs at least one question.'
-  return collectQuestionIssues(questions)[0] ?? ''
+  return errorMessages(validateQuizFields(quiz, questions))[0] ?? ''
 }
 
 /** Builds the exact body accepted by POST /quizzes and PATCH /quizzes/id/:id. */
@@ -369,11 +532,17 @@ export function buildPayload(quiz, questions) {
     ...(quiz.quiz_image ? { quiz_image: quiz.quiz_image } : {}),
     is_public: quiz.is_public,
     questions: questions.map((question) => {
+      const hint = (question.question_hint ?? '').trim()
+      const explanation = (question.explanation ?? '').trim()
       const base = {
         question_type: question.question_type,
         question_text: question.question_text.trim(),
         time_limit: Number(question.time_limit),
         ...(question.question_image ? { question_image: question.question_image } : {}),
+        // Optional columns: an untouched field is left out of the payload so the
+        // row keeps NULL instead of storing an empty string.
+        ...(hint ? { question_hint: hint } : {}),
+        ...(explanation ? { explanation } : {}),
       }
       if (!isChoice(question.question_type)) {
         return { ...base, correct_answer: question.correctText.trim() }
@@ -429,6 +598,8 @@ export const JSON_TEMPLATE = JSON.stringify(
         time_limit: 20,
         answer_options: ['Earth', 'Mars', 'Venus', 'Jupiter'],
         correct_answer: [1],
+        question_hint: 'It is named after the Roman god of war.',
+        explanation: 'Iron oxide dust is what gives the surface its red colour.',
       },
       {
         question_type: 'multiple_select',

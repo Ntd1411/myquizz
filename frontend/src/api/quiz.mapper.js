@@ -70,3 +70,132 @@ export function toHomeSection(section) {
     items: toQuizCards(section.items),
   }
 }
+
+/**
+ * GET /quizzes/id/:quizId returns the quiz row itself, not a card: snake_case
+ * columns plus a nested `questions` array. It is a different shape from the
+ * listing rows above, so it gets its own mapper instead of reusing toQuizCard.
+ */
+
+/**
+ * Reads one answer option whatever shape the backend stored.
+ *
+ * The create path has always written { id, option_text } objects while the
+ * update path used to store the raw strings, so rows written before that was
+ * unified can still hold either form. Both are accepted here so an old quiz
+ * never renders as [object Object].
+ */
+export function readOptionText(option) {
+  if (option === null || option === undefined) return ''
+  if (typeof option === 'string') return option
+  return option.option_text ?? option.text ?? ''
+}
+
+/**
+ * answer_options and correct_answer are written with JSON.stringify. A jsonb
+ * column hands the value back already parsed while a text column hands back the
+ * JSON source, so the string form is decoded once here instead of at every call
+ * site.
+ */
+function parseStoredJson(value) {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  /*
+   * Only what the writer could have produced is decoded: an array of option indexes, a
+   * quoted string, or a bare number, which is what a single correct index looks like once
+   * JSON.stringify has been over it. Anything else is a free-text answer stored as itself
+   * and must be returned as is.
+   */
+  const looksStored =
+    trimmed.startsWith('[') || trimmed.startsWith('"') || /^-?\d+(?:\.\d+)?$/.test(trimmed)
+  if (!looksStored) return value
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    // Not JSON after all, just an answer that happens to start with a bracket.
+    return value
+  }
+}
+
+function toOption(option, index) {
+  const id =
+    option !== null && typeof option === 'object' && option.id !== undefined
+      ? option.id
+      : index
+
+  // `index` is what correct_answer points at: the stored option ids are the
+  // positions the backend assigned at insert time.
+  return { id, index, text: readOptionText(option) }
+}
+
+function toOptions(value) {
+  const parsed = parseStoredJson(value)
+  return Array.isArray(parsed) ? parsed.map(toOption) : []
+}
+
+/**
+ * correct_answer is either an array of option indexes (choice questions) or a
+ * free-text string (short / long answer). Both are exposed as separate fields so
+ * a component never has to type-check the value.
+ */
+function toCorrectAnswer(value) {
+  const parsed = parseStoredJson(value)
+
+  if (Array.isArray(parsed)) {
+    return { indexes: parsed.map(Number).filter(Number.isInteger), text: '' }
+  }
+
+  if (typeof parsed === 'number') {
+    return { indexes: [parsed], text: '' }
+  }
+
+  return { indexes: [], text: typeof parsed === 'string' ? parsed : '' }
+}
+
+function toQuestion(row, index) {
+  const correct = toCorrectAnswer(row.correct_answer)
+
+  return {
+    id: row.id ?? index,
+    index,
+    type: row.question_type ?? 'multiple_choice',
+    text: row.question_text ?? '',
+    imageUrl: row.question_image ?? null,
+    // Optional authoring fields. Empty strings rather than null so a template can
+    // test them the same way as any other text field.
+    hint: row.question_hint ?? '',
+    explanation: row.explanation ?? '',
+    timeLimit: Number(row.time_limit) || 0,
+    options: toOptions(row.answer_options),
+    correctIndexes: correct.indexes,
+    correctText: correct.text,
+  }
+}
+
+/** Maps the quiz detail row, including its questions, to the camelCase UI shape. */
+export function toQuizDetail(row) {
+  if (!row) return null
+
+  const questions = Array.isArray(row.questions) ? row.questions.map(toQuestion) : []
+
+  return {
+    id: row.id,
+    title: row.quiz_name ?? '',
+    description: row.quiz_description ?? '',
+    category: row.quiz_category ?? '',
+    language: row.quiz_language ?? '',
+    imageUrl: row.quiz_image ?? null,
+    isPublic: row.is_public === undefined ? null : row.is_public,
+    ownerId: row.quiz_owner ?? null,
+    owner: toOwner(row.owner),
+    // question_count is a counter on the quizzes table; fall back to the list
+    // itself so the page still shows a number if the counter is missing.
+    questionCount: Number(row.question_count) || questions.length,
+    playCount: Number(row.play_count) || 0,
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    questions,
+  }
+}

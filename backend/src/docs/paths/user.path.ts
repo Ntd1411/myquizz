@@ -72,12 +72,12 @@ export const userPaths: PathMap = {
     },
     patch: {
       summary: 'Update the current user',
-      description: `Partially updates the signed-in profile. Only truthy fields are written, so an empty string clears nothing and is treated as absent, and a body that carries no writable field answers 400. The email cannot be changed and is not accepted: Google sign-in falls back to matching an account by address, so an edited email would strand the profile and create a duplicate on the next sign-in. The body is strict, so sending an email key answers 400 instead of being silently ignored. The uniqueness check on phone looks at every account including your own, so resending your current phone answers 400 as well. The row returned is read back from the database after the write. ${AUTH_NOTE}`,
+      description: `Partially updates the signed-in profile. Only truthy fields are written, so an empty string clears nothing and is treated as absent, with one exception: an empty phone clears the stored number. A body that carries no writable field answers 400. The email cannot be changed and is not accepted: Google sign-in falls back to matching an account by address, so an edited email would strand the profile and create a duplicate on the next sign-in. The body is strict, so sending an email key answers 400 instead of being silently ignored. The uniqueness check on phone looks at every account including your own, so resending your current phone answers 400 as well. The row returned is read back from the database after the write. ${AUTH_NOTE}`,
       tags: [userTag.name],
       requestBody: jsonBody(
         object({
           fullname: { type: 'string', minLength: 2, maxLength: 100 },
-          phone: { type: 'string', description: '7-15 digits' },
+          phone: { type: 'string', description: '7-15 digits, or empty to clear the number' },
           description: { type: 'string', maxLength: 200 }
         }),
         {

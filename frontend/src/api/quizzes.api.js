@@ -1,6 +1,6 @@
 import { http } from './http'
 import { unwrap, readPagination, readCached } from './envelope'
-import { toQuizCards, toHomeSection } from './quiz.mapper'
+import { toQuizCards, toHomeSection, toQuizDetail } from './quiz.mapper'
 
 /**
  * Quiz REST layer.
@@ -171,21 +171,32 @@ export async function getFeed({ topic, cursor, limit } = {}) {
   }
 }
 
+/**
+ * The detail endpoint returns the quiz row with its questions, which is a
+ * different shape from the listing cards, so it goes through toQuizDetail.
+ * Create and update answer with that very same shape.
+ */
 export async function getQuizById(quizId) {
   const res = await http.get(`/quizzes/id/${quizId}`)
-  return unwrap(res.data).quiz
+  return toQuizDetail(unwrap(res.data).quiz)
 }
 
 export async function createQuiz(payload) {
   const res = await http.post('/quizzes', payload)
-  return unwrap(res.data).quiz
+  return toQuizDetail(unwrap(res.data).quiz)
 }
 
+/**
+ * PATCH is a partial update for the metadata, but `questions` is not merged:
+ * sending it replaces the entire question list, so the caller must always send
+ * the complete list it wants to keep.
+ */
 export async function updateQuiz(quizId, patch) {
   const res = await http.patch(`/quizzes/id/${quizId}`, patch)
-  return unwrap(res.data).quiz
+  return toQuizDetail(unwrap(res.data).quiz)
 }
 
+// Soft delete answers with the raw deleted row, which carries no questions.
 export async function deleteQuiz(quizId) {
   const res = await http.delete(`/quizzes/id/${quizId}`)
   return unwrap(res.data).quiz

@@ -1,4 +1,6 @@
-import type { QuizOwner, QuizSummary } from './listing.type.js'
+import type { QuizOwner } from './home.type.js'
+import type { QuizSummary } from './listing.type.js'
+import type { Question, Quiz } from './quiz.type.js'
 
 /**
  * The database row shape toQuizSummary consumes.
@@ -72,4 +74,68 @@ export function toQuizSummary(row: QuizSummaryRow): QuizSummary {
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value
+}
+
+/**
+ * The database row shape toQuizDetail consumes: the quiz columns of
+ * GET /quizzes/id/:quizId plus the flattened author columns from the users join.
+ *
+ * question_count and play_count are counters kept on the quizzes table; pg can
+ * hand them back as strings, so they are coerced below. hot_score, scored_at and
+ * deleted_at stay internal here for the same reasons as QuizSummaryRow.
+ */
+export interface QuizDetailRow {
+  id: number;
+  quiz_owner: number;
+  owner_id: number | null;
+  owner_fullname: string | null;
+  owner_avatar: string | null;
+  quiz_name: string;
+  quiz_description: string | null;
+  quiz_image: string | null;
+  quiz_category: string | null;
+  quiz_language: string;
+  is_public: boolean;
+  question_count: number | string;
+  play_count: number | string;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+/** Same fold as toQuizOwner, over the detail row. */
+function toDetailOwner(row: QuizDetailRow): QuizOwner | null {
+  if (row.owner_id === null || row.owner_fullname === null) {
+    return null
+  }
+
+  return {
+    id: row.owner_id,
+    fullname: row.owner_fullname,
+    avatar: row.owner_avatar
+  }
+}
+
+/**
+ * The single place a quiz detail row becomes a client-facing quiz. Mirrors
+ * toQuizSummary so the detail endpoint exposes the same author shape and the
+ * same counters as every listing endpoint, instead of a raw table row.
+ */
+export function toQuizDetail(row: QuizDetailRow, questions: Question[]): Quiz {
+  return {
+    id: row.id,
+    quiz_owner: row.quiz_owner,
+    owner: toDetailOwner(row),
+    quiz_name: row.quiz_name,
+    quiz_description: row.quiz_description ?? undefined,
+    quiz_language: row.quiz_language,
+    quiz_image: row.quiz_image ?? undefined,
+    quiz_category: row.quiz_category ?? undefined,
+    is_public: row.is_public,
+    question_count: Number(row.question_count),
+    play_count: Number(row.play_count),
+    deleted_at: null,
+    created_at: toIso(row.created_at),
+    updated_at: toIso(row.updated_at),
+    questions
+  }
 }

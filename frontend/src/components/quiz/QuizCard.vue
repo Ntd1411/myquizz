@@ -37,8 +37,8 @@ const initials = computed(() =>
     .toUpperCase(),
 )
 
-// Placeholder cover: the category tint fading into paper. Quiet enough to sit behind a
-// tag without fighting it, distinct enough to tell two cards apart while scrolling.
+// Placeholder cover: the category tint fading into paper. Distinct enough to tell two
+// cards apart while scrolling, quiet enough that the initials stay legible on top.
 const coverStyle = computed(() => ({
   background: `linear-gradient(150deg, ${theme.value.tint}, #ffffff)`,
 }))
@@ -128,15 +128,6 @@ const badges = computed(() => {
           {{ initials }}
         </span>
 
-        <!-- Category lives here, tinted, so the meta row underneath stays numbers only. -->
-        <span
-          v-if="quiz.category"
-          class="tag pointer-events-none absolute left-[10px] top-[10px] max-w-[70%] truncate"
-          :style="tagStyle"
-        >
-          {{ quiz.category }}
-        </span>
-
         <span
           v-if="badges.length"
           class="pointer-events-none absolute bottom-[10px] left-[10px] flex flex-wrap gap-xxs"
@@ -159,6 +150,20 @@ const badges = computed(() => {
         <h3 class="line-clamp-2 min-h-[2.6em] text-title text-ink" :title="quiz.title">
           {{ quiz.title }}
         </h3>
+
+        <!--
+          The category reads under the name, in the order a card is actually scanned:
+          what it is called, what kind of quiz it is, then the description. Over the
+          cover it fought the artwork and covered whatever the author framed top-left.
+          `self-start` keeps it hugging its text inside this column.
+        -->
+        <span
+          v-if="quiz.category"
+          class="tag pointer-events-none max-w-full self-start truncate"
+          :style="tagStyle"
+        >
+          {{ quiz.category }}
+        </span>
 
         <!-- Description: smaller and fainter than the title, clipped to two lines. -->
         <p v-if="description" class="line-clamp-2 text-caption text-ink-3" :title="description">

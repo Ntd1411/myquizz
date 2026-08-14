@@ -1,11 +1,13 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import UserAvatar from '@/components/base/UserAvatar.vue'
+import ImageCropper from '@/components/quiz/ImageCropper.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
-import { uploadImage } from '@/api/storage.api'
+import { IMAGE_ACCEPT, checkImageFile, uploadImage } from '@/api/storage.api'
+import { AVATAR_SIZE } from '@/utils/imageCrop'
 import {
   updateMe,
   changePassword,
@@ -38,9 +40,9 @@ import { revealOnEnter } from '@/composables/useMotion'
  * The backend refuses the field outright; here it is simply not editable.
  *
  * Client-side rules mirror updateProfileSchema exactly so a valid form never gets a
- * 400 back: fullname 2-100, phone 7-15 digits with an optional "+", description at most
- * 200 characters. They run while typing, not on submit, so the error sits under the
- * field that caused it.
+ * 400 back: fullname 2-100, phone 7-15 digits with an optional "+" or left blank to
+ * clear the number, description at most 200 characters. They run while typing, not on
+ * submit, so the error sits under the field that caused it.
  */
 const LIMITS = { nameMin: 2, nameMax: 100, descriptionMax: 200, passwordMin: 8 }
 const PHONE_PATTERN = /^\+?[0-9]{7,15}$/
@@ -74,6 +76,11 @@ const savingProfile = ref(false)
 
 const avatarUploading = ref(false)
 const avatarInput = ref(null)
+
+// The picked file never goes straight to the bucket: it waits here, as an object URL,
+// while the author frames it.
+const avatarCropOpen = ref(false)
+const avatarSource = ref('')
 
 // 'none' | 'change' | 'reset' - only one password flow is visible at a time.
 const passwordMode = ref('none')
@@ -263,10 +270,45 @@ async function saveProfile() {
   }
 }
 
-async function onAvatarPicked(event) {
+function releaseAvatarSource() {
+  if (avatarSource.value) URL.revokeObjectURL(avatarSource.value)
+  avatarSource.value = ''
+}
+
+/*
+ * Picking an avatar opens the cropper instead of uploading: this frame is a small
+ * circle everywhere in the app, so a photograph dropped in whole is the one thing
+ * certain to look wrong. Cropping in the browser also means the bucket only ever
+ * receives the square that is actually displayed.
+ *
+ * Unlike the quiz cover, the upload is not deferred any further than that: this card
+ * has no Save button, the avatar is its own action.
+ */
+function onAvatarPicked(event) {
   const file = event.target.files?.[0]
+  // Cleared straight away so picking the same file twice still fires a change event.
+  event.target.value = ''
   if (!file) return
 
+  const problem = checkImageFile(file)
+  if (problem) {
+    ui.toast(problem, 'error')
+    return
+  }
+
+  releaseAvatarSource()
+  avatarSource.value = URL.createObjectURL(file)
+  avatarCropOpen.value = true
+}
+
+function closeAvatarCropper() {
+  avatarCropOpen.value = false
+  releaseAvatarSource()
+}
+
+/** The cropped square is what reaches storage, so it is also what gets stored. */
+async function onAvatarCropped({ file }) {
+  avatarCropOpen.value = false
   avatarUploading.value = true
   try {
     // Two steps on purpose: presigned upload to storage, then the URL to the user API.
@@ -278,9 +320,11 @@ async function onAvatarPicked(event) {
     ui.toast(toErrorMessage(error, 'Could not upload the image.'), 'error')
   } finally {
     avatarUploading.value = false
-    if (avatarInput.value) avatarInput.value.value = ''
+    releaseAvatarSource()
   }
 }
+
+onBeforeUnmount(releaseAvatarSource)
 
 function openPasswordMode(mode) {
   passwordMode.value = passwordMode.value === mode ? 'none' : mode
@@ -396,12 +440,23 @@ async function confirmDeactivate() {
             ref="avatarInput"
             class="hidden"
             type="file"
-            accept="image/*"
+            :accept="IMAGE_ACCEPT"
             :disabled="avatarUploading"
             @change="onAvatarPicked"
           >
           <span class="sr-only">Change your avatar</span>
         </label>
+
+        <ImageCropper
+          v-if="avatarCropOpen"
+          :src="avatarSource"
+          :width="AVATAR_SIZE"
+          :height="AVATAR_SIZE"
+          round
+          title="Crop your avatar"
+          @apply="onAvatarCropped"
+          @cancel="closeAvatarCropper"
+        />
       </div>
 
       <div class="profile-main">

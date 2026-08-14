@@ -55,7 +55,7 @@ export function readCached(envelope) {
  * Turns any thrown error (axios or ApiError) into a human readable message.
  */
 export function toErrorMessage(error, fallback) {
-  const defaultMessage = fallback || 'Da co loi xay ra, vui long thu lai.'
+  const defaultMessage = fallback || 'Unexpected error occurred.'
   if (error instanceof ApiError) return error.message
   const backendMessage =
     error && error.response && error.response.data && error.response.data.error
@@ -63,8 +63,8 @@ export function toErrorMessage(error, fallback) {
       : null
   if (backendMessage) return backendMessage
   if (error && error.response && error.response.status === 429) {
-    return 'Ban thao tac qua nhanh, vui long thu lai sau it phut.'
+    return 'You are making too many requests, please try again in a few minutes.'
   }
-  if (error && error.code === 'ERR_NETWORK') return 'Khong ket noi duoc toi may chu.'
+  if (error && error.code === 'ERR_NETWORK') return 'Could not connect to the server.'
   return defaultMessage
 }

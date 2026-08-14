@@ -103,17 +103,21 @@ export async function updateProfileService(
   phone?: string,
   description?: string
 ): Promise<User> {
-  const updates: Record<string, string> = {}
+  const updates: Record<string, string | null> = {}
 
-  if (fullname) updates.fullname = fullname
-  if (phone) {
-    const user = await userRepository.findByPhone(phone)
-    if (user) {
-      throw new AppError(400, 'Phone number is already in use')
+  if (fullname !== undefined) updates.fullname = fullname
+
+  if (phone !== undefined) {
+    if (phone) {
+      const user = await userRepository.findByPhone(phone)
+      if (user) {
+        throw new AppError(400, 'Phone number is already in use')
+      }
     }
-    updates.phone = phone
+    updates.phone = phone || null
   }
-  if (description) updates.description = description
+
+  if (description !== undefined) updates.description = description || null
 
   if (Object.keys(updates).length === 0) {
     throw new AppError(400, 'No fields to update')

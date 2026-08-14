@@ -12,7 +12,9 @@ export const changePasswordSchema = z.object({
 
 export const updateProfileSchema = z.strictObject({
   fullname: z.string().min(2, 'Full name must be at least 2 characters').max(100, 'Full name must be at most 100 characters').optional(),
-  phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Phone must be 7-15 digits').optional(),
+  // An empty string is how a profile takes its number back off: the column is nullable
+  // and the field optional at sign-up, so clearing it has to be expressible here too.
+  phone: z.union([z.string().regex(/^\+?[0-9]{7,15}$/, 'Phone must be 7-15 digits'), z.literal('')]).optional(),
   description: z.string().max(200, 'Description must be at most 200 characters').optional()
 })
 

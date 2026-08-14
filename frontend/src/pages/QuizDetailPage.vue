@@ -4,18 +4,21 @@ import { useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { getQuizById } from '@/api/quizzes.api'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
+import UserAvatar from '@/components/base/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
+import { createDefaultCoverDataUrl } from '@/utils/defaultCover'
 import { revealOnEnter, revealOnScroll } from '@/composables/useMotion'
 
 /**
  * Quiz detail: the read-only overview of a quiz before hosting or editing it.
  *
- * Answer visibility is a deliberate rule here. The owner is previewing their own
- * material, so correct answers are marked for them. For everybody else the options are
- * listed without any marking, otherwise this page would be a cheat sheet for a quiz
- * they are about to play.
+ * Two stacked full-width sections, the quiz and then its questions. Nothing
+ * collapses: a list of headers hides exactly what the reader opened the page for.
+ * The answer key is the one thing kept behind a switch, and that switch works the
+ * same for the owner and for a visitor, so opening a quiz you are about to play is
+ * never an accidental spoiler.
  */
 const props = defineProps({
   id: { type: String, required: true },
@@ -27,8 +30,8 @@ const router = useRouter()
 
 const pageEl = ref(null)
 const listEl = ref(null)
-// Question bodies stay collapsed by default so a 40-question quiz is still scannable.
-const openIds = ref(new Set())
+// Answers stay hidden until they are asked for, and then for the whole quiz.
+const showAnswers = ref(false)
 
 const query = useQuery({
   queryKey: computed(() => ['quiz', props.id]),
@@ -56,8 +59,31 @@ const authorName = computed(
   () => quiz.value?.owner?.fullname || quiz.value?.ownerName || 'Unknown author',
 )
 
+const authorAvatar = computed(() => quiz.value?.owner?.avatar ?? '')
+
+/*
+ * Quizzes saved before covers were generated still have none, and an empty band
+ * at the top of the page reads as a broken image. The same drawing the editor
+ * uploads on save is produced here for display only, so the page always opens on
+ * something deliberate.
+ */
+const coverSrc = computed(() => {
+  const current = quiz.value
+  if (!current) return ''
+  return current.imageUrl || createDefaultCoverDataUrl(current.title, current.category)
+})
+
+/*
+ * The author block only becomes a link when the id is known: a quiz whose author
+ * row was soft deleted still shows the neutral name, without a route to nowhere.
+ */
+const authorLink = computed(() => {
+  const ownerId = quiz.value?.owner?.id ?? quiz.value?.ownerId
+  return ownerId ? { name: 'user-profile', params: { id: String(ownerId) } } : null
+})
+
 const totalTime = computed(() =>
-  questions.value.reduce((sum, question) => sum + (Number(question.time_limit) || 0), 0),
+  questions.value.reduce((sum, question) => sum + (Number(question.timeLimit) || 0), 0),
 )
 
 /** "3m 20s", or just seconds when it is under a minute. */
@@ -69,11 +95,11 @@ const totalTimeLabel = computed(() => {
   return minutes ? `${minutes}m${rest ? ` ${rest}s` : ''}` : `${rest}s`
 })
 
-/** How many questions of each type, shown as chips in the sidebar. */
+/** How many questions of each type, shown as chips under the quiz identity. */
 const typeBreakdown = computed(() => {
   const counts = new Map()
   for (const question of questions.value) {
-    const label = QUESTION_TYPE_LABEL[question.question_type] ?? question.question_type
+    const label = QUESTION_TYPE_LABEL[question.type] ?? question.type
     counts.set(label, (counts.get(label) ?? 0) + 1)
   }
   return Array.from(counts, ([label, count]) => ({ label, count }))
@@ -83,46 +109,29 @@ function questionKey(question, index) {
   return question.id ?? `q-${index}`
 }
 
-function isOpen(key) {
-  return openIds.value.has(key)
+function toggleAnswers() {
+  showAnswers.value = !showAnswers.value
 }
 
-function toggleQuestion(key) {
-  // Reassigning the Set keeps the reactivity simple and predictable.
-  const next = new Set(openIds.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  openIds.value = next
-}
-
-function expandAll() {
-  openIds.value = new Set(questions.value.map((question, index) => questionKey(question, index)))
-}
-
-function collapseAll() {
-  openIds.value = new Set()
-}
-
-/**
- * correct_answer is a union in the backend schema: an array of option indexes for
- * choice questions, or a plain string for typed answers.
+/*
+ * correct_answer is a union in the backend schema: option indexes for choice
+ * questions, a plain string for typed answers. api/quiz.mapper.js has already
+ * split it into two predictable fields, so this page never has to guess.
  */
 function correctIndexes(question) {
-  const value = question.correct_answer ?? question.correctAnswer
-  return Array.isArray(value) ? value.map(Number) : []
+  return Array.isArray(question.correctIndexes) ? question.correctIndexes : []
 }
 
 function correctText(question) {
-  const value = question.correct_answer ?? question.correctAnswer
-  return typeof value === 'string' ? value : ''
+  return typeof question.correctText === 'string' ? question.correctText : ''
 }
 
 function isChoice(question) {
-  return question.question_type === 'multiple_choice' || question.question_type === 'multiple_select'
+  return question.type === 'multiple_choice' || question.type === 'multiple_select'
 }
 
 function options(question) {
-  return question.answer_options ?? question.answerOptions ?? []
+  return question.options ?? []
 }
 
 function goEdit() {
@@ -176,188 +185,179 @@ watch(
     </div>
 
     <template v-else-if="quiz">
-      <div class="flex flex-col gap-lg lg:flex-row lg:items-start">
-        <!-- Main column -->
-        <div class="lg:w-2/3">
-          <div data-enter>
-            <p v-if="quiz.category" class="eyebrow-label">
-              {{ quiz.category }}
-            </p>
-            <h1 class="mt-xxs text-heading-1 text-ink">
-              {{ quiz.title }}
-            </h1>
-            <p v-if="quiz.description" class="mt-sm text-body-md text-ink-secondary">
-              {{ quiz.description }}
-            </p>
+      <!-- The quiz itself: cover, identity, counters and every action -->
+      <section class="card-surface overflow-hidden" data-enter>
+        <img
+          v-if="coverSrc"
+          :src="coverSrc"
+          :alt="quiz.title"
+          class="aspect-[16/10] max-h-[400px] w-full object-cover"
+        >
 
-            <div class="mt-md flex flex-wrap items-center gap-xs text-caption text-ink-muted">
+        <div class="p-lg">
+          <p v-if="quiz.category" class="eyebrow-label">
+            {{ quiz.category }}
+          </p>
+          <h1 class="mt-xxs text-heading-1 text-ink">
+            {{ quiz.title }}
+          </h1>
+          <p v-if="quiz.description" class="mt-sm max-w-[70ch] text-body-md text-ink-secondary">
+            {{ quiz.description }}
+          </p>
+
+          <div class="mt-md flex flex-wrap items-center gap-md">
+            <RouterLink
+              v-if="authorLink"
+              :to="authorLink"
+              class="flex items-center gap-xs text-ink transition-colors duration-150 hover:text-primary"
+            >
+              <UserAvatar :name="authorName" :src="authorAvatar" :size="34" />
+              <span class="text-body-sm font-medium">{{ authorName }}</span>
+            </RouterLink>
+            <span v-else class="flex items-center gap-xs">
+              <UserAvatar :name="authorName" :src="authorAvatar" :size="34" />
+              <span class="text-body-sm text-ink-muted">{{ authorName }}</span>
+            </span>
+
+            <span class="flex flex-wrap items-center gap-xs text-caption text-ink-muted">
               <span>{{ questions.length }} questions</span>
               <span aria-hidden="true">·</span>
               <span>{{ totalTimeLabel }} total</span>
-              <span aria-hidden="true">·</span>
-              <span>By {{ authorName }}</span>
+              <template v-if="quiz.language">
+                <span aria-hidden="true">·</span>
+                <span>{{ quiz.language === 'en' ? 'English' : quiz.language === 'vi' ? 'Vietnamese' : quiz.language }}</span>
+              </template>
+              <template v-if="quiz.playCount != null">
+                <span aria-hidden="true">·</span>
+                <span>{{ quiz.playCount }} plays</span>
+              </template>
               <span v-if="quiz.isPublic === false" class="chip">Private</span>
-            </div>
+            </span>
           </div>
 
-          <div class="mt-lg flex items-center justify-between gap-sm" data-enter>
-            <h2 class="text-heading-3 text-ink">
-              Questions
-            </h2>
-            <div v-if="questions.length" class="flex items-center gap-xs">
-              <button class="btn-ghost" type="button" @click="expandAll">
-                Expand all
-              </button>
-              <button class="btn-ghost" type="button" @click="collapseAll">
-                Collapse all
-              </button>
-            </div>
+          <div v-if="typeBreakdown.length" class="mt-md flex flex-wrap gap-xxs">
+            <span v-for="entry in typeBreakdown" :key="entry.label" class="chip">
+              {{ entry.count }} {{ entry.label }}
+            </span>
           </div>
 
-          <p v-if="!questions.length" class="mt-sm text-body-sm text-ink-faint">
-            This quiz has no questions yet.
+          <div class="mt-lg flex flex-wrap items-center gap-xs">
+            <button class="btn btn-primary" type="button" @click="hostGame">
+              Host a game
+            </button>
+            <button class="btn btn-utility" type="button" @click="goPlay">
+              Join with a code
+            </button>
+            <button v-if="isOwner" class="btn btn-ghost" type="button" @click="goEdit">
+              Edit this quiz
+            </button>
+          </div>
+
+          <p class="mt-xs text-caption text-ink-faint">
+            Live hosting arrives with the realtime game screen.
           </p>
+        </div>
+      </section>
 
-          <ol v-else ref="listEl" class="mt-sm flex flex-col gap-xs">
-            <li
-              v-for="(question, i) in questions"
-              :key="questionKey(question, i)"
-              class="question-card"
-              data-reveal
-            >
-              <button
-                class="question-head"
-                type="button"
-                :aria-expanded="isOpen(questionKey(question, i))"
-                @click="toggleQuestion(questionKey(question, i))"
-              >
-                <span class="question-index">{{ i + 1 }}</span>
-
-                <span class="min-w-0 flex-1">
-                  <span class="block text-body-md font-medium text-ink">{{ question.question_text }}</span>
-                  <span class="mt-xxs flex flex-wrap items-center gap-xs text-caption text-ink-faint">
-                    <span>{{ QUESTION_TYPE_LABEL[question.question_type] ?? question.question_type }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{{ question.time_limit ?? 30 }}s</span>
-                    <span v-if="isChoice(question)" aria-hidden="true">·</span>
-                    <span v-if="isChoice(question)">{{ options(question).length }} options</span>
-                  </span>
-                </span>
-
-                <span
-                  class="question-caret"
-                  :class="isOpen(questionKey(question, i)) ? 'is-open' : ''"
-                  aria-hidden="true"
-                >
-                  ›
-                </span>
-              </button>
-
-              <div v-if="isOpen(questionKey(question, i))" class="question-body">
-                <ul v-if="isChoice(question)" class="grid gap-xs sm:grid-cols-2">
-                  <li
-                    v-for="(option, index) in options(question)"
-                    :key="`${questionKey(question, i)}-${index}`"
-                    class="option-row"
-                    :class="isOwner && correctIndexes(question).includes(index) ? 'is-correct' : ''"
-                  >
-                    <span class="option-letter">{{ OPTION_LETTERS[index] ?? index + 1 }}</span>
-                    <span class="min-w-0 flex-1 text-body-sm text-ink">{{ option }}</span>
-                    <span
-                      v-if="isOwner && correctIndexes(question).includes(index)"
-                      class="text-caption font-medium text-sticker-green"
-                    >
-                      Correct
-                    </span>
-                  </li>
-                </ul>
-
-                <div v-else class="rounded-md border border-hairline bg-canvas-soft p-sm">
-                  <p class="text-caption text-ink-muted">
-                    Players type their answer.
-                  </p>
-                  <p v-if="isOwner && correctText(question)" class="mt-xxs text-body-sm text-ink">
-                    Expected answer: {{ correctText(question) }}
-                  </p>
-                </div>
-
-                <p v-if="!isOwner" class="mt-xs text-caption text-ink-faint">
-                  Correct answers are hidden until you play.
-                </p>
-              </div>
-            </li>
-          </ol>
+      <!-- Every question, always expanded -->
+      <section class="mt-lg">
+        <div class="flex flex-wrap items-center justify-between gap-sm" data-enter>
+          <h2 class="text-heading-3 text-ink">
+            Questions
+          </h2>
+          <button
+            v-if="questions.length"
+            class="btn btn-utility"
+            type="button"
+            :aria-pressed="showAnswers"
+            @click="toggleAnswers"
+          >
+            {{ showAnswers ? 'Hide correct answers' : 'Show correct answers' }}
+          </button>
         </div>
 
-        <!-- Sidebar -->
-        <aside class="lg:w-1/3" data-enter>
-          <div class="card-surface sticky top-[88px] p-lg">
-            <img
-              v-if="quiz.image"
-              :src="quiz.image"
-              :alt="quiz.title"
-              class="mb-md h-[140px] w-full rounded-md object-cover"
-            >
+        <p v-if="!questions.length" class="mt-sm text-body-sm text-ink-faint">
+          This quiz has no questions yet.
+        </p>
 
-            <dl class="grid gap-xs">
-              <div class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">
-                  Questions
-                </dt>
-                <dd class="text-body-sm text-ink">
-                  {{ questions.length }}
-                </dd>
+        <ol v-else ref="listEl" class="mt-sm flex flex-col gap-sm">
+          <li
+            v-for="(question, i) in questions"
+            :key="questionKey(question, i)"
+            class="question-card"
+            data-reveal
+          >
+            <div class="question-head">
+              <span class="question-index">{{ i + 1 }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-body-md font-medium text-ink">
+                  {{ question.text }}
+                </p>
+                <p class="mt-xxs flex flex-wrap items-center gap-xs text-caption text-ink-faint">
+                  <span>{{ QUESTION_TYPE_LABEL[question.type] ?? question.type }}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{{ question.timeLimit ?? 30 }}s</span>
+                  <template v-if="isChoice(question)">
+                    <span aria-hidden="true">·</span>
+                    <span>{{ options(question).length }} options</span>
+                  </template>
+                </p>
               </div>
-              <div class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">
-                  Total time
-                </dt>
-                <dd class="text-body-sm text-ink">
-                  {{ totalTimeLabel }}
-                </dd>
-              </div>
-              <div v-if="quiz.language" class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">
-                  Language
-                </dt>
-                <dd class="text-body-sm text-ink">
-                  {{ quiz.language }}
-                </dd>
-              </div>
-              <div v-if="quiz.playCount != null" class="flex items-center justify-between gap-sm">
-                <dt class="text-caption text-ink-muted">
-                  Plays
-                </dt>
-                <dd class="text-body-sm text-ink">
-                  {{ quiz.playCount }}
-                </dd>
-              </div>
-            </dl>
-
-            <div v-if="typeBreakdown.length" class="mt-md flex flex-wrap gap-xxs">
-              <span v-for="entry in typeBreakdown" :key="entry.label" class="chip">
-                {{ entry.count }} {{ entry.label }}
-              </span>
             </div>
 
-            <div class="mt-md grid gap-xs">
-              <button class="btn-primary w-full" type="button" @click="hostGame">
-                Host a game
-              </button>
-              <button class="btn-utility w-full" type="button" @click="goPlay">
-                Join with a code
-              </button>
-              <button v-if="isOwner" class="btn-ghost w-full" type="button" @click="goEdit">
-                Edit this quiz
-              </button>
-            </div>
+            <div class="question-body">
+              <img
+                v-if="question.imageUrl"
+                :src="question.imageUrl"
+                :alt="question.text"
+                class="mb-sm h-[200px] w-full rounded-md object-cover"
+              >
 
-            <p class="mt-xs text-caption text-ink-faint">
-              Live hosting arrives with the realtime game screen.
-            </p>
-          </div>
-        </aside>
-      </div>
+              <ul v-if="isChoice(question)" class="grid gap-xs sm:grid-cols-2">
+                <li
+                  v-for="(option, index) in options(question)"
+                  :key="`${questionKey(question, i)}-${index}`"
+                  class="option-row"
+                  :class="showAnswers && correctIndexes(question).includes(index) ? 'is-correct' : ''"
+                >
+                  <span class="option-letter">{{ OPTION_LETTERS[index] ?? index + 1 }}</span>
+                  <span class="min-w-0 flex-1 text-body-sm text-ink">{{ option.text }}</span>
+                  <span
+                    v-if="showAnswers && correctIndexes(question).includes(index)"
+                    class="text-caption font-medium text-sticker-green"
+                  >
+                    Correct
+                  </span>
+                </li>
+              </ul>
+
+              <div v-else class="rounded-md border border-hairline bg-canvas-soft p-sm">
+                <p class="text-caption text-ink-muted">
+                  Players type their answer.
+                </p>
+                <p v-if="showAnswers && correctText(question)" class="mt-xxs text-body-sm text-ink">
+                  Expected answer: {{ correctText(question) }}
+                </p>
+              </div>
+
+              <!-- A hint is meant to be read before answering, so it is never hidden. -->
+              <p v-if="question.hint" class="mt-xs text-caption text-ink-muted">
+                Hint: {{ question.hint }}
+              </p>
+
+              <p
+                v-if="showAnswers && question.explanation"
+                class="mt-xxs text-caption text-ink-muted"
+              >
+                Explanation: {{ question.explanation }}
+              </p>
+              <p v-else-if="!showAnswers" class="mt-xs text-caption text-ink-faint">
+                Correct answers are hidden.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
     </template>
   </div>
 </template>
@@ -367,23 +367,14 @@ watch(
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background-color: var(--surface);
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
 }
 
-.question-card:hover {
-  border-color: var(--ink-faint);
-  box-shadow: var(--shadow-1);
-}
-
+/* The header is no longer a button: nothing on this card collapses. */
 .question-head {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  width: 100%;
-  padding: 14px 16px;
-  text-align: left;
+  padding: 14px 16px 0;
 }
 
 .question-index {
@@ -398,17 +389,8 @@ watch(
   font-weight: 600;
 }
 
-.question-caret {
-  color: var(--ink-faint);
-  transition: transform 150ms ease;
-}
-
-.question-caret.is-open {
-  transform: rotate(90deg);
-}
-
 .question-body {
-  padding: 0 16px 16px 54px;
+  padding: 12px 16px 16px 54px;
 }
 
 .option-row {

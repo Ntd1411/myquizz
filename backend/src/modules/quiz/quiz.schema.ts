@@ -1,11 +1,28 @@
 import { z } from 'zod'
 import { LIST_SORTS, VISIBILITY_FILTERS } from './listing.type.js'
 
+/**
+ * The range a question's time limit is held to, mirrored by LIMITS.timeMin /
+ * LIMITS.timeMax in frontend/src/utils/quizImport.js.
+ *
+ * The floor used to be 0, which let a question nobody can answer through the one check
+ * that is not optional. A limit is now a real playing time on both sides of the wire.
+ */
+export const TIME_LIMIT_MIN = 5
+export const TIME_LIMIT_MAX = 600
+
 export const createQuestionSchema = z.object({
   question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
   question_text: z.string().min(1, 'Question must be at least 1 character').max(200, 'Question must be at most 200 characters'),
-  time_limit: z.number().min(0, 'Time limit must be a positive number').default(30),
+  time_limit: z.number().int('Time limit must be whole seconds')
+    .min(TIME_LIMIT_MIN, `Time limit must be at least ${TIME_LIMIT_MIN} seconds`)
+    .max(TIME_LIMIT_MAX, `Time limit must be at most ${TIME_LIMIT_MAX} seconds`)
+    .default(30),
   question_image: z.url('Must be valid URL').optional(),
+  // Both columns are varchar(255), so a longer string is refused here instead of
+  // reaching the driver and surfacing as a 500.
+  question_hint: z.string().max(255, 'Hint must be at most 255 characters').optional(),
+  explanation: z.string().max(255, 'Explanation must be at most 255 characters').optional(),
   answer_options: z.array(z.string().min(1, 'Option must be at least 1 character').max(100, 'Option must be at most 100 characters'))
     .min(2, 'Question must have at least 2 options')
     .max(4, 'Question can have at most 4 options').optional(),

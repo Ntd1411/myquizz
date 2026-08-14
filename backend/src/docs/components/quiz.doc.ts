@@ -23,6 +23,16 @@ export const quizSchemas: SchemaMap = {
       question_text: { type: 'string', minLength: 1, maxLength: 200 },
       time_limit: { type: 'number', minimum: 0, default: 30 },
       question_image: { type: 'string', format: 'uri' },
+      question_hint: {
+        type: 'string',
+        maxLength: 255,
+        description: 'Optional hint shown to players before they answer.'
+      },
+      explanation: {
+        type: 'string',
+        maxLength: 255,
+        description: 'Optional explanation revealed with the correct answer.'
+      },
       answer_options: {
         type: 'array',
         minItems: 2,
@@ -114,7 +124,8 @@ export const quizSchemas: SchemaMap = {
 
   Quiz: {
     type: 'object',
-    description: 'Full quiz record, returned with its questions by the detail routes.',
+    description:
+      'Full quiz record, returned with its questions by the detail routes. The author is folded into `owner` exactly as on a card, the counters come from the quizzes table and the questions are ordered by id. The ranking columns stay internal and are never part of this response.',
     properties: {
       id: { type: 'integer' },
       quiz_owner: { type: 'integer' },
@@ -124,18 +135,9 @@ export const quizSchemas: SchemaMap = {
       quiz_image: { type: 'string', nullable: true },
       quiz_category: { type: 'string', nullable: true },
       is_public: { type: 'boolean' },
+      owner: ref('QuizOwner'),
       question_count: { type: 'integer', example: 8 },
       play_count: { type: 'integer', example: 120 },
-      completion_rate: {
-        type: 'number',
-        format: 'float',
-        minimum: 0,
-        maximum: 1,
-        example: 0.66
-      },
-      hot_score: { type: 'number', format: 'double', example: 18.42 },
-      scored_at: { type: 'string', format: 'date-time', nullable: true },
-      is_featured: { type: 'boolean', example: false },
       deleted_at: { type: 'string', format: 'date-time', nullable: true },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
