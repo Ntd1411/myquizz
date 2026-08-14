@@ -1,7 +1,7 @@
 import type { Quiz } from './quiz.type.js'
 import { quizRepository } from './quiz.repository.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import type { CreateQuizRequest } from './quiz.schema.js'
+import type { CreateQuizRequest, UpdateQuizRequest } from './quiz.schema.js'
 
 /*
  * Quiz CRUD rules. Listing and search moved to listing.service.ts, where every
@@ -37,7 +37,14 @@ export async function createQuizService(
     throw new AppError(500, 'Failed to create all questions')
   }
 
-  return { ...createdQuiz, questions: createdQuestions }
+  // Re-read so the response carries the joined author and the counters the
+  // insert just refreshed, in the exact shape GET /quizzes/id/:quizId returns.
+  const fullQuiz = await quizRepository.getQuizById(createdQuiz.id)
+  if (!fullQuiz) {
+    throw new AppError(500, 'Failed to load the created quiz')
+  }
+
+  return fullQuiz
 }
 
 export async function getQuizService(
@@ -62,7 +69,7 @@ export async function getQuizService(
 export async function updateQuizService(
   userId: number,
   quizId: number,
-  quiz: Quiz
+  quiz: UpdateQuizRequest
 ): Promise<Quiz> {
   // Check ownership
   const isOwner = await quizRepository.checkQuizOwnership(quizId, userId)
@@ -85,9 +92,8 @@ export async function updateQuizService(
   }
 
   // Update quiz metadata if provided
-  let updatedQuiz: Quiz | null = null
   if (hasMetadataUpdate) {
-    updatedQuiz = await quizRepository.updateQuizMetadata(
+    const updatedQuiz = await quizRepository.updateQuizMetadata(
       quizId,
       userId,
       quizMetadata
@@ -97,26 +103,19 @@ export async function updateQuizService(
     }
   }
 
-  // Update questions if provided
-  let updatedQuestions: typeof quiz.questions = []
+  // Update questions if provided. Sending questions replaces the whole list.
   if (hasQuestionsUpdate && questions) {
-    updatedQuestions = await quizRepository.replaceQuizQuestions(
-      quizId,
-      questions
-    )
+    await quizRepository.replaceQuizQuestions(quizId, questions)
   }
 
-  // Get the final quiz state
-  if (!updatedQuiz || !updatedQuestions) {
-    updatedQuiz = await quizRepository.getQuizById(quizId)
-    if (!updatedQuiz) {
-      throw new AppError(404, 'Quiz not found')
-    }
-  } else {
-    updatedQuiz.questions = updatedQuestions
+  // Always re-read the final state. Stitching the two partial results together
+  // used to return an empty question list on a metadata-only update.
+  const finalQuiz = await quizRepository.getQuizById(quizId)
+  if (!finalQuiz) {
+    throw new AppError(404, 'Quiz not found')
   }
 
-  return updatedQuiz
+  return finalQuiz
 }
 
 export async function deleteQuizService(

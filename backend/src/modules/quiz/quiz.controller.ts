@@ -1,7 +1,6 @@
 import type { Response, NextFunction } from 'express'
-import type { Quiz } from './quiz.type.js'
 import * as quizService from './quiz.service.js'
-import type { CreateQuizRequest } from './quiz.schema.js'
+import type { CreateQuizRequest, UpdateQuizRequest } from './quiz.schema.js'
 import type { AuthRequest } from '../auth/auth.type.js'
 import { success } from '../../shared/utils/response.js'
 
@@ -49,7 +48,7 @@ export async function updateQuiz(
   try {
     const userId = req.user?.id as number
     const quizId = Number(req.params?.quizId)
-    const quiz = req.body as Quiz
+    const quiz = req.body as UpdateQuizRequest
 
     const updatedQuiz = await quizService.updateQuizService(userId, quizId, quiz)
 

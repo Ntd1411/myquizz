@@ -6,6 +6,10 @@ export const createQuestionSchema = z.object({
   question_text: z.string().min(1, 'Question must be at least 1 character').max(200, 'Question must be at most 200 characters'),
   time_limit: z.number().min(0, 'Time limit must be a positive number').default(30),
   question_image: z.url('Must be valid URL').optional(),
+  // Both columns are varchar(255), so a longer string is refused here instead of
+  // reaching the driver and surfacing as a 500.
+  question_hint: z.string().max(255, 'Hint must be at most 255 characters').optional(),
+  explanation: z.string().max(255, 'Explanation must be at most 255 characters').optional(),
   answer_options: z.array(z.string().min(1, 'Option must be at least 1 character').max(100, 'Option must be at most 100 characters'))
     .min(2, 'Question must have at least 2 options')
     .max(4, 'Question can have at most 4 options').optional(),

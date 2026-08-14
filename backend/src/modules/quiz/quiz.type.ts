@@ -1,12 +1,19 @@
+import type { QuizOwner } from './home.type.js'
+
 export interface Quiz {
   id: number;
   quiz_owner: number;
+  /** Joined author. Null when the author row was soft deleted. Detail reads only. */
+  owner?: QuizOwner | null;
   quiz_name: string;
   quiz_description?: string;
   quiz_language: string;
   quiz_image?: string;
   quiz_category?: string;
   is_public: boolean;
+  /** Counters kept on the quizzes table. Absent on rows built from RETURNING *. */
+  question_count?: number;
+  play_count?: number;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

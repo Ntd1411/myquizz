@@ -175,6 +175,8 @@ On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }
 
 Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
 
+Every read goes through one mapper per shape: `toQuizSummary` for a listing row, `toQuizDetail` for `GET /v1/quizzes/id/:quizId`. The detail response therefore carries the same nested `owner` block (`id`, `fullname`, `avatar`) and the same `question_count` / `play_count` counters as a card, plus its questions ordered by `id`; `hot_score` and `scored_at` stay internal. `POST /v1/quizzes` and `PATCH /v1/quizzes/id/:quizId` re-read the quiz through that same mapper before answering, so a metadata-only patch never comes back with an empty question list.
+
 ## Authentication
 
 Sign-in sets two HttpOnly cookies; there is no `Authorization` header to manage. A browser client only has to send credentials with the request, and the API does the rest.
@@ -326,7 +328,7 @@ A mode also declares which config fields a host may change. Anything it locks is
 | --- | --- |
 | `users` | Accounts, `role` in admin / moderator / user, soft deleted through `deleted_at` |
 | `quizzes` | Quiz metadata, owner, language, category, `is_public`, plus the ranking columns |
-| `questions` | Questions of a quiz: type, text, image, `time_limit`, `answer_options` and `correct_answer` as JSONB |
+| `questions` | Questions of a quiz: type, text, image, `time_limit`, optional `question_hint` and `explanation`, `answer_options` and `correct_answer` as JSONB |
 | `quiz_snapshots` | A frozen copy of a quiz taken when a session is created |
 | `game_sessions` | One match: snapshot, code, host, mode, `config`, status, current phase and deadline |
 | `player_sessions` | One participant of one match: score, answered questions, streak, lives, status |
@@ -365,6 +367,8 @@ To add a change: create the next numbered file in `migrations/`, never edit a fi
 
 - **PostgreSQL is the source of truth.** `infrastructure/database/schema/` holds the base tables, `migrations/` the incremental changes; both are applied in order at boot.
 - **Quizzes are snapshotted.** Creating a session copies the questions into a snapshot, so editing or deleting a quiz never rewrites a match that already happened.
+- **`answer_options` has exactly one stored shape**: an array of `{ id, option_text }`, where `id` is the position `correct_answer` points at. Creating and replacing questions share the same INSERT, so no write path can store a second shape.
+- **Sending `questions` in a PATCH replaces the whole list**: the previous rows are soft deleted and the new ones inserted in one transaction. Leaving the field out keeps the existing questions untouched.
 - **Redis holds the running match**: session state, players, per-question answers and the live leaderboard. Postgres is flushed at the end of every question and once more when the match ends, then the Redis keys are cleared.
 - **Home and feed responses are cached**, and the response says so through `meta.cached`.
 - **The scoring job** recomputes quiz ranking every `SCORING_INTERVAL_MINUTES`, started after the server is listening so a slow first pass never delays readiness.
