@@ -10,8 +10,6 @@
 
 import type { QuizOwner } from './home.type.js'
 
-export type { QuizOwner }
-
 // Every sort the listing feature understands, across all three endpoints.
 export const LIST_SORTS = [
   'relevance',

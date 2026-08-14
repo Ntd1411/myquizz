@@ -105,21 +105,19 @@ export async function updateProfileService(
 ): Promise<User> {
   const updates: Record<string, string | null> = {}
 
-  if (fullname) updates.fullname = fullname
-  // An empty phone is a request to clear the column, so it is told apart from a phone
-  // that was never sent: the first writes NULL, the second leaves the stored one alone.
+  if (fullname !== undefined) updates.fullname = fullname
+
   if (phone !== undefined) {
     if (phone) {
       const user = await userRepository.findByPhone(phone)
       if (user) {
         throw new AppError(400, 'Phone number is already in use')
       }
-      updates.phone = phone
-    } else {
-      updates.phone = null
     }
+    updates.phone = phone || null
   }
-  if (description) updates.description = description
+
+  if (description !== undefined) updates.description = description || null
 
   if (Object.keys(updates).length === 0) {
     throw new AppError(400, 'No fields to update')

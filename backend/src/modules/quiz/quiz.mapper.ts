@@ -1,4 +1,5 @@
-import type { QuizOwner, QuizSummary } from './listing.type.js'
+import type { QuizOwner } from './home.type.js'
+import type { QuizSummary } from './listing.type.js'
 import type { Question, Quiz } from './quiz.type.js'
 
 /**
