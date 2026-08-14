@@ -32,6 +32,11 @@ const typing = ref(false)
 const rootEl = ref(null)
 const inputEl = ref(null)
 
+// The box has to point at the list and name the option the arrows are on, so both need an
+// id. They only have to be unique within the document.
+const listboxId = `combo-list-${Math.random().toString(36).slice(2, 8)}`
+const activeIndex = ref(-1)
+
 const matched = computed(
   () => props.options.find((option) => option.value === props.modelValue) || null,
 )
@@ -41,8 +46,58 @@ const custom = computed(() => typing.value || (props.modelValue !== '' && !match
 // A listed value shows its label ('30 seconds'); a typed one shows itself.
 const display = computed(() => (custom.value ? props.modelValue : matched.value?.label || ''))
 
+/*
+ * The list as it is walked: every option, and then the Custom row, which is an option of
+ * the listbox like any other rather than a button the arrow keys could never reach.
+ */
+const rows = computed(() => [
+  ...props.options.map((option, index) => ({ key: String(index), option })),
+  { key: 'custom', option: null },
+])
+
+const optionId = (index) => `${listboxId}-${rows.value[index]?.key}`
+
+const isSelected = (row) =>
+  row.option ? !custom.value && row.option.value === props.modelValue : custom.value
+
+// What the box reports as the current option, so a screen reader follows the arrow keys
+// even though the focus never leaves the box.
+const activeDescendant = computed(() =>
+  open.value && activeIndex.value !== -1 ? optionId(activeIndex.value) : null,
+)
+
 function close() {
   open.value = false
+  activeIndex.value = -1
+}
+
+function setActive(index) {
+  activeIndex.value = index
+  if (index === -1) return
+
+  // Nothing inside the list is focused, so the browser will not scroll it for us.
+  nextTick(() => document.getElementById(optionId(index))?.scrollIntoView({ block: 'nearest' }))
+}
+
+// The list opens on what is already selected, so the first arrow key steps away from the
+// current answer rather than from the top of the list.
+function openList() {
+  open.value = true
+  setActive(rows.value.findIndex((row) => isSelected(row)))
+}
+
+function moveActive(offset) {
+  const count = rows.value.length
+  const from = activeIndex.value === -1 ? (offset > 0 ? -1 : 0) : activeIndex.value
+  setActive((from + offset + count) % count)
+}
+
+function activate(index) {
+  const row = rows.value[index]
+  if (!row) return
+
+  if (row.option) pick(row.option)
+  else pickCustom()
 }
 
 function pick(option) {
@@ -67,7 +122,8 @@ function onBoxMousedown(event) {
   // Readonly still takes a caret, and on a phone still raises the keyboard.
   event.preventDefault()
   inputEl.value?.focus()
-  open.value = !open.value
+  if (open.value) close()
+  else openList()
 }
 
 function onInput(event) {
@@ -76,17 +132,53 @@ function onInput(event) {
 }
 
 function onKeydown(event) {
-  if (event.key === 'Escape' && open.value) {
-    close()
+  if (event.key === 'Escape' || event.key === 'Tab') {
+    if (open.value) close()
     return
   }
 
-  // The keys that open a native select. While typing only the arrow does, so that Enter and
+  // The keys that open a native select. While typing only the arrows do, so that Enter and
   // the space bar still belong to the text being written.
-  const openers = custom.value ? ['ArrowDown'] : ['ArrowDown', 'Enter', ' ']
-  if (!open.value && openers.includes(event.key)) {
+  const openers = custom.value
+    ? ['ArrowDown', 'ArrowUp']
+    : ['ArrowDown', 'ArrowUp', 'Enter', ' ']
+  if (!open.value) {
+    if (!openers.includes(event.key)) return
+
     event.preventDefault()
-    open.value = true
+    openList()
+    return
+  }
+
+  /*
+   * An open list is walked with the arrows and answered with Enter, the way a select is:
+   * before this the options could only be clicked, which left the field unusable to anyone
+   * on a keyboard once the list was showing.
+   */
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveActive(event.key === 'ArrowDown' ? 1 : -1)
+    return
+  }
+
+  if (event.key === 'Enter' || (event.key === ' ' && !custom.value)) {
+    event.preventDefault()
+    if (activeIndex.value !== -1) activate(activeIndex.value)
+    return
+  }
+
+  // Home and End belong to the text while it is being typed.
+  if (custom.value) return
+
+  if (event.key === 'Home') {
+    event.preventDefault()
+    setActive(0)
+    return
+  }
+
+  if (event.key === 'End') {
+    event.preventDefault()
+    setActive(rows.value.length - 1)
   }
 }
 
@@ -139,7 +231,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown)
       :step="type === 'number' ? 1 : null"
       role="combobox"
       aria-haspopup="listbox"
+      aria-autocomplete="none"
       :aria-expanded="open"
+      :aria-controls="open ? listboxId : null"
+      :aria-activedescendant="activeDescendant"
       @mousedown="onBoxMousedown"
       @input="onInput"
       @keydown="onKeydown"
@@ -155,7 +250,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown)
       class="absolute right-0 top-0 grid h-full w-[42px] place-items-center text-ink-secondary"
       tabindex="-1"
       aria-label="Show the list"
-      @click="open = !open"
+      @click="open ? close() : openList()"
     >
       <svg
         class="h-[14px] w-[14px]"
@@ -173,32 +268,32 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown)
 
     <ul
       v-if="open"
+      :id="listboxId"
       class="absolute inset-x-0 top-[calc(100%+4px)] z-30 max-h-[240px] overflow-auto rounded-md border border-hairline bg-paper py-xxs shadow-[0_12px_32px_rgba(35,36,43,0.14)]"
       role="listbox"
       data-lenis-prevent
     >
-      <li v-for="option in options" :key="option.value">
-        <button
-          type="button"
-          class="block w-full px-sm py-xxs text-left text-body-sm transition-colors duration-150 hover:bg-canvas-soft"
-          :class="!custom && option.value === modelValue ? 'text-primary' : 'text-ink'"
-          role="option"
-          :aria-selected="!custom && option.value === modelValue"
-          @click="pick(option)"
-        >
-          {{ option.label }}
-        </button>
-      </li>
-
-      <li class="mt-xxs border-t border-hairline pt-xxs">
-        <button
-          type="button"
-          class="block w-full px-sm py-xxs text-left text-body-sm transition-colors duration-150 hover:bg-canvas-soft"
-          :class="custom ? 'text-primary' : 'text-ink'"
-          @click="pickCustom"
-        >
-          {{ customLabel }}
-        </button>
+      <!--
+        The option is the <li> itself. A role="option" on a <button> inside the list is a
+        child the listbox cannot own, and a focusable one is a tab stop the combobox pattern
+        does not have: the box keeps the focus and names the current option instead.
+      -->
+      <li
+        v-for="(row, index) in rows"
+        :id="`${listboxId}-${row.key}`"
+        :key="row.key"
+        class="cursor-pointer px-sm py-xxs text-body-sm transition-colors duration-150"
+        :class="[
+          row.option ? '' : 'mt-xxs border-t border-hairline pt-xxs',
+          isSelected(row) ? 'text-primary' : 'text-ink',
+          activeIndex === index ? 'bg-canvas-soft' : '',
+        ]"
+        role="option"
+        :aria-selected="isSelected(row)"
+        @click="activate(index)"
+        @mousemove="activeIndex = index"
+      >
+        {{ row.option ? row.option.label : customLabel }}
       </li>
     </ul>
   </div>

@@ -57,7 +57,7 @@ export async function presignUpload({ contentType, folder, fileSize }, { signal 
   const res = await http.post(
     '/storage/presign',
     { contentType, folder, fileSize },
-    { signal }
+    { signal },
   )
   return unwrap(res.data).presignedUrl // { uploadUrl, publicUrl, key }
 }
@@ -83,7 +83,7 @@ export async function uploadImage(file, folder, { signal } = {}) {
       folder,
       fileSize: file.size,
     },
-    { signal }
+    { signal },
   )
 
   // The presigned URL expires after 5 minutes and must be called WITHOUT credentials,

@@ -101,8 +101,15 @@ function parseStoredJson(value) {
   if (typeof value !== 'string') return value
 
   const trimmed = value.trim()
-  // A free-text answer is stored as a plain string and must be returned as is.
-  if (!trimmed.startsWith('[') && !trimmed.startsWith('"')) return value
+  /*
+   * Only what the writer could have produced is decoded: an array of option indexes, a
+   * quoted string, or a bare number, which is what a single correct index looks like once
+   * JSON.stringify has been over it. Anything else is a free-text answer stored as itself
+   * and must be returned as is.
+   */
+  const looksStored =
+    trimmed.startsWith('[') || trimmed.startsWith('"') || /^-?\d+(?:\.\d+)?$/.test(trimmed)
+  if (!looksStored) return value
 
   try {
     return JSON.parse(trimmed)

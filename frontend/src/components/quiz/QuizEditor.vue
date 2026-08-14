@@ -20,6 +20,7 @@ import {
   QUESTION_TYPES,
   TIME_LIMITS,
   buildPayload,
+  clampTimeLimit,
   errorMessages,
   isChoice,
   makeQuestion,
@@ -54,10 +55,11 @@ const savedLabel = ref('')
  */
 const categoryOptions = CATEGORIES.map((category) => ({ value: category, label: category }))
 
-// The list stops at 120 seconds; typed limits are held to something a player can sit
-// through and a countdown can render.
-const TIME_LIMIT_MIN = 5
-const TIME_LIMIT_MAX = 600
+// The list stops at 120 seconds; a typed limit is held to the range LIMITS owns, the same
+// one the import validator checks and the backend schema enforces, so the three cannot
+// drift apart the way three separate pairs of numbers did.
+const TIME_LIMIT_MIN = LIMITS.timeMin
+const TIME_LIMIT_MAX = LIMITS.timeMax
 
 const timeOptions = TIME_LIMITS.map((seconds) => ({
   value: seconds,
@@ -69,10 +71,7 @@ const timeOptions = TIME_LIMITS.map((seconds) => ({
  * way to "90" must not be corrected to the minimum under the author's fingers.
  */
 function clampTime(question) {
-  const seconds = Math.trunc(Number(question.time_limit))
-  question.time_limit = Number.isFinite(seconds)
-    ? Math.min(Math.max(seconds, TIME_LIMIT_MIN), TIME_LIMIT_MAX)
-    : TIME_LIMIT_MIN
+  question.time_limit = clampTimeLimit(question.time_limit)
 }
 
 /*
@@ -568,14 +567,29 @@ async function uploadPendingImages() {
  * Every quiz ends up with a cover, whether the author picked one or not: the
  * generated one is drawn and uploaded here, at save time, so it is a real object
  * storage URL like any other image and every card, rail and lobby can use it.
+ *
+ * The upload is remembered by what the picture is drawn from. A save that the API then
+ * refuses, or a second save after an edit that left the name and the category alone, reuses
+ * the URL instead of leaving another unreferenced PNG behind in the quizzes/ folder. A
+ * rename does change the drawing, so that one is uploaded again on purpose.
  */
+let generatedCover = { signature: '', url: '' }
+
 async function ensureCover() {
   if (draft.value.quiz_image) return
+
+  const signature = JSON.stringify([draft.value.quiz_name, draft.value.quiz_category])
+  if (generatedCover.url && generatedCover.signature === signature) {
+    draft.value.quiz_image = generatedCover.url
+    return
+  }
 
   const file = await createDefaultCoverFile(draft.value.quiz_name, draft.value.quiz_category)
   if (!file) return
 
-  draft.value.quiz_image = await uploadImage(file, 'quizzes')
+  const url = await uploadImage(file, 'quizzes')
+  generatedCover = { signature, url }
+  draft.value.quiz_image = url
 }
 
 async function submit() {

@@ -19,6 +19,9 @@ export const LIMITS = {
   optionMax: 100,
   optionsMin: 2,
   optionsMax: 4,
+  // Mirrors TIME_LIMIT_MIN / TIME_LIMIT_MAX in backend/src/modules/quiz/quiz.schema.ts.
+  timeMin: 5,
+  timeMax: 600,
 }
 
 /*
@@ -41,6 +44,19 @@ export const QUESTION_TYPES = [
 export const TIME_LIMITS = [10, 15, 20, 30, 45, 60, 90, 120]
 
 export const isChoice = (type) => type === 'multiple_choice' || type === 'multiple_select'
+
+/**
+ * The one place a time limit is held to its range: the editor clamps with it, every
+ * importer passes its value through it and validateQuizFields refuses anything outside
+ * it, so the three can no longer disagree about what a legal limit is. Something that is
+ * not a number at all falls back to the floor rather than to a hardcoded default.
+ */
+export function clampTimeLimit(value) {
+  const seconds = Math.trunc(Number(value))
+  if (!Number.isFinite(seconds)) return LIMITS.timeMin
+
+  return Math.min(Math.max(seconds, LIMITS.timeMin), LIMITS.timeMax)
+}
 
 let nextQuestionId = 1
 
@@ -109,7 +125,7 @@ export function toDraft(raw) {
   )
 
   const seconds = Number(raw.time_limit ?? raw.timeLimit)
-  draft.time_limit = seconds > 0 ? seconds : 30
+  draft.time_limit = seconds > 0 ? clampTimeLimit(seconds) : 30
 
   const image = raw.question_image ?? raw.imageUrl
   draft.question_image = typeof image === 'string' ? image : ''
@@ -197,7 +213,7 @@ export function parseText(text) {
     for (const line of lines) {
       if (line.startsWith('@')) {
         const seconds = Number(line.slice(1).trim())
-        if (seconds > 0) draft.time_limit = seconds
+        if (seconds > 0) draft.time_limit = clampTimeLimit(seconds)
         continue
       }
       if (line.startsWith('=')) {
@@ -281,7 +297,7 @@ function rowsToDrafts(rows) {
     const options = [o1, o2, o3, o4].filter(Boolean)
     const draft = makeQuestion()
     draft.question_text = String(questionText ?? '').slice(0, LIMITS.questionTextMax)
-    if (Number(time) > 0) draft.time_limit = Number(time)
+    if (Number(time) > 0) draft.time_limit = clampTimeLimit(time)
 
     const letters = String(correct ?? '')
       .split(/[;,|]/)
@@ -380,8 +396,11 @@ function validateQuestion(question) {
     errors.question_text = `At most ${LIMITS.questionTextMax} characters.`
   }
 
-  if (!(Number(question.time_limit) >= 0)) {
-    errors.time_limit = 'Pick a time limit.'
+  const seconds = Number(question.time_limit)
+  if (!Number.isInteger(seconds)) {
+    errors.time_limit = 'Pick a time limit in whole seconds.'
+  } else if (seconds < LIMITS.timeMin || seconds > LIMITS.timeMax) {
+    errors.time_limit = `Between ${LIMITS.timeMin} and ${LIMITS.timeMax} seconds.`
   }
 
   if ((question.question_hint ?? '').length > LIMITS.hintMax) {
