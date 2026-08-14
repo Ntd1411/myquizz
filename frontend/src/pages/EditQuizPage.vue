@@ -6,6 +6,7 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { useQueryClient } from '@tanstack/vue-query'
 import { getQuizById, updateQuiz } from '@/api/quizzes.api'
 import { ApiError, toErrorMessage } from '@/api/envelope'
 import { useUiStore } from '@/stores/ui.store'
@@ -16,6 +17,7 @@ import { quizToDraft } from '@/utils/quizImport'
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
+const queryClient = useQueryClient()
 
 const quizId = route.params.id
 const AUTOSAVE_KEY = draftKey(quizId)
@@ -96,10 +98,25 @@ onBeforeRouteLeave(() => {
 async function submit(payload) {
   saving.value = true
   try {
-    await updateQuiz(quizId, payload)
+    const updated = await updateQuiz(quizId, payload)
     clearAutoDraft(AUTOSAVE_KEY)
     dirty.value = false
     editor.value?.markSaved()
+
+    /*
+     * The detail page reads ['quiz', id] out of the query cache, which main.js keeps
+     * fresh for a minute, so arriving there right after a save used to render the copy
+     * fetched before the edit. PATCH answers with the whole detail shape, author join
+     * included, because the service re-reads the row it just wrote; handing that to the
+     * cache is all it takes for the page to open on the new version, with no second
+     * request and no loading flash.
+     */
+    queryClient.setQueryData(['quiz', String(quizId)], updated)
+
+    // The cards carry the name, cover and category as well. Marking the listings stale
+    // is enough, they refetch the next time one is opened.
+    queryClient.invalidateQueries({ queryKey: ['quizzes'] })
+
     ui.toast('Your changes have been saved.', 'success')
     router.push({ name: 'quiz-detail', params: { id: quizId } })
   } catch (error) {

@@ -225,7 +225,7 @@ watch(
               <span>{{ totalTimeLabel }} total</span>
               <template v-if="quiz.language">
                 <span aria-hidden="true">·</span>
-                <span>{{ quiz.language }}</span>
+                <span>{{ quiz.language === 'en' ? 'English' : quiz.language === 'vi' ? 'Vietnamese' : quiz.language }}</span>
               </template>
               <template v-if="quiz.playCount != null">
                 <span aria-hidden="true">·</span>
