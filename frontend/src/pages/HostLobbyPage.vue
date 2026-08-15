@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
             <p class="eyebrow-label">
               Room code
             </p>
-            <p class="num mt-sm break-all text-[52px] font-medium leading-none tracking-[0.14em] text-ink">
+            <p class="num mt-sm break-all text-[32px] font-medium leading-none tracking-[0.1em] text-ink sm:text-[44px] sm:tracking-[0.14em] md:text-[52px]">
               {{ roomCode }}
             </p>
             <div class="mt-lg flex flex-wrap items-center justify-center gap-xs">

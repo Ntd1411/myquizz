@@ -65,3 +65,12 @@ export async function resetPassword({ email, otp, newPassword }) {
   const res = await http.post('/users/reset-password', { email, otp, newPassword })
   return unwrap(res.data)
 }
+
+/**
+ * Token variant of the same flow: the link mailed by /users/forgot-password carries
+ * this token as a query param instead of a 6-digit code the reader has to type.
+ */
+export async function resetPasswordWithToken({ token, newPassword }) {
+  const res = await http.post('/users/reset-password-token', { token, newPassword })
+  return unwrap(res.data)
+}

@@ -177,7 +177,9 @@ export async function getFeed({ topic, cursor, limit } = {}) {
  * Create and update answer with that very same shape.
  */
 export async function getQuizById(quizId) {
-  const res = await http.get(`/quizzes/id/${quizId}`)
+  // The detail and editor pages both turn 403/404 into their own inline explanation,
+  // so the central toast would repeat what the screen already says.
+  const res = await http.get(`/quizzes/id/${quizId}`, { skipErrorToast: true })
   return toQuizDetail(unwrap(res.data).quiz)
 }
 

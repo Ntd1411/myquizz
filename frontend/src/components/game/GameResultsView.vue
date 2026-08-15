@@ -329,8 +329,16 @@ async function openReview() {
               >
                 <span class="review-option-letter num">{{ option.letter }}</span>
                 <span class="review-option-text">{{ option.text }}</span>
-                <span v-if="option.isPicked" class="review-tag">Your pick</span>
-                <span v-if="option.isCorrect" class="review-tag is-right">Correct</span>
+                <span v-if="option.isPicked || option.isCorrect" class="review-marks">
+                  <span v-if="option.isPicked" class="review-mark is-picked" title="Your pick">
+                    <span aria-hidden="true">&#9679;</span>
+                    <span class="sr-only">Your pick</span>
+                  </span>
+                  <span v-if="option.isCorrect" class="review-mark is-correct-mark" title="Correct answer">
+                    <span aria-hidden="true">&#10003;</span>
+                    <span class="sr-only">Correct answer</span>
+                  </span>
+                </span>
               </li>
             </ul>
 
@@ -545,18 +553,35 @@ async function openReview() {
   overflow-wrap: anywhere;
 }
 
-.review-tag {
+.review-marks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex: none;
-  padding: 1px 7px;
+}
+
+.review-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
   border-radius: var(--r-full);
-  background: var(--paper);
   border: 1px solid var(--hairline);
+  background: var(--paper);
   font-size: 11px;
+  line-height: 1;
   color: var(--ink-2);
 }
 
-.review-tag.is-right {
+.review-mark.is-picked {
+  border-color: var(--spotlight);
+  color: var(--spotlight);
+}
+
+.review-mark.is-correct-mark {
   border-color: var(--ans-d);
+  background: var(--ans-d-soft);
   color: var(--ans-d);
 }
 

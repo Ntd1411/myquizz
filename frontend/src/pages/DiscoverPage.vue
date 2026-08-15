@@ -7,6 +7,8 @@ import { LANGUAGES, SEARCH_SORTS } from '@/constants/quizMeta'
 import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
 import { revealAppended, revealOnEnter, ScrollTrigger } from '@/composables/useMotion'
+import StateBlock from '@/components/base/StateBlock.vue'
+import SkeletonBlock from '@/components/base/SkeletonBlock.vue'
 
 /**
  * Browse screen on GET /quizzes/search.
@@ -524,32 +526,34 @@ watch(
         </div>
 
         <div v-if="list.loading.value" class="mt-md grid grid-cols-1 gap-md sm:grid-cols-2 xl:grid-cols-3">
-          <div
+          <SkeletonBlock
             v-for="n in 6"
             :key="`skeleton-${n}`"
-            class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
+            :rows="1"
+            height="h-[300px]"
+            card
           />
         </div>
 
-        <div v-else-if="list.errorMessage.value" class="card-surface mt-md p-xl">
-          <p class="text-body-sm text-ans-a">
-            {{ list.errorMessage.value }}
-          </p>
-          <button class="btn-utility mt-md" type="button" @click="list.loadFirst()">
-            Try again
-          </button>
+        <div v-else-if="list.errorMessage.value" class="card-surface mt-md">
+          <StateBlock
+            variant="error"
+            icon="\u{26A0}\u{FE0F}"
+            title="Could not load quizzes"
+            :message="list.errorMessage.value"
+            action-label="Try again"
+            @action="list.loadFirst()"
+          />
         </div>
 
-        <div v-else-if="!quizzes.length" class="card-surface mt-md p-xl text-center">
-          <p class="text-body-md text-ink">
-            No quizzes match these filters.
-          </p>
-          <p class="mt-xxs text-body-sm text-ink-2">
-            Try another keyword in the bar above, or loosen the filters.
-          </p>
-          <button v-if="hasFilters" class="btn-utility mt-md" type="button" @click="clearFilters">
-            Clear filters
-          </button>
+        <div v-else-if="!quizzes.length" class="card-surface mt-md">
+          <StateBlock
+            icon="\u{1F50D}"
+            title="No quizzes match these filters"
+            message="Try another keyword in the bar above, or loosen the filters."
+            :action-label="hasFilters ? 'Clear filters' : ''"
+            @action="clearFilters"
+          />
         </div>
 
         <template v-else>
