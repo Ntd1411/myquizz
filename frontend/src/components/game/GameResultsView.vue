@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import LeaderboardList from '@/components/game/LeaderboardList.vue'
+import { getGameReview } from '@/api/games.api'
+import { toErrorMessage } from '@/api/envelope'
 import { useFinalResults } from '@/composables/useFinalResults'
-import { useGameSocket } from '@/composables/useGameSocket'
+import { readPlayerSession } from '@/composables/usePlayerSession'
 import { useGameStore } from '@/stores/game.store'
 import { useUiStore } from '@/stores/ui.store'
 
@@ -13,12 +15,12 @@ import { useUiStore } from '@/stores/ui.store'
  * The standings come from `useFinalResults`, so this renders the same whether the player
  * was online when the match ended or opened the room again afterwards.
  *
- * Review is asked for on demand: the answer carries every question the player saw, which
- * is far too heavy to push to a whole room, and the server refuses it unless the host
- * enabled `flow.reviewMode` and the session is really finished.
+ * Review is asked for on demand over REST: the answer carries every question the player
+ * saw with its options and answer key, which is a document rather than room traffic, and
+ * the server refuses it unless the host enabled `flow.reviewMode` and the room is really
+ * finished. REST also keeps working once the room is closed, which the socket does not.
  */
 const game = useGameStore()
-const socket = useGameSocket()
 const ui = useUiStore()
 const { leaderboard, reviewEnabled, loading, error } = useFinalResults()
 
@@ -42,6 +44,9 @@ const correct = computed(
   () => myRow.value?.correct_answers_count ?? game.player?.correct_answers_count ?? null,
 )
 const total = computed(() => game.review?.total_questions ?? game.totalQuestions ?? null)
+// Only known once the review is loaded, and worth showing next to "correct": a low score
+// with few answers is a very different match from a low score with every question tried.
+const answered = computed(() => game.review?.answered_count ?? null)
 const accuracy = computed(() => {
   if (correct.value === null || !total.value) return null
   return Math.round((correct.value / total.value) * 100)
@@ -90,6 +95,12 @@ function toKeys(value) {
   if (value === null || value === undefined) return new Set()
   const list = Array.isArray(value) ? value : [value]
   return new Set(list.filter((entry) => entry !== null && entry !== undefined && entry !== '').map(asKey))
+}
+
+/** The server sends `time_taken` in seconds, rounded to two decimals. */
+function formatSeconds(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return ''
+  return value >= 10 ? `${Math.round(value)}s` : `${Math.round(value * 10) / 10}s`
 }
 
 function answerText(value) {
@@ -159,26 +170,32 @@ const reviewRows = computed(() =>
 )
 
 /**
- * `game:review` has no ack, and a refusal comes back on the shared error channel, so the
- * old failure has to be cleared first or it would be reported as this one.
+ * One request, one answer: the old socket call had no ack, so it had to guess with a
+ * timeout and read a refusal off the shared error channel. The socket token proves this
+ * tab is that player, exactly like it does on the `/game` namespace.
  */
-function openReview() {
+async function openReview() {
   if (items.value.length) {
     showReview.value = !showReview.value
     return
   }
 
+  const token = readPlayerSession()?.socketToken
+  if (!game.sessionId || !token) {
+    ui.toast('This browser no longer holds a seat in that room.', 'error')
+    return
+  }
+
   requesting.value = true
-  game.setError(null)
-  socket.requestReview()
-  window.setTimeout(() => {
-    requesting.value = false
-    if (game.review) {
-      showReview.value = true
-      return
-    }
-    ui.toast(game.lastError?.message ?? 'Review is not available for this room.', 'error')
-  }, 700)
+  const data = await getGameReview(game.sessionId, token).catch((err) => {
+    ui.toast(toErrorMessage(err, 'Review is not available for this room.'), 'error')
+    return null
+  })
+  requesting.value = false
+  if (!data) return
+
+  game.applyReview(data)
+  showReview.value = true
 }
 </script>
 
@@ -217,6 +234,14 @@ function openReview() {
           </p>
           <p class="stat-label">
             Correct
+          </p>
+        </div>
+        <div v-if="answered !== null" class="stat">
+          <p class="stat-value num">
+            {{ answered }}<span v-if="total" class="stat-total">/{{ total }}</span>
+          </p>
+          <p class="stat-label">
+            Answered
           </p>
         </div>
         <div v-if="accuracy !== null" class="stat">
@@ -328,6 +353,9 @@ function openReview() {
           <div class="review-score">
             <p class="num text-body-sm" :class="row.is_correct ? 'text-ans-d' : 'text-ink-3'">
               {{ row.score_earned ? `+${row.score_earned}` : '0' }}
+            </p>
+            <p v-if="!row.unanswered && row.time_taken !== null" class="num text-caption text-ink-3">
+              {{ formatSeconds(row.time_taken) }}
             </p>
             <p v-if="row.is_late && !row.unanswered" class="text-caption text-ink-3">
               Late

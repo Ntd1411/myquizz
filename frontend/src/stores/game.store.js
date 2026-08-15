@@ -59,7 +59,7 @@ export const useGameStore = defineStore('game', () => {
   const lockedReason = ref(null)
   const awaitingNext = ref(null) // question:awaiting_next, self-paced with autoAdvance=false
   const finalResults = ref(null) // game:ended
-  const review = ref(null) // game:review
+  const review = ref(null) // GET /games/:id/review
 
   const isHost = computed(() => role.value === 'host')
   const isSelfPaced = computed(() => config.value?.flow?.pacing === 'self')
@@ -336,7 +336,7 @@ export const useGameStore = defineStore('game', () => {
     if (payload?.leaderboard) leaderboard.value = payload.leaderboard
   }
 
-  /** `game:review` */
+  /** Answer sheet from `GET /games/:id/review`, asked for by the end screen. */
   function applyReview(payload) {
     touchClock(payload)
     review.value = payload ?? null

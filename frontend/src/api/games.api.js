@@ -75,3 +75,16 @@ export async function getResults(sessionId) {
   const res = await http.get(`/games/${sessionId}/results`)
   return unwrap(res.data).results ?? null
 }
+
+/**
+ * The player's own answer sheet, once the room is finished. It used to arrive over the
+ * socket, but it carries every question with its options, explanation and answer key:
+ * that is a document, not room traffic. The socket token is the identity here, and it
+ * still works after the room closed, so a reload no longer loses the review.
+ */
+export async function getGameReview(sessionId, socketToken) {
+  const res = await http.get(`/games/${sessionId}/review`, {
+    headers: { 'x-socket-token': socketToken },
+  })
+  return unwrap(res.data).review ?? null
+}

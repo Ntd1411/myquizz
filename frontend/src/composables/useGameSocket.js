@@ -45,7 +45,6 @@ export function useGameSocket() {
     'player:eliminated': (payload) => game.applyEliminated(payload),
     'player:finished': (payload) => game.applyPlayerFinished(payload),
     'game:ended': (payload) => game.applyEnded(payload),
-    'game:review': (payload) => game.applyReview(payload),
     error: (payload) => {
       const parsed = parseSocketError(payload?.message ?? '')
       console.error(`[game] ${payload?.event ?? 'event'} failed: ${parsed.code} - ${parsed.message}`)
@@ -139,7 +138,6 @@ export function useGameSocket() {
   const resume = () => emitGameEvent('game:resume')
   const endGame = () => emitGameEvent('game:end')
   const playerNext = () => emitGameEvent('question:next')
-  const requestReview = () => emitGameEvent('game:review')
 
   /**
    * Host config patch. The ack echoes what the server stored plus every path it
@@ -183,7 +181,6 @@ export function useGameSocket() {
     resume,
     endGame,
     playerNext,
-    requestReview,
     updateConfig,
     answer,
   }

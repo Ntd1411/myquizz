@@ -17,8 +17,7 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.js'],
     // Specs live in tests/, mirroring the src/ tree they cover.
     include: ['tests/**/*.spec.js'],
-    // Playwright specs live in e2e/ and are driven by their own runner.
-    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
+    exclude: ['node_modules/**', 'dist/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,vue}'],

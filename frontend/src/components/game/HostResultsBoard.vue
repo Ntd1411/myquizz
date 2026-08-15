@@ -30,16 +30,18 @@ const average = computed(() => {
 })
 
 /**
- * The server groups the answers by question id and orders by that id. A snapshot is
- * written in question order, so the position in this list is the question number.
+ * The server groups the answers by question id and sends `question_index`, the position
+ * the question was played at, ordered by it. Numbering rows by their position in this
+ * list would be wrong as soon as the room shuffles the questions, so the index is used.
  */
 const stats = computed(() =>
   perQuestion.value.map((row, position) => {
     const count = row.answer_count ?? 0
     const correct = row.correct_count ?? 0
+    const index = row.question_index ?? position
     return {
       id: row.question_id ?? position,
-      label: `Question ${position + 1}`,
+      label: `Question ${index + 1}`,
       count,
       correct,
       percent: count ? Math.round((correct / count) * 100) : 0,

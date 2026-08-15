@@ -8,7 +8,4 @@ dist
 coverage
 test-results
 tests
-e2e
 scripts
-playwright.config.js
-vitest.setup.js
