@@ -16,8 +16,8 @@ export const createQuizSnapshot = async (quizId: number) => {
        ),
        count(qs.id)
      FROM quizzes q
-     LEFT JOIN questions qs ON qs.quiz_id = q.id
-     WHERE q.id = $1
+     LEFT JOIN questions qs ON qs.quiz_id = q.id AND qs.deleted_at IS NULL
+     WHERE q.id = $1 AND q.deleted_at IS NULL
      GROUP BY q.id
      RETURNING id, total_questions`,
     [quizId]
