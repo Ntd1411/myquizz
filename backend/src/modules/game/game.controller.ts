@@ -58,7 +58,11 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
     }
     let input: JoinGameInput
     if (req.user) {
-      input = joinGameSchema.parse({ player_name: req.user.fullname, player_id: req.user.id })
+      input = joinGameSchema.parse({
+        player_name: req.user.fullname,
+        player_id: req.user.id,
+        player_avatar: req.user.avatar
+      })
     } else {
       input = joinGameSchema
         .omit({ player_id: true })

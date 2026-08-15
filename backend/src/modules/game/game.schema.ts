@@ -109,6 +109,7 @@ export const createGameSchema = z.object({
 export const joinGameSchema = z.object({
   player_name: z.string().min(1).max(50),
   player_id: z.number().positive().optional(), // user
+  player_avatar: z.url().optional().nullable(), // user
   player_guest_id: z.string().uuid().optional() // guest
 })
 

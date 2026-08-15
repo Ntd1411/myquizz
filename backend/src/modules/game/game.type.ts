@@ -24,6 +24,7 @@ export interface PlayerSessionRow {
   game_session_id: number
   player_id: number | null
   player_guest_id: string | null
+  player_avatar?: string | null
   player_name: string
   player_score: number
   correct_answers_count: number

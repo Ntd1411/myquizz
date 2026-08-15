@@ -398,6 +398,7 @@ export class GameSocket {
         id: p.id,
         player_name: p.player_name,
         player_score: p.player_score,
+        player_avatar: p.player_avatar ?? null,
         lives: p.lives ?? null, // the host screen needs it in survival
         status: p.status
       })),
@@ -491,8 +492,6 @@ export class GameSocket {
   private async onLobbyJoin(socket: Socket) {
     const data = socket.data as CustomSocketData
     if (!data.gameId || !data.code) throw new Error('FORBIDDEN: no room in token')
-    void socket.join(this.room(data.code))
-    if (data.role === 'host') void socket.join(this.hostRoom(data.code))
     const session = await this.loadSession(data.gameId)
 
     if (data.role === 'player' && data.playerSessionId) {

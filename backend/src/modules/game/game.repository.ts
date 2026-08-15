@@ -131,8 +131,8 @@ export const getPlayerSessionBySessionAndGuest = async (sessionId: number, playe
 }
 
 export const listPlayers = async (gameSessionId: number) => {
-  const { rows } = await pool.query<Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_score' | 'status'>>(
-    `SELECT id, player_name, player_score, status
+  const { rows } = await pool.query<Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_avatar' | 'player_score' | 'status'>>(
+    `SELECT id, player_name, player_avatar, player_score, status
        FROM player_sessions
       WHERE game_session_id = $1 AND deleted_at IS NULL
       ORDER BY created_at ASC`,
@@ -146,14 +146,15 @@ export const createPlayerSession = async (data: {
   player_id: number | null
   player_guest_id: string | null
   player_name: string
+  player_avatar: string | null
   lives: number | null
 }): Promise<PlayerSessionRow> =>
   withTransaction(async (tx) => {
     const { rows } = await tx.query<PlayerSessionRow>(
       `INSERT INTO player_sessions
-         (game_session_id, player_id, player_guest_id, player_name, lives)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [data.game_session_id, data.player_id, data.player_guest_id, data.player_name, data.lives]
+         (game_session_id, player_id, player_guest_id, player_name, player_avatar, lives)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [data.game_session_id, data.player_id, data.player_guest_id, data.player_name, data.player_avatar, data.lives]
     )
     await tx.query(
       'UPDATE game_sessions SET total_players = total_players + 1 WHERE id = $1',

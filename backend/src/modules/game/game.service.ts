@@ -101,6 +101,7 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
     player = await repo.createPlayerSession({
       game_session_id: session.id,
       player_id: input.player_id ?? null,
+      player_avatar: input.player_avatar ?? null,
       player_guest_id: input.player_guest_id ?? null,
       player_name: input.player_name,
       lives: config.flow.lives ?? null // initialize lives if mode uses
