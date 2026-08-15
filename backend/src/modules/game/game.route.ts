@@ -21,4 +21,6 @@ router.get('/:id/leaderboard', controller.getLeaderboard) // Get leaderboard
 
 router.get('/:id/results', controller.getResults) // Get results
 
+router.get('/:id/review', controller.getReview) // Player's own answer sheet (socket token)
+
 export default router

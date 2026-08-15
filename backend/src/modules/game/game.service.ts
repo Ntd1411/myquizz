@@ -1,12 +1,12 @@
 import { getModeHandler, listModes } from './engine/registry.js'
 import { gameConfigSchema, type GameConfig } from './game.schema.js'
-import { mergeConfig } from './game.util.js'
+import { mergeConfig, seededShuffle } from './game.util.js'
 import * as repo from './game.repository.js'
 import * as cache from './game.cache.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { CreateGameInput, JoinGameInput } from './game.schema.js'
-import type { GameSessionRow, LobbyPlayer, PlayerSessionRow } from './game.type.js'
-import { signSocketToken } from './socket.middleware.js'
+import type { GameSessionRow, LobbyPlayer, PlayerSessionRow, SnapshotQuestion } from './game.type.js'
+import { signSocketToken, verifySocketToken, type SocketTokenPayload } from './socket.middleware.js'
 import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rule.js'
 
 // Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
@@ -148,6 +148,93 @@ export const getResults = async (gameId: number) => {
     leaderboard: await repo.getLeaderboard(gameId),
     perQuestion: await repo.getQuestionStats(gameId)
   }
+}
+
+// The order a player actually saw: the room order first (seeded with the room id so
+// every process agrees), then the extra per-player order self-paced rooms add on top.
+const questionsAsPlayed = (
+  questions: SnapshotQuestion[], config: GameConfig, gameId: number, playerId: number
+): SnapshotQuestion[] => {
+  if (!config.flow.shuffleQuestions) return questions
+  const roomOrder = seededShuffle([...questions], gameId)
+  return config.flow.pacing === 'self'
+    ? seededShuffle([...roomOrder], gameId + playerId)
+    : roomOrder
+}
+
+const buildReview = (
+  session: GameSessionRow, player: PlayerSessionRow, questions: SnapshotQuestion[]
+) => {
+  const ordered = questionsAsPlayed(questions, session.config, session.id, player.id)
+  const total = ordered.length
+  // answers are keyed by question_index: marathon loops the bank, so an index
+  // can be >= total and several rows can point at the same question
+  const answers = new Map(
+    (player.answered_questions ?? []).map((entry) => [entry.question_index, entry] as const)
+  )
+
+  const buildItem = (q: SnapshotQuestion | undefined, index: number) => {
+    const entry = answers.get(index)
+    return {
+      question_index: index,
+      question_id: q?.id ?? entry?.question_id ?? null,
+      question_text: q?.question_text ?? null,
+      question_image: q?.question_image ?? null,
+      answer_options: q?.answer_options ?? null,
+      explanation: q?.explanation ?? null,
+      // false means the player never submitted anything for this question
+      answered: entry !== undefined,
+      your_answer: entry ? entry.answer : null,
+      correct_answer: q?.correct_answer ?? null,
+      is_correct: entry?.is_correct ?? false,
+      is_late: entry?.is_late ?? false,
+      score_earned: entry?.score_earned ?? 0,
+      time_taken: entry?.time_taken ?? null // seconds, two decimals
+    }
+  }
+
+  // every question of the quiz, answered or not
+  const items = ordered.map((q, index) => buildItem(q, index))
+  // marathon: extra loops over the same bank keep their own rows at the end
+  for (const index of Array.from(answers.keys()).sort((a, b) => a - b)) {
+    if (index < total) continue
+    items.push(buildItem(total > 0 ? ordered[index % total] : undefined, index))
+  }
+
+  return {
+    player_score: player.player_score,
+    correct_answers_count: player.correct_answers_count,
+    total_questions: total,
+    answered_count: answers.size,
+    items,
+    serverTime: new Date().toISOString()
+  }
+}
+
+export const getPlayerReview = async (gameId: number, token: string | undefined) => {
+  if (!token) throw new AppError(401, 'Missing socket token')
+
+  let payload: SocketTokenPayload
+  try {
+    payload = verifySocketToken(token)
+  } catch {
+    throw new AppError(401, 'Socket token is not valid')
+  }
+  if (payload.gsid !== gameId) throw new AppError(403, 'Token belongs to another room')
+  if (payload.role !== 'player' || payload.psid === null)
+    throw new AppError(403, 'Only a player can review their own answers')
+
+  const session = await loadSessionById(gameId)
+  if (!session) throw new AppError(404, 'Room not found')
+  if (!session.config.flow.reviewMode) throw new AppError(403, 'Review is disabled in this room')
+  if (session.session_status !== 'finished') throw new AppError(409, 'Game is still running')
+
+  // read the player from Postgres: endGame flushes the final rows and clears the cache
+  const player = await repo.getPlayerSession(payload.psid)
+  if (!player || player.game_session_id !== gameId)
+    throw new AppError(404, 'Player not found in this room')
+
+  return buildReview(session, player, await repo.getSnapshotQuestions(gameId))
 }
 
 const buildConfig = (mode: string, base: GameConfig, patch: unknown) => {

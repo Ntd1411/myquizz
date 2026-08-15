@@ -170,7 +170,7 @@ On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }
 | `/v1/auth` | 7 | Register, login, refresh, logout, Google OAuth redirect flow and One Tap |
 | `/v1/users` | 9 | Own profile (the email is immutable), public profile, password change, avatar, forgot / reset password |
 | `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
-| `/v1/games` | 8 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results |
+| `/v1/games` | 9 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results, personal answer review |
 | `/v1/storage` | 1 | Presigned upload URL |
 
 Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
@@ -279,7 +279,6 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 | `question:answer` | player | Submit an answer, acknowledged by the server |
 | `question:next` | player | Move on in self-paced modes when `autoAdvance` is off |
 | `player:sync` | both | Ask for a full state snapshot after a reconnect |
-| `game:review` | player | Get the personal answer review once the match is over |
 
 ### Events sent by the server
 
@@ -296,7 +295,6 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 | `player:eliminated`, `player:finished` | room / player | Per-player outcome |
 | `game:state` | both | Full snapshot, used to restore a client after a reconnect |
 | `game:ended` | room | Final standings and per-question stats |
-| `game:review` | player | The caller's own answers |
 | `host:question`, `host:answer-received`, `host:player-progress`, `leaderboard:host` | host room | Answer key and the full monitoring table |
 | `error` | caller | A handler failed and no acknowledgement was expected |
 
@@ -305,6 +303,7 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 - **The server is authoritative.** Grading, timing and scoring happen server side; `correct_answer` is stripped from every payload that leaves the server, except inside the host room and after a question is locked.
 - **One answer per question.** The slot is claimed atomically in Redis, so two sockets racing on the same question cannot both be accepted.
 - **Reconnects are cheap.** `lobby:join` or `player:sync` returns a full snapshot with the remaining time; a self-paced player gets back the leftover time, not a fresh timer.
+- **The answer review is not a socket event.** It is `GET /games/:id/review`, authenticated by the socket token: the payload is a one-off document carrying every question with its answer key, and REST still answers once the room is `finished`, which the socket handshake refuses.
 
 ## Game engine
 

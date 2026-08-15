@@ -52,6 +52,9 @@ export interface LeaderboardRow {
 
 export interface QuestionStatRow {
   question_id: number
+  // Position the question had in the match, so a report never has to guess
+  // "Question N" from the position of the row in the array
+  question_index: number
   answer_count: number
   correct_count: number
 }

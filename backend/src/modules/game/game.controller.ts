@@ -103,3 +103,13 @@ export const getResults = async (req: AuthRequest, res: Response, next: NextFunc
     next(e)
   }
 }
+
+export const getReview = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const token = (req.header('x-socket-token') ?? req.query['token']) as string | undefined
+    const review = await gameService.getPlayerReview(Number(req.params['id']), token)
+    return success(res, { review })
+  } catch (e) {
+    next(e)
+  }
+}

@@ -38,6 +38,9 @@ export const checkSessionCodeExists = async (code: string) => {
 }
 
 // ---------- Game session ----------
+// Every session query joins the host row with LEFT JOIN on purpose: a deleted host
+// account must not make the whole room disappear from every lookup, which would 404
+// players who are still legitimately inside it.
 export const createGameSession = async (data: {
   quiz_snapshot_id: number
   session_name: string
@@ -61,7 +64,7 @@ export const createGameSession = async (data: {
     )
     SELECT i.*, u.fullname as session_host_name, u.avatar as session_host_avatar
     FROM inserted i
-    JOIN users u ON u.id = i.session_host`,
+    LEFT JOIN users u ON u.id = i.session_host`,
     [data.quiz_snapshot_id, data.session_name, sessionCode, data.session_host,
       data.game_mode, JSON.stringify(data.config), data.total_questions]
   )
@@ -72,7 +75,7 @@ export const createGameSession = async (data: {
 export const getSessionByCode = async (code: string) => {
   const { rows } = await pool.query<GameSessionRow>(
     `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
-     JOIN users as u ON u.id = gs.session_host
+     LEFT JOIN users as u ON u.id = gs.session_host
      WHERE gs.session_code = $1 AND gs.deleted_at IS NULL`,
     [code]
   )
@@ -82,7 +85,7 @@ export const getSessionByCode = async (code: string) => {
 export const getSessionById = async (id: number) => {
   const { rows } = await pool.query<GameSessionRow>(
     `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
-     JOIN users as u ON u.id = gs.session_host
+     LEFT JOIN users as u ON u.id = gs.session_host
      WHERE gs.id = $1 AND gs.deleted_at IS NULL`,
     [id]
   )
@@ -99,7 +102,7 @@ export const updateSessionConfig = async (id: number, config: GameConfig): Promi
     )
     SELECT u.*, us.fullname as session_host_name, us.avatar as session_host_avatar
     FROM updated u
-    JOIN users us ON us.id = u.session_host`,
+    LEFT JOIN users us ON us.id = u.session_host`,
     [id, JSON.stringify(config)]
   )
   if (!rows[0]) throw new Error('Failed to update game session config')
@@ -192,18 +195,21 @@ export const getLeaderboard = async (gameSessionId: number) => {
   return rows.map((r, i) => ({ rank: i + 1, ...r }))
 }
 
-// Get stats of each question: number of answers and correct answers
+// Get stats of each question: number of answers and correct answers.
+// question_index is the position the question was played at (min, because marathon
+// replays the same bank), so the report can label rows without guessing the order.
 export const getQuestionStats = async (gameSessionId: number) => {
   const { rows } = await pool.query<QuestionStatRow>(
     `SELECT
         (ans->>'question_id')::int              AS question_id,
+        min((ans->>'question_index')::int)::int AS question_index,
         count(*)::int                           AS answer_count,
         (count(*) FILTER (WHERE (ans->>'is_correct')::boolean))::int AS correct_count
      FROM player_sessions ps,
           jsonb_array_elements(ps.answered_questions) AS ans
      WHERE ps.game_session_id = $1 AND ps.deleted_at IS NULL
      GROUP BY (ans->>'question_id')::int
-     ORDER BY question_id`,
+     ORDER BY question_index`,
     [gameSessionId]
   )
   return rows
