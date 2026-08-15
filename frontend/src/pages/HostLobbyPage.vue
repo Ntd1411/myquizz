@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import GameShell from '@/components/game/GameShell.vue'
 import HostGameConsole from '@/components/game/HostGameConsole.vue'
+import HostResultsBoard from '@/components/game/HostResultsBoard.vue'
 import HostSelfPacedBoard from '@/components/game/HostSelfPacedBoard.vue'
 import PlayerList from '@/components/game/PlayerList.vue'
 import RoomSettingsDialog from '@/components/game/RoomSettingsDialog.vue'
@@ -321,8 +322,10 @@ onBeforeUnmount(() => {
             </p>
             <span class="chip">{{ statusLabel }}</span>
           </section>
+          <!-- Finished: there is nothing left to drive, so the report takes over. -->
+          <HostResultsBoard v-if="game.isFinished" data-enter />
           <!-- Self-paced: no shared question to drive, only progress to watch. -->
-          <HostSelfPacedBoard v-if="game.isSelfPaced" data-enter />
+          <HostSelfPacedBoard v-else-if="game.isSelfPaced" data-enter />
           <HostGameConsole v-else data-enter />
         </template>
       </div>
