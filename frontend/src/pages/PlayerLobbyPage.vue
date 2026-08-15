@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import GameShell from '@/components/game/GameShell.vue'
+import PlayerGameView from '@/components/game/PlayerGameView.vue'
 import PlayerList from '@/components/game/PlayerList.vue'
 import { getGameByCode, joinGame } from '@/api/games.api'
 import { toErrorMessage } from '@/api/envelope'
@@ -60,12 +61,13 @@ const waiting = computed(() => game.sessionStatus === 'lobby')
 const cancelled = computed(() => game.sessionStatus === 'cancelled')
 const connectionProblem = computed(() => ['reconnecting', 'closed'].includes(game.connection))
 
-/** The room can be closed while the player waits, which is not a load error. */
+/**
+ * The room can be closed while the player waits, which is not a load error. Once the
+ * match is running the gameplay view says everything, so the room card stays quiet.
+ */
 const roomMessage = computed(() => {
   if (cancelled.value) return 'The host closed this room.'
-  if (game.sessionStatus === 'finished') return 'This game is already over.'
-  if (waiting.value) return ''
-  return 'The host started the game. The play screen arrives with the gameplay update.'
+  return ''
 })
 
 async function load() {
@@ -224,7 +226,7 @@ watch(
               You are in. Waiting for the host to start&hellip;
             </p>
           </div>
-          <p v-else class="mt-lg text-body-sm text-ink-2">
+          <p v-else-if="roomMessage" class="mt-lg text-body-sm text-ink-2">
             {{ roomMessage }}
           </p>
 
@@ -233,7 +235,15 @@ watch(
           </p>
         </section>
 
-        <PlayerList :players="players" :me-id="game.playerId" :max-players="maxPlayers" data-enter />
+        <!-- Lobby shows who is here; from the start on, the match takes the screen. -->
+        <PlayerList
+          v-if="waiting"
+          :players="players"
+          :me-id="game.playerId"
+          :max-players="maxPlayers"
+          data-enter
+        />
+        <PlayerGameView v-else data-enter />
       </div>
     </div>
   </GameShell>

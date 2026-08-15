@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import GameShell from '@/components/game/GameShell.vue'
+import HostGameConsole from '@/components/game/HostGameConsole.vue'
 import PlayerList from '@/components/game/PlayerList.vue'
 import RoomSettingsDialog from '@/components/game/RoomSettingsDialog.vue'
 import { getGameByCode, getHostToken, listGameModes, updateGameConfig } from '@/api/games.api'
@@ -191,7 +192,6 @@ watch(status, (value) => {
   if (value === 'lobby') return
   starting.value = false
   settingsOpen.value = false
-  ui.toast('The game is running. The host console arrives with the gameplay screens.')
 })
 
 onMounted(() => {
@@ -234,8 +234,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="grid gap-lg">
-        <!-- Room. The code is the whole point of this card, so it leads. -->
-        <section class="wash-panel relative p-xl text-center" data-enter>
+        <!-- Lobby. The code is the whole point of this card, so it leads. -->
+        <section v-if="inLobby" class="wash-panel relative p-xl text-center" data-enter>
           <!-- Settings sit behind one icon: the code, not the setup, owns this screen. -->
           <button
             v-if="spec"
@@ -310,7 +310,18 @@ onBeforeUnmount(() => {
           </p>
         </section>
 
-        <PlayerList :players="players" :max-players="maxPlayers" data-enter />
+        <PlayerList v-if="inLobby" :players="players" :max-players="maxPlayers" data-enter />
+
+        <!-- Once the match runs the console owns the screen: the code is done recruiting. -->
+        <template v-else>
+          <section class="card-surface flex flex-wrap items-center justify-between gap-sm p-lg" data-enter>
+            <p class="eyebrow-label">
+              Room <span class="num">{{ roomCode }}</span>
+            </p>
+            <span class="chip">{{ statusLabel }}</span>
+          </section>
+          <HostGameConsole data-enter />
+        </template>
       </div>
     </div>
 
