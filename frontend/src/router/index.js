@@ -32,7 +32,14 @@ const routes = [
 
   // Joining a live room is public: guests play with a nickname, signed-in users with
   // their account. A shared link can prefill the code with /join?code=ABC123.
-  { path: '/join', name: 'join-game', component: () => import('@/pages/JoinGamePage.vue') },
+  // `bare` drops the site header and footer: the live-room screens carry their own bar,
+  // because one stray click into the rest of the app leaves the room.
+  {
+    path: '/join',
+    name: 'join-game',
+    component: () => import('@/pages/JoinGamePage.vue'),
+    meta: { bare: true },
+  },
 
   // Setting up a room is its own screen, not a dialog: the mode decides which settings
   // exist, so the form is too tall to sit on top of the quiz page.
@@ -51,7 +58,17 @@ const routes = [
     name: 'host-lobby',
     component: () => import('@/pages/HostLobbyPage.vue'),
     props: true,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, bare: true },
+  },
+
+  // Player lobby. Public like /join: the seat comes from the socket token handed out by
+  // the join step (kept per tab), never from the code in the URL.
+  {
+    path: '/play/:code',
+    name: 'play-lobby',
+    component: () => import('@/pages/PlayerLobbyPage.vue'),
+    props: true,
+    meta: { bare: true },
   },
 
   // Public creator profile. Lists only published quizzes with questions, so it is

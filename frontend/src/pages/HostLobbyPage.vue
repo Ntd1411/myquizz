@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
+import GameShell from '@/components/game/GameShell.vue'
+import PlayerList from '@/components/game/PlayerList.vue'
 import RoomSettingsDialog from '@/components/game/RoomSettingsDialog.vue'
 import { getGameByCode, getHostToken, listGameModes, updateGameConfig } from '@/api/games.api'
 import { toErrorMessage } from '@/api/envelope'
@@ -22,13 +24,14 @@ import { revealOnEnter } from '@/composables/useMotion'
  *   POST /games/:id/host-token   -> the socket token, then the /game namespace as host
  *   lobby:updated                -> the player list and the config from then on
  *
- * Settings live in a dialog rather than on the page: the room code and the player list are
- * what the host projects on a screen, and the settings are only touched now and then.
+ * The screen is projected on a wall, so the code is the loudest thing on it and settings
+ * live in a dialog behind one icon. The site header and footer are gone for the same
+ * reason: a host who wanders into Discover mid-room drops the socket.
  *
- * They are edited through `lobby:config-update` because that broadcast is what keeps the
- * players in sync; `PATCH /games/:id/config` is only the fallback while the socket is down.
- * Either way the answer carries `ignored`, the paths the server refused, and those are
- * shown instead of pretending everything was saved.
+ * Settings are edited through `lobby:config-update` because that broadcast is what keeps
+ * the players in sync; `PATCH /games/:id/config` is only the fallback while the socket is
+ * down. Either way the answer carries `ignored`, the paths the server refused, and those
+ * are shown instead of pretending everything was saved.
  */
 const props = defineProps({
   code: { type: String, required: true },
@@ -59,7 +62,6 @@ const shareLink = computed(() => `${window.location.origin}/join?code=${roomCode
 
 // The live list comes from lobby:updated; the REST answer only fills the first paint.
 const players = computed(() => game.players ?? [])
-const connectedCount = computed(() => players.value.filter((player) => player.status === 'connected').length)
 const maxPlayers = computed(() => game.config?.lobby?.maxPlayers ?? null)
 const status = computed(() => game.sessionStatus ?? session.value?.session_status ?? 'lobby')
 const statusLabel = computed(() => {
@@ -205,49 +207,39 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="pageEl" class="container-page py-xxl">
-    <div v-if="loading" class="flex justify-center py-xxl">
-      <BaseSpinner />
-    </div>
-
-    <div v-else-if="loadError" class="card-surface mx-auto max-w-[560px] p-xl" data-enter>
-      <h1 class="text-heading-2 text-ink">
-        This room cannot be hosted
-      </h1>
-      <p class="mt-sm text-body-sm text-ink-muted">
-        {{ loadError }}
-      </p>
-      <p class="mt-xs text-caption text-ink-faint">
-        Only the account that created the room can host it.
-      </p>
-      <div class="mt-lg flex flex-wrap gap-xs">
-        <button class="btn btn-utility" type="button" @click="load">
-          Try again
-        </button>
-        <RouterLink :to="{ name: 'library' }" class="btn btn-ghost">
-          Back to my library
-        </RouterLink>
+  <GameShell width="max-w-[900px]">
+    <div ref="pageEl">
+      <div v-if="loading" class="flex justify-center py-xxl">
+        <BaseSpinner />
       </div>
-    </div>
 
-    <div v-else class="grid gap-lg">
-      <section class="card-surface p-xl" data-enter>
-        <div class="flex items-start justify-between gap-sm">
-          <div class="min-w-0">
-            <p class="eyebrow-label">
-              {{ modeLabel(modeName) }} room
-            </p>
-            <h1 class="mt-xxs line-clamp-2 break-words text-heading-2 text-ink" :title="roomName || quizName">
-              {{ roomName || quizName }}
-            </h1>
-            <p class="mt-xxs truncate text-body-sm text-ink-muted" :title="quizName">
-              {{ quizName }}
-            </p>
-          </div>
+      <div v-else-if="loadError" class="card-surface mx-auto max-w-[560px] p-xl" data-enter>
+        <h1 class="text-heading-2 text-ink">
+          This room cannot be hosted
+        </h1>
+        <p class="mt-sm text-body-sm text-ink-2">
+          {{ loadError }}
+        </p>
+        <p class="mt-xs text-caption text-ink-3">
+          Only the account that created the room can host it.
+        </p>
+        <div class="mt-lg flex flex-wrap gap-xs">
+          <button class="btn-utility" type="button" @click="load">
+            Try again
+          </button>
+          <RouterLink :to="{ name: 'library' }" class="btn-ghost">
+            Back to my library
+          </RouterLink>
+        </div>
+      </div>
 
+      <div v-else class="grid gap-lg">
+        <!-- Room. The code is the whole point of this card, so it leads. -->
+        <section class="wash-panel relative p-xl text-center" data-enter>
+          <!-- Settings sit behind one icon: the code, not the setup, owns this screen. -->
           <button
             v-if="spec"
-            class="shrink-0 rounded-md p-xxs text-ink-muted transition-colors hover:text-ink"
+            class="icon-btn absolute right-md top-md"
             type="button"
             title="Room settings"
             @click="settingsOpen = true"
@@ -267,73 +259,59 @@ onBeforeUnmount(() => {
             </svg>
             <span class="sr-only">Room settings</span>
           </button>
-        </div>
 
-        <div class="mt-lg rounded-md bg-canvas-soft p-lg text-center">
-          <p class="text-caption text-ink-faint">
-            Room code
-          </p>
-          <p class="mt-xxs text-[44px] font-semibold leading-none tracking-[0.18em] text-ink">
-            {{ roomCode }}
-          </p>
-          <div class="mt-md flex flex-wrap items-center justify-center gap-xs">
-            <button class="btn-utility" type="button" @click="copy(roomCode, 'Room code')">
-              Copy code
-            </button>
-            <button class="btn-utility" type="button" @click="copy(shareLink, 'Join link')">
-              Copy join link
-            </button>
-          </div>
-          <p class="mt-sm break-all text-caption text-ink-faint">
-            {{ shareLink }}
-          </p>
-        </div>
-
-        <div class="mt-lg flex flex-wrap items-center gap-xs">
-          <button
-            class="btn btn-primary"
-            type="button"
-            :disabled="!inLobby || starting || !players.length"
-            @click="start"
-          >
-            {{ starting ? 'Starting\u2026' : 'Start the game' }}
-          </button>
-          <span v-if="!inLobby" class="chip">{{ statusLabel }}</span>
-        </div>
-        <p v-if="connectionProblem" class="mt-xs text-caption text-sticker-orange-deep">
-          Live updates are down ({{ connection }}). The player list may be out of date.
-        </p>
-        <p v-else-if="inLobby && !players.length" class="mt-xs text-caption text-ink-faint">
-          Waiting for the first player to join.
-        </p>
-      </section>
-
-      <section class="card-surface p-xl" data-enter>
-        <div class="flex items-center justify-between gap-xs">
           <p class="eyebrow-label">
-            Players
+            {{ modeLabel(modeName) }} room
           </p>
-          <span class="text-caption text-ink-faint">
-            {{ connectedCount }}<template v-if="maxPlayers"> / {{ maxPlayers }}</template>
-          </span>
-        </div>
+          <h1 class="mx-auto mt-xs line-clamp-2 max-w-[36ch] break-words text-heading-2 text-ink" :title="roomName || quizName">
+            {{ roomName || quizName }}
+          </h1>
+          <p class="mt-xxs truncate text-body-sm text-ink-2" :title="quizName">
+            {{ quizName }}
+          </p>
 
-        <ul v-if="players.length" class="mt-sm grid gap-xxs sm:grid-cols-2 xl:grid-cols-3">
-          <li
-            v-for="player in players"
-            :key="player.id"
-            class="flex items-center justify-between gap-xs rounded-md border-hairline px-sm py-xs"
-          >
-            <span class="text-body-sm text-ink">{{ player.player_name }}</span>
-            <span v-if="player.status !== 'connected'" class="text-caption text-ink-faint">
-              {{ player.status }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="mt-sm text-body-sm text-ink-muted">
-          Nobody has joined yet. Share the code or the join link.
-        </p>
-      </section>
+          <div class="card-soft mx-auto mt-lg max-w-[520px] px-lg py-lg">
+            <p class="eyebrow-label">
+              Room code
+            </p>
+            <p class="num mt-sm break-all text-[52px] font-medium leading-none tracking-[0.14em] text-ink">
+              {{ roomCode }}
+            </p>
+            <div class="mt-lg flex flex-wrap items-center justify-center gap-xs">
+              <button class="btn-utility" type="button" @click="copy(roomCode, 'Room code')">
+                Copy code
+              </button>
+              <button class="btn-utility" type="button" @click="copy(shareLink, 'Join link')">
+                Copy join link
+              </button>
+            </div>
+            <p class="mt-sm break-all text-caption text-ink-3">
+              {{ shareLink }}
+            </p>
+          </div>
+
+          <div class="mt-lg flex flex-wrap items-center justify-center gap-xs">
+            <button
+              class="btn-primary"
+              type="button"
+              :disabled="!inLobby || starting || !players.length"
+              @click="start"
+            >
+              {{ starting ? 'Starting\u2026' : 'Start the game' }}
+            </button>
+            <span v-if="!inLobby" class="chip">{{ statusLabel }}</span>
+          </div>
+
+          <p v-if="connectionProblem" class="mt-sm text-caption text-ans-a">
+            Live updates are down ({{ connection }}). The player list may be out of date.
+          </p>
+          <p v-else-if="inLobby && !players.length" class="mt-sm text-caption text-ink-3">
+            Waiting for the first player to join.
+          </p>
+        </section>
+
+        <PlayerList :players="players" :max-players="maxPlayers" data-enter />
+      </div>
     </div>
 
     <RoomSettingsDialog
@@ -346,16 +324,16 @@ onBeforeUnmount(() => {
       @close="closeSettings"
     >
       <template #notes>
-        <p v-if="configError" class="mt-md text-body-sm text-sticker-orange-deep">
+        <p v-if="configError" class="mt-md text-body-sm text-ans-a">
           {{ configError }}
         </p>
 
         <div v-if="ignoredMessages.length" class="mt-md">
-          <p class="text-caption text-ink-muted">
+          <p class="text-caption text-ink-2">
             The server kept its own value for:
           </p>
           <ul class="mt-xxs grid gap-xxs">
-            <li v-for="message in ignoredMessages" :key="message" class="text-caption text-ink-faint">
+            <li v-for="message in ignoredMessages" :key="message" class="text-caption text-ink-3">
               {{ message }}
             </li>
           </ul>
@@ -363,11 +341,11 @@ onBeforeUnmount(() => {
       </template>
 
       <template #footer>
-        <button class="btn btn-ghost" type="button" :disabled="!dirty || saving" @click="resetConfig">
+        <button class="btn-ghost" type="button" :disabled="!dirty || saving" @click="resetConfig">
           Undo
         </button>
         <button
-          class="btn btn-primary"
+          class="btn-primary"
           type="button"
           :disabled="!dirty || saving || !inLobby"
           @click="saveConfig"
@@ -376,5 +354,5 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </RoomSettingsDialog>
-  </div>
+  </GameShell>
 </template>
