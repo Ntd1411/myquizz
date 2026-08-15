@@ -114,10 +114,43 @@ export default [
   },
 
   {
+    // Test files. Vitest injects its API as globals (test.globals in vite.config.js),
+    // so they are declared here instead of being imported in every spec.
+    files: ['**/*.spec.js', 'vitest.setup.js', 'e2e/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+        beforeAll: 'readonly',
+        beforeEach: 'readonly',
+        afterAll: 'readonly',
+        afterEach: 'readonly',
+      },
+    },
+  },
+
+  {
     // Config and tooling files run in Node, not the browser.
     files: ['*.config.js', 'vite.config.js', 'tailwind.config.js', 'postcss.config.js'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+
+  {
+    // Developer scripts run in Node and are console programs: printing to stdout is
+    // the whole point of them, so the browser globals and the console budget of the
+    // app code do not apply.
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': 'off',
     },
   },
 ]

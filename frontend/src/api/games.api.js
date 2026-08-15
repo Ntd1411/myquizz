@@ -17,7 +17,9 @@ export async function listGameModes() {
 
 export async function createGame({ quizId, sessionName, mode, config }) {
   const res = await http.post('/games', {
-    quiz_id: quizId,
+    // Route params and card ids travel as strings, but the schema wants a real number:
+    // `quiz_id: '12'` comes back as a validation error, not as a room.
+    quiz_id: Number(quizId),
     session_name: sessionName,
     mode: mode || undefined,
     config: config || undefined,
@@ -48,6 +50,17 @@ export async function joinGame(code, { playerName, guestId } = {}) {
   return { player: data.player ?? null, socketToken: data.socketToken ?? null }
 }
 
+/**
+ * Host-only config patch outside the socket connection (page reload, socket down).
+ * The server never rejects a bad field: it drops it and reports it in `ignored`,
+ * so the caller has to show that list instead of assuming the patch was applied.
+ */
+export async function updateGameConfig(sessionId, config) {
+  const res = await http.patch(`/games/${sessionId}/config`, { config })
+  const data = unwrap(res.data)
+  return { config: data.config ?? null, changed: data.changed ?? [], ignored: data.ignored ?? [] }
+}
+
 export async function getHostToken(sessionId) {
   const res = await http.post(`/games/${sessionId}/host-token`)
   return unwrap(res.data).hostToken?.socketToken ?? null
@@ -61,4 +74,17 @@ export async function getLeaderboard(sessionId) {
 export async function getResults(sessionId) {
   const res = await http.get(`/games/${sessionId}/results`)
   return unwrap(res.data).results ?? null
+}
+
+/**
+ * The player's own answer sheet, once the room is finished. It used to arrive over the
+ * socket, but it carries every question with its options, explanation and answer key:
+ * that is a document, not room traffic. The socket token is the identity here, and it
+ * still works after the room closed, so a reload no longer loses the review.
+ */
+export async function getGameReview(sessionId, socketToken) {
+  const res = await http.get(`/games/${sessionId}/review`, {
+    headers: { 'x-socket-token': socketToken },
+  })
+  return unwrap(res.data).review ?? null
 }

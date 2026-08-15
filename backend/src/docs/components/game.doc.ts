@@ -279,6 +279,12 @@ export const gameSchemas: SchemaMap = {
     type: 'object',
     properties: {
       question_id: { type: 'integer' },
+      question_index: {
+        type: 'integer',
+        description:
+          'Position the question was played at, zero based. The rows are ordered by it, so it is the question number to print, unlike the id.',
+        example: 0
+      },
       answer_count: {
         type: 'integer',
         description:
@@ -290,6 +296,66 @@ export const gameSchemas: SchemaMap = {
         description: 'Number of correct answers for that question.',
         example: 9
       }
+    }
+  },
+
+  ReviewItem: {
+    type: 'object',
+    description:
+      'One question of the quiz, in the order this player played it. Every question is returned, answered or not: `answered: false` is a question the player never submitted, and it is what tells a skipped question apart from a wrong one.',
+    properties: {
+      question_index: { type: 'integer', example: 0 },
+      question_id: { type: 'integer', nullable: true },
+      question_text: { type: 'string', nullable: true },
+      question_image: { type: 'string', nullable: true },
+      answer_options: {
+        type: 'array',
+        nullable: true,
+        description:
+          'Snapshot options, either [{ id, option_text }] rows or plain strings depending on how the quiz was written.',
+        items: {}
+      },
+      explanation: { type: 'string', nullable: true },
+      answered: {
+        type: 'boolean',
+        description: 'false when the player never submitted an answer here.',
+        example: true
+      },
+      your_answer: { nullable: true },
+      correct_answer: { nullable: true },
+      is_correct: { type: 'boolean', example: true },
+      is_late: { type: 'boolean', example: false },
+      score_earned: { type: 'number', example: 850 },
+      time_taken: {
+        type: 'number',
+        nullable: true,
+        description: 'Seconds spent on the question, rounded to two decimals. null when unanswered.',
+        example: 4.27
+      }
+    }
+  },
+
+  GameReview: {
+    type: 'object',
+    description: 'The caller\'s own answer sheet for a finished room.',
+    properties: {
+      player_score: { type: 'integer', example: 4200 },
+      correct_answers_count: { type: 'integer', example: 7 },
+      total_questions: {
+        type: 'integer',
+        description: 'Questions in the quiz snapshot, which is also items.length in every mode but marathon.',
+        example: 10
+      },
+      answered_count: {
+        type: 'integer',
+        description: 'How many of them the player actually submitted.',
+        example: 8
+      },
+      items: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/ReviewItem' }
+      },
+      serverTime: { type: 'string', format: 'date-time' }
     }
   }
 }

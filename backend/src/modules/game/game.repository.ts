@@ -16,8 +16,8 @@ export const createQuizSnapshot = async (quizId: number) => {
        ),
        count(qs.id)
      FROM quizzes q
-     LEFT JOIN questions qs ON qs.quiz_id = q.id
-     WHERE q.id = $1
+     LEFT JOIN questions qs ON qs.quiz_id = q.id AND qs.deleted_at IS NULL
+     WHERE q.id = $1 AND q.deleted_at IS NULL
      GROUP BY q.id
      RETURNING id, total_questions`,
     [quizId]
@@ -38,6 +38,9 @@ export const checkSessionCodeExists = async (code: string) => {
 }
 
 // ---------- Game session ----------
+// Every session query joins the host row with LEFT JOIN on purpose: a deleted host
+// account must not make the whole room disappear from every lookup, which would 404
+// players who are still legitimately inside it.
 export const createGameSession = async (data: {
   quiz_snapshot_id: number
   session_name: string
@@ -52,11 +55,16 @@ export const createGameSession = async (data: {
   }
 
   const { rows } = await pool.query<GameSessionRow>(
-    `INSERT INTO game_sessions
-           (quiz_snapshot_id, session_name, session_code, session_host,
-            game_mode, config, total_questions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
+    `WITH inserted AS (
+      INSERT INTO game_sessions
+        (quiz_snapshot_id, session_name, session_code, session_host,
+        game_mode, config, total_questions)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    )
+    SELECT i.*, u.fullname as session_host_name, u.avatar as session_host_avatar
+    FROM inserted i
+    LEFT JOIN users u ON u.id = i.session_host`,
     [data.quiz_snapshot_id, data.session_name, sessionCode, data.session_host,
       data.game_mode, JSON.stringify(data.config), data.total_questions]
   )
@@ -66,7 +74,9 @@ export const createGameSession = async (data: {
 
 export const getSessionByCode = async (code: string) => {
   const { rows } = await pool.query<GameSessionRow>(
-    'SELECT * FROM game_sessions WHERE session_code = $1 AND deleted_at IS NULL',
+    `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
+     LEFT JOIN users as u ON u.id = gs.session_host
+     WHERE gs.session_code = $1 AND gs.deleted_at IS NULL`,
     [code]
   )
   return rows[0] ?? null
@@ -74,7 +84,9 @@ export const getSessionByCode = async (code: string) => {
 
 export const getSessionById = async (id: number) => {
   const { rows } = await pool.query<GameSessionRow>(
-    'SELECT * FROM game_sessions WHERE id = $1 AND deleted_at IS NULL',
+    `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
+     LEFT JOIN users as u ON u.id = gs.session_host
+     WHERE gs.id = $1 AND gs.deleted_at IS NULL`,
     [id]
   )
   return rows[0] ?? null
@@ -82,8 +94,15 @@ export const getSessionById = async (id: number) => {
 
 export const updateSessionConfig = async (id: number, config: GameConfig): Promise<GameSessionRow> => {
   const { rows } = await pool.query<GameSessionRow>(
-    `UPDATE game_sessions SET config = $2, updated_at = now()
-      WHERE id = $1 RETURNING *`,
+    `WITH updated AS (
+      UPDATE game_sessions
+      SET config = $2, updated_at = now()
+      WHERE id = $1
+      RETURNING *
+    )
+    SELECT u.*, us.fullname as session_host_name, us.avatar as session_host_avatar
+    FROM updated u
+    LEFT JOIN users us ON us.id = u.session_host`,
     [id, JSON.stringify(config)]
   )
   if (!rows[0]) throw new Error('Failed to update game session config')
@@ -131,8 +150,8 @@ export const getPlayerSessionBySessionAndGuest = async (sessionId: number, playe
 }
 
 export const listPlayers = async (gameSessionId: number) => {
-  const { rows } = await pool.query<Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_score' | 'status'>>(
-    `SELECT id, player_name, player_score, status
+  const { rows } = await pool.query<Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_avatar' | 'player_score' | 'status'>>(
+    `SELECT id, player_name, player_avatar, player_score, status
        FROM player_sessions
       WHERE game_session_id = $1 AND deleted_at IS NULL
       ORDER BY created_at ASC`,
@@ -146,14 +165,15 @@ export const createPlayerSession = async (data: {
   player_id: number | null
   player_guest_id: string | null
   player_name: string
+  player_avatar: string | null
   lives: number | null
 }): Promise<PlayerSessionRow> =>
   withTransaction(async (tx) => {
     const { rows } = await tx.query<PlayerSessionRow>(
       `INSERT INTO player_sessions
-         (game_session_id, player_id, player_guest_id, player_name, lives)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [data.game_session_id, data.player_id, data.player_guest_id, data.player_name, data.lives]
+         (game_session_id, player_id, player_guest_id, player_name, player_avatar, lives)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [data.game_session_id, data.player_id, data.player_guest_id, data.player_name, data.player_avatar, data.lives]
     )
     await tx.query(
       'UPDATE game_sessions SET total_players = total_players + 1 WHERE id = $1',
@@ -175,18 +195,21 @@ export const getLeaderboard = async (gameSessionId: number) => {
   return rows.map((r, i) => ({ rank: i + 1, ...r }))
 }
 
-// Get stats of each question: number of answers and correct answers
+// Get stats of each question: number of answers and correct answers.
+// question_index is the position the question was played at (min, because marathon
+// replays the same bank), so the report can label rows without guessing the order.
 export const getQuestionStats = async (gameSessionId: number) => {
   const { rows } = await pool.query<QuestionStatRow>(
     `SELECT
         (ans->>'question_id')::int              AS question_id,
+        min((ans->>'question_index')::int)::int AS question_index,
         count(*)::int                           AS answer_count,
         (count(*) FILTER (WHERE (ans->>'is_correct')::boolean))::int AS correct_count
      FROM player_sessions ps,
           jsonb_array_elements(ps.answered_questions) AS ans
      WHERE ps.game_session_id = $1 AND ps.deleted_at IS NULL
      GROUP BY (ans->>'question_id')::int
-     ORDER BY question_id`,
+     ORDER BY question_index`,
     [gameSessionId]
   )
   return rows

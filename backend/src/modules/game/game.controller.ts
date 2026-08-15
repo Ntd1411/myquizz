@@ -58,7 +58,11 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
     }
     let input: JoinGameInput
     if (req.user) {
-      input = joinGameSchema.parse({ player_name: req.user.fullname, player_id: req.user.id })
+      input = joinGameSchema.parse({
+        player_name: req.user.fullname,
+        player_id: req.user.id,
+        player_avatar: req.user.avatar
+      })
     } else {
       input = joinGameSchema
         .omit({ player_id: true })
@@ -95,6 +99,16 @@ export const getResults = async (req: AuthRequest, res: Response, next: NextFunc
   try {
     const results = await gameService.getResults(Number(req.params['id']))
     return success(res, { results })
+  } catch (e) {
+    next(e)
+  }
+}
+
+export const getReview = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const token = (req.header('x-socket-token') ?? req.query['token']) as string | undefined
+    const review = await gameService.getPlayerReview(Number(req.params['id']), token)
+    return success(res, { review })
   } catch (e) {
     next(e)
   }

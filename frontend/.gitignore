@@ -5,3 +5,7 @@ dist
 .DS_Store
 *.log
 .env.production
+coverage
+test-results
+tests
+scripts

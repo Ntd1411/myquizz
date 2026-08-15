@@ -5,6 +5,10 @@
  * are: POST /games returns the session under data.data.session, and
  * GET /games/{id}/results returns everything under data.results.
  *
+ * GET /games/{id}/review is the one route identified by the socket token instead
+ * of the accessToken cookie: it answers with the caller's own answer sheet, and
+ * the token is the only proof the caller is that player.
+ *
  * Status codes and error messages are the ones game.controller.ts and
  * game.service.ts actually produce.
  */
@@ -45,6 +49,19 @@ const idParam: OpenApiObject = {
   schema: { type: 'integer', minimum: 1 },
   description: 'Game session id',
   example: 1
+}
+
+// Only /games/{id}/review reads it: the caller is a player, not a signed-in user,
+// so the seat given out by join is the identity.
+const socketTokenHeader: OpenApiObject = {
+  in: 'header',
+  name: 'x-socket-token',
+  required: true,
+  schema: { type: 'string' },
+  description:
+    'Socket token returned by POST /games/{code}/join. A ?token= query parameter is accepted as a fallback for clients that cannot set headers.',
+  example:
+    'eyJhbGciOiJIUzI1NiJ9.eyJwc2lkIjoxMSwiZ3NpZCI6MSwicm9sZSI6InBsYXllciJ9.REDACTED'
 }
 
 // Raised by authMiddleware before the controller runs, on the host-only routes.
@@ -464,6 +481,38 @@ export const gamePaths: PathMap = {
           )
         }),
         404: roomNotFound
+      }
+    }
+  },
+
+  '/games/{id}/review': {
+    get: {
+      summary: 'Retrieve my answer sheet',
+      description:
+        'The caller\'s own review of a finished room: every question of the quiz, in the order that player played it, with the options, the answer key, the explanation, what the player picked and how long it took. Questions the player never submitted come back with answered: false instead of being dropped, so a skipped question is not read as a wrong one. Identity comes from the socket token, never from the accessToken cookie, and the room config must have flow.reviewMode enabled. Answers are only ever revealed here, once the session is finished.',
+      tags: [gameTag.name],
+      parameters: [idParam, socketTokenHeader],
+      responses: {
+        200: successResponse({
+          description: 'The answer sheet, shaped as data.review.',
+          data: object({ review: ref('GameReview') }, ['review'])
+        }),
+        401: errorResponse('No usable socket token on the request', [
+          'Missing socket token',
+          'Socket token is not valid'
+        ]),
+        403: errorResponse('The token cannot ask for this review', [
+          'Token belongs to another room',
+          'Only a player can review their own answers',
+          'Review is disabled in this room'
+        ]),
+        404: errorResponse('Nothing to review behind that id', [
+          'Room not found',
+          'Player not found in this room'
+        ]),
+        409: errorResponse('The room is not over yet', [
+          'Game is still running'
+        ])
       }
     }
   }

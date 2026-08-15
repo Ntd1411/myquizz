@@ -7,13 +7,14 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-6BA539?logo=openapiinitiative&logoColor=white)](https://api.myquizz.dpdns.org/v1/docs)
+[![AsyncAPI](https://img.shields.io/badge/AsyncAPI-2.6.0-E535AB?logo=asyncapi&logoColor=white)](https://api.myquizz.dpdns.org/v1/docs/socket)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 
 Real-time quiz backend: accounts, quiz authoring, discovery feeds, live game sessions and image uploads.
 
 Node.js + TypeScript (ESM), Express 5 for the REST API, Socket.IO for the gameplay, PostgreSQL as the source of truth and Redis as the hot layer for running matches.
 
-Live at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org), with the interactive reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs). The client it serves is [myquizz.dpdns.org](https://myquizz.dpdns.org).
+Live at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org), with two references: the REST one at [/v1/docs](https://api.myquizz.dpdns.org/v1/docs) and the realtime one, covering every Socket.IO event, at [/v1/docs/socket](https://api.myquizz.dpdns.org/v1/docs/socket). The raw documents are at [/v1/docs/openapi.json](https://api.myquizz.dpdns.org/v1/docs/openapi.json) and [/v1/docs/socket/asyncapi.json](https://api.myquizz.dpdns.org/v1/docs/socket/asyncapi.json). The client it serves is [myquizz.dpdns.org](https://myquizz.dpdns.org).
 
 > Part of the [MyQuizz](../README.md) monorepo. The client lives in [`frontend/`](../frontend/README.md). To run the whole stack with Docker in one command, see the [root README](../README.md#quick-start-with-docker).
 
@@ -70,6 +71,7 @@ The server starts on `PORT` (3000 by default) and prints `App listening on port 
 - API root: `http://localhost:3000/v1`
 - API reference (read-only): `http://localhost:3000/v1/docs`
 - API reference with Test Request: `http://localhost:3000/v1/api-docs`
+- Realtime reference (Socket.IO events): `http://localhost:3000/v1/docs/socket`
 - Health check: `http://localhost:3000/health` → `{ "db": true, "redis": true }`, answers 503 when Postgres is unreachable
 
 Migrations run automatically at boot, so a fresh database is usable straight away. Redis is treated as a cache, not a hard dependency: if it is unreachable the server logs the failure and keeps booting, but live matches need it.
@@ -113,7 +115,7 @@ The access and refresh tokens use separate secrets, and the socket token uses a 
 ```
 src/
   app.ts                 Boot: engine, migrations, Redis, Express, Socket.IO, jobs
-  docs/                  OpenAPI document and the Scalar reference (see below)
+  docs/                  OpenAPI and AsyncAPI documents, and the two references (see below)
   infrastructure/
     cache/               Redis client and cache helpers
     config/              Env parsing, Google OAuth, object storage
@@ -137,7 +139,7 @@ Each module follows the same chain: **route → controller → service → repos
 
 ## REST API
 
-Everything is mounted under `/v1` and rate limited. Full, always-up-to-date reference at **`/v1/docs`**, raw document at `/v1/docs/openapi.json`.
+Everything is mounted under `/v1` and rate limited. Full, always-up-to-date reference at **`/v1/docs`**, raw document at `/v1/docs/openapi.json`. The Socket.IO layer has its own reference at **`/v1/docs/socket`** (raw document at `/v1/docs/socket/asyncapi.json`), because OpenAPI cannot describe an event stream.
 
 The same document is published twice, from `src/docs/serve.ts`:
 
@@ -147,6 +149,8 @@ The same document is published twice, from `src/docs/serve.ts`:
 | `/v1/api-docs` | kept | Internal use. The reverse proxy puts HTTP basic auth in front of it, so it is not reachable from outside. |
 
 Each one serves its own copy of the document (`/v1/docs/openapi.json` and `/v1/api-docs/openapi.json`), so the internal page never depends on a path the proxy may restrict. **Restricting `/v1/api-docs` is the proxy's job** — the application itself does not authenticate it.
+
+A third page, from `src/docs/serve.socket.ts`, covers the gameplay events: **`/v1/docs/socket`**, raw AsyncAPI document at `/v1/docs/socket/asyncapi.json`. It is mounted before `/v1/docs` because the reference UI answers every path under it. Live: [/v1/docs](https://api.myquizz.dpdns.org/v1/docs), [/v1/docs/socket](https://api.myquizz.dpdns.org/v1/docs/socket).
 
 ### Response envelope
 
@@ -170,7 +174,7 @@ On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }
 | `/v1/auth` | 7 | Register, login, refresh, logout, Google OAuth redirect flow and One Tap |
 | `/v1/users` | 9 | Own profile (the email is immutable), public profile, password change, avatar, forgot / reset password |
 | `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
-| `/v1/games` | 8 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results |
+| `/v1/games` | 9 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results, personal answer review |
 | `/v1/storage` | 1 | Presigned upload URL |
 
 Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
@@ -265,6 +269,8 @@ The token carries the session, the role and the player row id. Identity is alway
 
 Each connection joins `game:{code}`, and hosts additionally join `game:{code}:host`. Anything that would reveal an answer is sent to the host room only.
 
+The tables below are a summary. Every payload, every acknowledgement and every rule is described in the realtime reference at **`/v1/docs/socket`**, generated from `src/docs/asyncapi.ts` (raw AsyncAPI document at `/v1/docs/socket/asyncapi.json`).
+
 ### Events sent by the client
 
 | Event | Role | Purpose |
@@ -279,7 +285,6 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 | `question:answer` | player | Submit an answer, acknowledged by the server |
 | `question:next` | player | Move on in self-paced modes when `autoAdvance` is off |
 | `player:sync` | both | Ask for a full state snapshot after a reconnect |
-| `game:review` | player | Get the personal answer review once the match is over |
 
 ### Events sent by the server
 
@@ -296,7 +301,6 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 | `player:eliminated`, `player:finished` | room / player | Per-player outcome |
 | `game:state` | both | Full snapshot, used to restore a client after a reconnect |
 | `game:ended` | room | Final standings and per-question stats |
-| `game:review` | player | The caller's own answers |
 | `host:question`, `host:answer-received`, `host:player-progress`, `leaderboard:host` | host room | Answer key and the full monitoring table |
 | `error` | caller | A handler failed and no acknowledgement was expected |
 
@@ -305,6 +309,7 @@ Each connection joins `game:{code}`, and hosts additionally join `game:{code}:ho
 - **The server is authoritative.** Grading, timing and scoring happen server side; `correct_answer` is stripped from every payload that leaves the server, except inside the host room and after a question is locked.
 - **One answer per question.** The slot is claimed atomically in Redis, so two sockets racing on the same question cannot both be accepted.
 - **Reconnects are cheap.** `lobby:join` or `player:sync` returns a full snapshot with the remaining time; a self-paced player gets back the leftover time, not a fresh timer.
+- **The answer review is not a socket event.** It is `GET /games/:id/review`, authenticated by the socket token: the payload is a one-off document carrying every question with its answer key, and REST still answers once the room is `finished`, which the socket handshake refuses.
 
 ## Game engine
 

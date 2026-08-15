@@ -12,7 +12,7 @@ A real-time quiz platform: write a quiz, open a room, and let everybody answer t
 
 One host drives the match, players join with a room code, and the server keeps the single source of truth for timing, grading and ranking.
 
-**Live demo** — [myquizz.dpdns.org](https://myquizz.dpdns.org) · API at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org) · API reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs)
+**Live demo** — [myquizz.dpdns.org](https://myquizz.dpdns.org) · API at [api.myquizz.dpdns.org](https://api.myquizz.dpdns.org) · API reference at [api.myquizz.dpdns.org/v1/docs](https://api.myquizz.dpdns.org/v1/docs) · realtime reference at [api.myquizz.dpdns.org/v1/docs/socket](https://api.myquizz.dpdns.org/v1/docs/socket)
 
 You can try it without signing up: open the client, enter a room code and a nickname, and you are in as a guest.
 
@@ -53,7 +53,7 @@ You can try it without signing up: open the client, enter a room code and a nick
 
 ## Tech stack
 
-**Backend** — Node.js, TypeScript, Express 5, Socket.IO, PostgreSQL, Redis, Zod, JWT, S3-compatible object storage, OpenAPI reference served by Scalar.
+**Backend** — Node.js, TypeScript, Express 5, Socket.IO, PostgreSQL, Redis, Zod, JWT, S3-compatible object storage, OpenAPI reference served by Scalar, AsyncAPI reference for the gameplay events.
 
 **Frontend** — Vue 3, Vite, Pinia, TanStack Query, Tailwind CSS.
 
@@ -118,6 +118,7 @@ docker compose up -d --build
 | Client | http://localhost:5173 |
 | API | http://localhost:3000/v1 |
 | API reference | http://localhost:3000/v1/docs |
+| Realtime reference (Socket.IO events) | http://localhost:3000/v1/docs/socket |
 | Health check | http://localhost:3000/health |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
@@ -155,7 +156,7 @@ pnpm dev                 # http://localhost:5173
 
 Each package has its own `.env.example` here — the root one is only for Docker. Point `DB_HOST` and `REDIS_HOST` at `localhost` (or wherever your services run) instead of the Compose service names.
 
-Migrations still run on boot, and the API reference is available at `http://localhost:3000/v1/docs`. The same reference with the **Test Request** panel enabled is served at `http://localhost:3000/v1/api-docs`, which is meant to stay behind basic auth in production. Each package README documents the full environment variables, scripts and architecture.
+Migrations still run on boot, and the API reference is available at `http://localhost:3000/v1/docs`. The same reference with the **Test Request** panel enabled is served at `http://localhost:3000/v1/api-docs`, which is meant to stay behind basic auth in production. The Socket.IO events, which OpenAPI cannot describe, have their own reference at `http://localhost:3000/v1/docs/socket` (raw AsyncAPI document at `/v1/docs/socket/asyncapi.json`). Each package README documents the full environment variables, scripts and architecture.
 
 ## Demo data
 
@@ -210,7 +211,7 @@ pm2 restart myquizz-api --update-env
 - `NODE_ENV=production`, and `API_PUBLIC_URL` set to the public API origin including the `/v1` prefix (for example `https://api.example.com/v1`) so the reference page offers the production server instead of localhost. It is listed in both `.env.example` files and left empty by default.
 - `FRONTEND_URL` and `ALLOW_ORIGIN` must list the real domains. The API and the client sit on different subdomains, so the auth cookies are cross-site and the origins have to match exactly.
 - The reverse proxy in front of the API has to forward the `Upgrade` and `Connection` headers, otherwise the WebSocket handshake silently falls back to polling.
-- `/v1/api-docs` must be protected by the reverse proxy. It is the same reference as `/v1/docs`, but with the Test Request panel enabled; the application does not authenticate it, so nginx has to (`auth_basic` plus an `auth_basic_user_file`). `/v1/docs` stays public and cannot send requests.
+- `/v1/api-docs` must be protected by the reverse proxy. It is the same reference as `/v1/docs`, but with the Test Request panel enabled; the application does not authenticate it, so nginx has to (`auth_basic` plus an `auth_basic_user_file`). `/v1/docs` and `/v1/docs/socket` stay public and cannot send requests.
 - `GOOGLE_CALLBACK_URL` must be the production URL and registered in the Google console.
 
 ## Troubleshooting
@@ -240,7 +241,7 @@ Issues and pull requests are welcome.
    pnpm lint
    ```
 5. Write commits in the [Conventional Commits](https://www.conventionalcommits.org/) style, for example `feat(quiz): add category filter to search`.
-6. In the pull request, describe what changed and how you verified it. If you changed an endpoint, update the OpenAPI document in `backend/src/docs/` in the same pull request.
+6. In the pull request, describe what changed and how you verified it. If you changed an endpoint, update the OpenAPI document in `backend/src/docs/` in the same pull request; if you changed a socket event, update the AsyncAPI one in `backend/src/docs/socket.channels.ts`.
 
 ## License
 

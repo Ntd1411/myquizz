@@ -1,6 +1,6 @@
 <script setup>
-import { onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import TopBar from '@/components/layout/TopBar.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import ToastHost from '@/components/base/ToastHost.vue'
@@ -12,6 +12,14 @@ import { useLenis, ScrollTrigger } from '@/composables/useMotion'
 const auth = useAuthStore()
 const ui = useUiStore()
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * Live-room routes (join, host lobby, player lobby) opt out of the site chrome with
+ * `meta.bare`. They own a full screen from the top bar down, and every link in the header
+ * would take a player out of the room they are sitting in.
+ */
+const bare = computed(() => route.meta.bare === true)
 
 useLenis()
 
@@ -38,10 +46,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TopBar />
-  <main class="min-h-[60vh]">
+  <TopBar v-if="!bare" />
+  <main :class="bare ? '' : 'min-h-[60vh]'">
     <RouterView />
   </main>
-  <AppFooter />
+  <AppFooter v-if="!bare" />
   <ToastHost />
 </template>

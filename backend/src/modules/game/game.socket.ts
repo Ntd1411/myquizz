@@ -118,7 +118,7 @@ export class GameSocket {
       this.on(socket, 'question:answer', (p, ack) => this.onAnswer(socket, p, ack))
       this.on(socket, 'question:next', () => this.onPlayerNext(socket))
       this.on(socket, 'player:sync', () => this.onSync(socket))
-      this.on(socket, 'game:review', () => this.onReview(socket))
+      // The answer sheet is a document, not room traffic: GET /games/:id/review serves it
 
       socket.on('disconnect', () => {
         this.onLeave(socket).catch((e: unknown) => console.error('[game.socket] disconnect:', e))
@@ -398,6 +398,7 @@ export class GameSocket {
         id: p.id,
         player_name: p.player_name,
         player_score: p.player_score,
+        player_avatar: p.player_avatar ?? null,
         lives: p.lives ?? null, // the host screen needs it in survival
         status: p.status
       })),
@@ -491,8 +492,6 @@ export class GameSocket {
   private async onLobbyJoin(socket: Socket) {
     const data = socket.data as CustomSocketData
     if (!data.gameId || !data.code) throw new Error('FORBIDDEN: no room in token')
-    void socket.join(this.room(data.code))
-    if (data.role === 'host') void socket.join(this.hostRoom(data.code))
     const session = await this.loadSession(data.gameId)
 
     if (data.role === 'player' && data.playerSessionId) {
@@ -1371,40 +1370,6 @@ export class GameSocket {
           ? []
           : (await cache.getLeaderboard(session.id)) ?? (await repo.getLeaderboard(session.id))
     }
-  }
-
-  private async onReview(socket: Socket) {
-    const { gameId, psid } = this.requirePlayer(socket)
-    const session = await this.loadSession(gameId)
-    if (!session.config.flow.reviewMode) throw new Error('FORBIDDEN: review is disabled')
-    if (session.session_status !== 'finished') throw new Error('CONFLICT: game is still running')
-
-    const player = await this.loadPlayer(gameId, psid)
-    const questions = await this.loadQuestions(gameId)
-
-    socket.emit('game:review', {
-      player_score: player.player_score,
-      correct_answers_count: player.correct_answers_count,
-      total_questions: questions.length,
-      // only the caller's own answers, the id always comes from the socket token
-      items: (player.answered_questions ?? []).map((entry) => {
-        const q = questions[entry.question_index]
-        return {
-          question_index: entry.question_index,
-          question_text: q?.question_text ?? null,
-          question_image: q?.question_image ?? null,
-          answer_options: q?.answer_options ?? null,
-          explanation: q?.explanation ?? null,
-          your_answer: entry.answer,
-          correct_answer: q?.correct_answer ?? null,
-          is_correct: entry.is_correct,
-          is_late: entry.is_late ?? false,
-          score_earned: entry.score_earned,
-          time_taken: entry.time_taken
-        }
-      }),
-      serverTime: iso(Date.now())
-    })
   }
 
   private async onSync(socket: Socket) {
