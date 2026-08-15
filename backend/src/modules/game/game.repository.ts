@@ -52,11 +52,16 @@ export const createGameSession = async (data: {
   }
 
   const { rows } = await pool.query<GameSessionRow>(
-    `INSERT INTO game_sessions
-           (quiz_snapshot_id, session_name, session_code, session_host,
-            game_mode, config, total_questions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
+    `WITH inserted AS (
+      INSERT INTO game_sessions
+        (quiz_snapshot_id, session_name, session_code, session_host,
+        game_mode, config, total_questions)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    )
+    SELECT i.*, u.fullname as session_host_name, u.avatar as session_host_avatar
+    FROM inserted i
+    JOIN users u ON u.id = i.session_host`,
     [data.quiz_snapshot_id, data.session_name, sessionCode, data.session_host,
       data.game_mode, JSON.stringify(data.config), data.total_questions]
   )
@@ -66,7 +71,9 @@ export const createGameSession = async (data: {
 
 export const getSessionByCode = async (code: string) => {
   const { rows } = await pool.query<GameSessionRow>(
-    'SELECT * FROM game_sessions WHERE session_code = $1 AND deleted_at IS NULL',
+    `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
+     JOIN users as u ON u.id = gs.session_host
+     WHERE gs.session_code = $1 AND gs.deleted_at IS NULL`,
     [code]
   )
   return rows[0] ?? null
@@ -74,7 +81,9 @@ export const getSessionByCode = async (code: string) => {
 
 export const getSessionById = async (id: number) => {
   const { rows } = await pool.query<GameSessionRow>(
-    'SELECT * FROM game_sessions WHERE id = $1 AND deleted_at IS NULL',
+    `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
+     JOIN users as u ON u.id = gs.session_host
+     WHERE gs.id = $1 AND gs.deleted_at IS NULL`,
     [id]
   )
   return rows[0] ?? null
@@ -82,8 +91,15 @@ export const getSessionById = async (id: number) => {
 
 export const updateSessionConfig = async (id: number, config: GameConfig): Promise<GameSessionRow> => {
   const { rows } = await pool.query<GameSessionRow>(
-    `UPDATE game_sessions SET config = $2, updated_at = now()
-      WHERE id = $1 RETURNING *`,
+    `WITH updated AS (
+      UPDATE game_sessions
+      SET config = $2, updated_at = now()
+      WHERE id = $1
+      RETURNING *
+    )
+    SELECT u.*, us.fullname as session_host_name, us.avatar as session_host_avatar
+    FROM updated u
+    JOIN users us ON us.id = u.session_host`,
     [id, JSON.stringify(config)]
   )
   if (!rows[0]) throw new Error('Failed to update game session config')

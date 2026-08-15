@@ -1378,30 +1378,58 @@ export class GameSocket {
     if (!session.config.flow.reviewMode) throw new Error('FORBIDDEN: review is disabled')
     if (session.session_status !== 'finished') throw new Error('CONFLICT: game is still running')
 
+    const cfg = session.config
     const player = await this.loadPlayer(gameId, psid)
     const questions = await this.loadQuestions(gameId)
+    // self-paced players can have their own question order, so the review has to
+    // follow the sequence they actually played, not the raw snapshot order
+    const ordered =
+      cfg.flow.pacing === 'self'
+        ? this.orderedQuestionsFor(questions, cfg, gameId, psid)
+        : questions
+    const total = ordered.length
+
+    // answers are keyed by question_index: marathon loops the bank, so an index
+    // can be >= total and several rows can point at the same question
+    const answers = new Map(
+      (player.answered_questions ?? []).map((entry) => [entry.question_index, entry] as const)
+    )
+
+    const buildItem = (q: SnapshotQuestion | undefined, index: number) => {
+      const entry = answers.get(index)
+      return {
+        question_index: index,
+        question_id: q?.id ?? entry?.question_id ?? null,
+        question_text: q?.question_text ?? null,
+        question_image: q?.question_image ?? null,
+        answer_options: q?.answer_options ?? null,
+        explanation: q?.explanation ?? null,
+        // false means the player never submitted anything for this question
+        answered: entry !== undefined,
+        your_answer: entry ? entry.answer : null,
+        correct_answer: q?.correct_answer ?? null,
+        is_correct: entry?.is_correct ?? false,
+        is_late: entry?.is_late ?? false,
+        score_earned: entry?.score_earned ?? 0,
+        time_taken: entry?.time_taken ?? null
+      }
+    }
+
+    // every question of the quiz, answered or not
+    const items = ordered.map((q, index) => buildItem(q, index))
+    // marathon: extra loops over the same bank keep their own rows at the end
+    for (const index of Array.from(answers.keys()).sort((a, b) => a - b)) {
+      if (index < total) continue
+      items.push(buildItem(total > 0 ? ordered[index % total] : undefined, index))
+    }
 
     socket.emit('game:review', {
       player_score: player.player_score,
       correct_answers_count: player.correct_answers_count,
-      total_questions: questions.length,
+      total_questions: total,
+      answered_count: answers.size,
       // only the caller's own answers, the id always comes from the socket token
-      items: (player.answered_questions ?? []).map((entry) => {
-        const q = questions[entry.question_index]
-        return {
-          question_index: entry.question_index,
-          question_text: q?.question_text ?? null,
-          question_image: q?.question_image ?? null,
-          answer_options: q?.answer_options ?? null,
-          explanation: q?.explanation ?? null,
-          your_answer: entry.answer,
-          correct_answer: q?.correct_answer ?? null,
-          is_correct: entry.is_correct,
-          is_late: entry.is_late ?? false,
-          score_earned: entry.score_earned,
-          time_taken: entry.time_taken
-        }
-      }),
+      items,
       serverTime: iso(Date.now())
     })
   }
