@@ -58,7 +58,10 @@ function writeTickets(tickets) {
 
 /**
  * @param {string} [code] when given, the stored seat is only returned for that room
- * @returns {{ code: string, sessionId: number|null, playerId: number|null, playerName: string, socketToken: string }|null}
+ * @returns {{
+ *   code: string, sessionId: number|null, playerId: number|null,
+ *   playerName: string, socketToken: string
+ * }|null}
  */
 export function readPlayerSession(code) {
   const stored = parse(window.sessionStorage.getItem(SESSION_KEY))

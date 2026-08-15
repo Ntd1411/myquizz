@@ -24,6 +24,13 @@ const ui = useUiStore()
 
 const ending = ref(false)
 
+/**
+ * The host screen is usually on a shared display, so the question and its key stay hidden
+ * by default: the room already sees the question on their own devices, and the projector
+ * would leak the answer. The standings are what the room cannot see anywhere else.
+ */
+const showQuestion = ref(false)
+
 const question = computed(() => game.hostQuestion?.question ?? null)
 const phase = computed(() => game.currentPhase)
 const manual = computed(() => !game.autoAdvance)
@@ -79,7 +86,7 @@ function end() {
 </script>
 
 <template>
-  <div class="grid gap-md">
+  <div class="console">
     <section v-if="phase === 'countdown'" class="card-surface p-xl text-center">
       <p class="eyebrow-label">
         Starting
@@ -104,10 +111,12 @@ function end() {
       </p>
     </section>
 
-    <section v-else-if="question" class="card-surface p-xl">
+    <section v-else-if="question" class="card-surface p-lg">
       <div class="flex flex-wrap items-center justify-between gap-sm">
         <p class="eyebrow-label">
           {{ game.isPaused ? 'Paused' : 'Live question' }}
+          <span class="num ml-xs text-ink">{{ (question.index ?? 0) + 1 }}</span>
+          <span class="text-ink-3">/ {{ question.total ?? game.totalQuestions }}</span>
         </p>
         <div class="flex items-center gap-md">
           <p class="text-body-sm text-ink-2">
@@ -117,11 +126,15 @@ function end() {
           <p v-if="timer.secondsLeft.value !== null" class="num text-heading-3 text-ink">
             {{ timer.secondsLeft.value }}s
           </p>
+          <button class="btn-ghost" type="button" @click="showQuestion = !showQuestion">
+            {{ showQuestion ? 'Hide question' : 'Show question' }}
+          </button>
         </div>
       </div>
 
-      <!-- reveal is always on here: this is the host room copy of the question -->
+      <!-- Hidden by default: this screen is often projected, and it carries the answer key -->
       <QuestionStage
+        v-if="showQuestion"
         class="mt-sm"
         :question="question"
         :correct-answer="game.hostQuestion?.correct_answer ?? null"
@@ -130,7 +143,7 @@ function end() {
         :reveal="true"
       />
 
-      <div class="mt-lg flex flex-wrap items-center gap-xs">
+      <div class="mt-md flex flex-wrap items-center gap-xs">
         <button
           v-if="manual"
           class="btn-primary"
@@ -162,11 +175,36 @@ function end() {
       </p>
     </section>
 
-    <section v-if="game.hostLeaderboard.length" class="card-surface p-xl">
-      <p class="eyebrow-label">
+    <!-- The board is the main surface of this screen while the room plays -->
+    <section v-if="game.hostLeaderboard.length" class="card-surface board p-xl">
+      <div class="flex items-center justify-between gap-sm">
+        <h2 class="text-heading-3 text-ink">
+          Leaderboard
+        </h2>
+        <span class="chip whitespace-nowrap">
+          <span class="num">{{ game.hostLeaderboard.length }}</span>
+        </span>
+      </div>
+      <p class="sr-only">
         Players
       </p>
-      <LeaderboardList class="mt-sm" :rows="game.hostLeaderboard" :detailed="true" />
+      <LeaderboardList class="mt-md" :rows="game.hostLeaderboard" :detailed="true" />
     </section>
   </div>
 </template>
+
+<style scoped>
+.console {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+</style>

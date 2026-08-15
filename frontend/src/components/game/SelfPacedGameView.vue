@@ -174,7 +174,7 @@ function goNext() {
 </script>
 
 <template>
-  <div class="grid gap-md">
+  <div class="play-shell">
     <!-- Run status. Each part only exists in the modes that asked for it. -->
     <section
       v-if="!finished && !eliminated && (hasLives || hasMatchBudget || scored || question)"
@@ -248,7 +248,7 @@ function goNext() {
     </section>
 
     <!-- Question -->
-    <section v-else-if="question" class="card-surface stage p-xl">
+    <section v-else-if="question" class="card-surface stage grow p-xl">
       <div v-if="hasDeadline || game.isPaused" class="mb-lg">
         <div class="flex items-center justify-between gap-sm">
           <p class="eyebrow-label">
@@ -346,6 +346,15 @@ function goNext() {
 </template>
 
 <style scoped>
+/* The run owns the viewport: the question grows, the status and standings stay put. */
+.play-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
 .status-bar {
   display: flex;
   flex-wrap: wrap;

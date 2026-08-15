@@ -19,6 +19,8 @@ const props = defineProps({
   meId: { type: [Number, String], default: null },
   maxPlayers: { type: Number, default: null },
   showScore: { type: Boolean, default: false },
+  /** Drop the card frame: the screen around it already provides one. */
+  flat: { type: Boolean, default: false },
 })
 
 const AVATAR_COLORS = [
@@ -91,7 +93,7 @@ function onAvatarError(player) {
 </script>
 
 <template>
-  <section v-if="players.length" class="card-surface p-xl">
+  <section v-if="players.length" :class="flat ? '' : 'card-surface p-xl'">
     <div class="flex items-center justify-between gap-sm">
       <h2 class="text-heading-3 text-ink">
         Players

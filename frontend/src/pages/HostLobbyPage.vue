@@ -72,6 +72,8 @@ const statusLabel = computed(() => {
   return s.charAt(0).toUpperCase() + s.slice(1)
 })
 const inLobby = computed(() => status.value === 'lobby')
+// A running match owns the viewport; the lobby and the report keep the page gutter.
+const inMatch = computed(() => !inLobby.value && !game.isFinished)
 const connection = computed(() => game.connection ?? 'idle')
 // A healthy socket says nothing: only a broken one is worth a line on the screen, because
 // then the player list has stopped updating and the host needs to know why.
@@ -209,8 +211,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <GameShell width="max-w-[900px]">
-    <div ref="pageEl">
+  <GameShell width="max-w-none" :wide="!inMatch" :bleed="inMatch">
+    <div ref="pageEl" class="flex w-full grow flex-col">
       <div v-if="loading" class="flex justify-center py-xxl">
         <BaseSpinner />
       </div>
@@ -235,7 +237,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-else class="grid gap-lg">
+      <div v-else class="flex w-full grow flex-col gap-lg">
         <!-- Lobby. The code is the whole point of this card, so it leads. -->
         <section v-if="inLobby" class="wash-panel relative p-xl text-center" data-enter>
           <!-- Settings sit behind one icon: the code, not the setup, owns this screen. -->
@@ -312,7 +314,13 @@ onBeforeUnmount(() => {
           </p>
         </section>
 
-        <PlayerList v-if="inLobby" :players="players" :max-players="maxPlayers" data-enter />
+        <PlayerList
+          v-if="inLobby"
+          flat
+          :players="players"
+          :max-players="maxPlayers"
+          data-enter
+        />
 
         <!-- Once the match runs the console owns the screen: the code is done recruiting. -->
         <template v-else>

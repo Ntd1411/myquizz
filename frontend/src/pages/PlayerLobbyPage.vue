@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
+import UserAvatar from '@/components/base/UserAvatar.vue'
 import GameResultsView from '@/components/game/GameResultsView.vue'
 import GameShell from '@/components/game/GameShell.vue'
 import PlayerGameView from '@/components/game/PlayerGameView.vue'
@@ -62,6 +63,13 @@ const maxPlayers = computed(() => game.config?.lobby?.maxPlayers ?? null)
 const waiting = computed(() => game.sessionStatus === 'lobby')
 const cancelled = computed(() => game.sessionStatus === 'cancelled')
 const connectionProblem = computed(() => ['reconnecting', 'closed'].includes(game.connection))
+
+// The room row now carries the host identity, so the lobby can show who is running it.
+const hostName = computed(() => session.value?.session_host_name || '')
+const hostAvatar = computed(() => session.value?.session_host_avatar || '')
+
+// A running match owns the whole viewport; the lobby and the end screen stay on a page grid.
+const inMatch = computed(() => !waiting.value && !cancelled.value && !game.isFinished)
 
 /**
  * The room can be closed while the player waits, which is not a load error. Once the
@@ -180,14 +188,14 @@ watch(
 </script>
 
 <template>
-  <GameShell width="max-w-[720px]">
-    <div ref="pageEl">
+  <GameShell width="max-w-none" :wide="!inMatch" :bleed="inMatch">
+    <div ref="pageEl" class="flex w-full grow flex-col">
       <div v-if="loading" class="flex items-center gap-xs text-body-sm text-ink-2" data-enter>
         <BaseSpinner />
         <span>Joining the room&hellip;</span>
       </div>
 
-      <section v-else-if="loadError" class="card-surface p-xl" data-enter>
+      <section v-else-if="loadError" class="mx-auto w-full max-w-[560px]" data-enter>
         <h1 class="text-heading-2 text-ink">
           Cannot join this room
         </h1>
@@ -204,53 +212,60 @@ watch(
         </div>
       </section>
 
-      <div v-else class="grid gap-lg">
-        <!-- Room -->
-        <section class="card-surface p-xl" data-enter>
-          <div class="flex items-start justify-between gap-sm">
-            <div class="min-w-0">
-              <p class="eyebrow-label">
-                Room <span class="num">{{ roomCode }}</span>
-              </p>
-              <h1 class="mt-xs line-clamp-2 break-words text-heading-2 text-ink" :title="roomName || quizName">
-                {{ roomName || quizName || 'Quiz room' }}
-              </h1>
-              <p v-if="quizName" class="mt-xxs truncate text-body-sm text-ink-2" :title="quizName">
-                {{ quizName }}
-              </p>
-            </div>
-            <span v-if="modeName" class="chip shrink-0 whitespace-nowrap">{{ modeName }}</span>
-          </div>
-
-          <div v-if="waiting" class="wash-panel mt-lg flex items-center gap-sm p-lg">
-            <BaseSpinner />
-            <p class="text-body-sm text-ink-2">
-              You are in. Waiting for the host to start&hellip;
+      <!-- Lobby: flat information, then the roster. No cards, the page is the card. -->
+      <div v-else-if="waiting || roomMessage" class="flex w-full grow flex-col gap-xl">
+        <header class="flex flex-wrap items-end justify-between gap-md" data-enter>
+          <div class="min-w-0">
+            <p class="eyebrow-label">
+              Room <span class="num">{{ roomCode }}</span>
+            </p>
+            <h1 class="mt-xs break-words text-heading-1 text-ink" :title="roomName || quizName">
+              {{ roomName || quizName || 'Quiz room' }}
+            </h1>
+            <p v-if="quizName" class="mt-xxs truncate text-body-md text-ink-2" :title="quizName">
+              {{ quizName }}
             </p>
           </div>
-          <p v-else-if="roomMessage" class="mt-lg text-body-sm text-ink-2">
+          <span v-if="modeName" class="chip shrink-0 whitespace-nowrap">{{ modeName }}</span>
+        </header>
+
+        <div class="flex flex-wrap items-center gap-lg border-y border-hairline py-md" data-enter>
+          <div v-if="hostName" class="flex items-center gap-sm">
+            <UserAvatar :name="hostName" :src="hostAvatar" :size="36" />
+            <span class="min-w-0">
+              <span class="block text-caption text-ink-3">Host</span>
+              <span class="block truncate text-body-sm font-medium text-ink">{{ hostName }}</span>
+            </span>
+          </div>
+
+          <div v-if="waiting" class="flex items-center gap-sm text-body-sm text-ink-2">
+            <BaseSpinner />
+            <span>You are in. Waiting for the host to start&hellip;</span>
+          </div>
+          <p v-else-if="roomMessage" class="text-body-sm text-ink-2">
             {{ roomMessage }}
           </p>
+        </div>
 
-          <p v-if="connectionProblem" class="mt-md text-body-sm text-ans-a">
-            Live updates are down ({{ game.connection }}). The player list may be out of date.
-          </p>
-        </section>
+        <p v-if="connectionProblem" class="text-body-sm text-ans-a" data-enter>
+          Live updates are down ({{ game.connection }}). The player list may be out of date.
+        </p>
 
-        <!-- Lobby shows who is here; from the start on, the match takes the screen. -->
         <PlayerList
           v-if="waiting"
+          flat
           :players="players"
           :me-id="game.playerId"
           :max-players="maxPlayers"
           data-enter
         />
-        <!-- Finished: the end screen owns the page, reload or not. -->
-        <GameResultsView v-else-if="game.isFinished" data-enter />
-        <!-- Self-paced modes run on their own clock, with lives and a match budget. -->
-        <SelfPacedGameView v-else-if="game.isSelfPaced" data-enter />
-        <PlayerGameView v-else data-enter />
       </div>
+
+      <!-- Finished: the end screen owns the page, reload or not. -->
+      <GameResultsView v-else-if="game.isFinished" data-enter />
+      <!-- Self-paced modes run on their own clock, with lives and a match budget. -->
+      <SelfPacedGameView v-else-if="game.isSelfPaced" data-enter />
+      <PlayerGameView v-else data-enter />
     </div>
   </GameShell>
 </template>

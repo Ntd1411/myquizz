@@ -47,6 +47,17 @@ const accuracy = computed(() => {
   return Math.round((correct.value / total.value) * 100)
 })
 
+// Top three, in podium order (2nd, 1st, 3rd) so the winner stands in the middle.
+const podium = computed(() => {
+  const top = leaderboard.value.slice(0, 3)
+  if (top.length < 3) return []
+  return [
+    { row: top[1], place: 2 },
+    { row: top[0], place: 1 },
+    { row: top[2], place: 3 },
+  ]
+})
+
 const items = computed(() => game.review?.items ?? [])
 const reviewLabel = computed(() => {
   if (requesting.value) return 'Loading\u2026'
@@ -68,11 +79,84 @@ const title = computed(() => {
   return 'Game over'
 })
 
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
+
+/** The server compares answers as trimmed lowercase strings, so the UI matches that. */
+function asKey(value) {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function toKeys(value) {
+  if (value === null || value === undefined) return new Set()
+  const list = Array.isArray(value) ? value : [value]
+  return new Set(list.filter((entry) => entry !== null && entry !== undefined && entry !== '').map(asKey))
+}
+
 function answerText(value) {
   if (Array.isArray(value)) return value.length ? value.join(', ') : 'No answer'
   if (value === null || value === undefined || value === '') return 'No answer'
   return String(value)
 }
+
+// The server sends `answered: false` for a question the player never submitted. Older
+// payloads have no flag, so an empty answer is the fallback signal.
+function isUnanswered(item) {
+  if (typeof item.answered === 'boolean') return !item.answered
+  const value = item.your_answer
+  if (Array.isArray(value)) return !value.length
+  return value === null || value === undefined || value === ''
+}
+
+/**
+ * Every option of the question, tagged with what the player picked and what was right.
+ * Snapshots store options either as [{ id, option_text }] or as plain strings, so both
+ * shapes have to read back here, exactly like QuestionStage does in the game.
+ */
+function optionsOf(item) {
+  const picked = toKeys(item.your_answer)
+  const right = toKeys(item.correct_answer)
+  return (item.answer_options ?? []).map((option, position) => {
+    const isRow = option !== null && typeof option === 'object'
+    const value = isRow ? option.id ?? position : option
+    const key = asKey(value)
+    const isCorrect = right.has(key)
+    const isPicked = picked.has(key)
+    return {
+      key: `${position}:${String(value)}`,
+      text: isRow ? option.option_text ?? '' : String(option),
+      letter: LETTERS[position] ?? String(position + 1),
+      isCorrect,
+      isPicked,
+      // a right pick reads as correct and still carries the "Your pick" tag
+      state: isCorrect ? 'is-correct' : isPicked ? 'is-wrong' : 'is-muted',
+    }
+  })
+}
+
+// What the player has to look at first: mistakes, then the questions they never got to,
+// and the ones already right at the bottom.
+const GROUP_ORDER = { 'is-wrong': 0, 'is-skipped': 1, 'is-correct': 2 }
+
+// Options and flags are resolved once per render instead of inside the template, where
+// every helper call would run again for each binding.
+const reviewRows = computed(() =>
+  items.value
+    .map((item) => {
+      const unanswered = isUnanswered(item)
+      return {
+        ...item,
+        key: `${item.question_index}:${item.question_id ?? ''}`,
+        options: optionsOf(item),
+        unanswered,
+        state: unanswered ? 'is-skipped' : item.is_correct ? 'is-correct' : 'is-wrong',
+      }
+    })
+    // the badge keeps the real question number, so inside a group the played order stays
+    .sort(
+      (a, b) =>
+        GROUP_ORDER[a.state] - GROUP_ORDER[b.state] || a.question_index - b.question_index,
+    ),
+)
 
 /**
  * `game:review` has no ack, and a refusal comes back on the shared error channel, so the
@@ -101,7 +185,7 @@ function openReview() {
 <template>
   <section class="grid gap-lg">
     <!-- Outcome. One number the player came for, everything else is secondary. -->
-    <div class="card-surface p-xl text-center">
+    <div class="card-surface hero p-xl text-center">
       <p class="eyebrow-label">
         Final results
       </p>
@@ -158,6 +242,21 @@ function openReview() {
       <p class="section-title">
         Standings
       </p>
+
+      <!-- The three names everyone looks for first, before the full list. -->
+      <ol v-if="podium.length" class="podium">
+        <li
+          v-for="spot in podium"
+          :key="spot.place"
+          class="podium-spot"
+          :class="[`is-${spot.place}`, { 'is-me': String(spot.row.id) === String(meId) }]"
+        >
+          <span class="podium-place num">{{ spot.place }}</span>
+          <span class="podium-name" :title="spot.row.player_name">{{ spot.row.player_name }}</span>
+          <span class="podium-score num">{{ spot.row.player_score }}</span>
+          <span class="podium-block" />
+        </li>
+      </ol>
       <LeaderboardList class="mt-sm" :rows="leaderboard" :me-id="meId" detailed />
     </section>
 
@@ -169,7 +268,7 @@ function openReview() {
             Review
           </p>
           <p class="mt-xxs text-caption text-ink-3">
-            Every question you answered, with the correct answer.
+            Every question of the quiz, wrong ones first, then the ones you skipped.
           </p>
         </div>
         <button class="btn-utility" type="button" :disabled="requesting" @click="openReview">
@@ -177,43 +276,67 @@ function openReview() {
         </button>
       </div>
 
-      <ul v-if="showReview && items.length" class="mt-lg grid gap-sm">
+      <ul v-if="showReview && reviewRows.length" class="mt-lg grid gap-sm">
         <li
-          v-for="item in items"
-          :key="item.question_index"
+          v-for="row in reviewRows"
+          :key="row.key"
           class="review-item"
-          :class="item.is_correct ? 'is-correct' : 'is-wrong'"
+          :class="row.state"
         >
-          <span class="review-index num">{{ item.question_index + 1 }}</span>
+          <span class="review-index num">{{ row.question_index + 1 }}</span>
           <div class="min-w-0 flex-1">
             <p class="text-body-sm text-ink">
-              {{ item.question_text || 'This question is no longer available.' }}
+              {{ row.question_text || 'This question is no longer available.' }}
             </p>
-            <img v-if="item.question_image" class="review-image" :src="item.question_image" alt="">
-            <p class="mt-xs text-caption text-ink-2">
-              Your answer:
-              <span class="review-answer">{{ answerText(item.your_answer) }}</span>
+            <img v-if="row.question_image" class="review-image" :src="row.question_image" alt="">
+
+            <p v-if="row.unanswered" class="review-flag">
+              You did not answer this question.
             </p>
-            <p v-if="!item.is_correct && item.correct_answer !== null" class="mt-xxs text-caption text-ink-2">
-              Correct answer:
-              <span class="review-answer is-right">{{ answerText(item.correct_answer) }}</span>
-            </p>
-            <p v-if="item.explanation" class="mt-xs text-caption text-ink-3">
-              {{ item.explanation }}
+
+            <!-- Every option, so a wrong pick is read right next to the correct one. -->
+            <ul v-if="row.options.length" class="review-options">
+              <li
+                v-for="option in row.options"
+                :key="option.key"
+                class="review-option"
+                :class="option.state"
+              >
+                <span class="review-option-letter num">{{ option.letter }}</span>
+                <span class="review-option-text">{{ option.text }}</span>
+                <span v-if="option.isPicked" class="review-tag">Your pick</span>
+                <span v-if="option.isCorrect" class="review-tag is-right">Correct</span>
+              </li>
+            </ul>
+
+            <!-- Written answers have no options, so the raw values are all there is. -->
+            <template v-else>
+              <p class="mt-xs text-caption text-ink-2">
+                Your answer:
+                <span class="review-answer">{{ answerText(row.your_answer) }}</span>
+              </p>
+              <p v-if="row.correct_answer !== null" class="mt-xxs text-caption text-ink-2">
+                Correct answer:
+                <span class="review-answer is-right">{{ answerText(row.correct_answer) }}</span>
+              </p>
+            </template>
+
+            <p v-if="row.explanation" class="mt-xs text-caption text-ink-3">
+              {{ row.explanation }}
             </p>
           </div>
           <div class="review-score">
-            <p class="num text-body-sm" :class="item.is_correct ? 'text-ans-d' : 'text-ink-3'">
-              {{ item.score_earned ? `+${item.score_earned}` : '0' }}
+            <p class="num text-body-sm" :class="row.is_correct ? 'text-ans-d' : 'text-ink-3'">
+              {{ row.score_earned ? `+${row.score_earned}` : '0' }}
             </p>
-            <p v-if="item.is_late" class="text-caption text-ink-3">
+            <p v-if="row.is_late && !row.unanswered" class="text-caption text-ink-3">
               Late
             </p>
           </div>
         </li>
       </ul>
       <p v-else-if="showReview" class="mt-md text-body-sm text-ink-2">
-        No answers were recorded for you in this match.
+        No questions came back for this match.
       </p>
     </section>
 
@@ -336,8 +459,159 @@ function openReview() {
   color: var(--ans-d);
 }
 
+.review-item.is-skipped {
+  border-left-color: var(--hairline);
+}
+
+.review-flag {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.review-options {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.review-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.review-option.is-correct {
+  border-color: var(--ans-d);
+  background: var(--ans-d-soft);
+  color: var(--ink);
+}
+
+.review-option.is-wrong {
+  border-color: var(--ans-a);
+  background: var(--ans-a-soft);
+  color: var(--ink);
+}
+
+.review-option-letter {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--paper);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.review-option-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.review-tag.is-right {
+  border-color: var(--ans-d);
+  color: var(--ans-d);
+}
+
 .review-score {
   flex: none;
   text-align: right;
+}
+
+.hero {
+  background:
+    radial-gradient(120% 140% at 50% -20%, var(--spotlight-soft) 0%, transparent 60%),
+    var(--paper);
+}
+
+.podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.podium-spot {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 6px 0;
+  border-radius: var(--r-lg);
+  text-align: center;
+}
+
+.podium-spot.is-me {
+  background: var(--spotlight-soft);
+}
+
+.podium-place {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  background: var(--canvas);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.podium-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.podium-score {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.podium-block {
+  width: 100%;
+  margin-top: 6px;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  background: var(--wash);
+}
+
+.podium-spot.is-1 .podium-block {
+  height: 74px;
+  background: var(--ans-c-soft);
+}
+
+.podium-spot.is-2 .podium-block {
+  height: 54px;
+}
+
+.podium-spot.is-3 .podium-block {
+  height: 38px;
+}
+
+.podium-spot.is-1 .podium-place {
+  background: var(--ans-c-soft);
+  color: var(--ans-c);
 }
 </style>
