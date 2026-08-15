@@ -139,9 +139,12 @@ const description = [
   '`POST /storage/presign` for a URL, `PUT` the binary straight to object',
   'storage, then send the returned `publicUrl` to the endpoint that stores it.',
   '',
-  'The gameplay itself runs over Socket.IO and is not part of this REST',
-  'reference; the HTTP endpoints only create the room, hand out socket tokens',
-  'and read the results back.'
+  '## Realtime',
+  '',
+  'The gameplay itself runs over Socket.IO and cannot be described by OpenAPI,',
+  'so it has its own reference: [the realtime API](/v1/docs/socket), written as',
+  'an AsyncAPI document and served next to this one. The HTTP endpoints only',
+  'create the room, hand out socket tokens and read the results back.'
 ].join('\n')
 
 export const openapiSpec: OpenApiObject = {

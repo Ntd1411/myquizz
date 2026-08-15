@@ -337,7 +337,7 @@ export const gameSchemas: SchemaMap = {
 
   GameReview: {
     type: 'object',
-    description: "The caller's own answer sheet for a finished room.",
+    description: 'The caller\'s own answer sheet for a finished room.',
     properties: {
       player_score: { type: 'integer', example: 4200 },
       correct_answers_count: { type: 'integer', example: 7 },

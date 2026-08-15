@@ -1,5 +1,6 @@
 /**
- * Writes the OpenAPI document to docs/openapi.json.
+ * Writes the OpenAPI document to docs/openapi.json and the AsyncAPI one, which
+ * covers the Socket.IO layer, to docs/asyncapi.json.
  *
  * Only JSON is emitted: the previous hand-rolled Markdown renderer duplicated
  * what the reference UI already shows and drifted from the spec.
@@ -8,6 +9,7 @@
 import fs from 'fs'
 import path from 'path'
 import { openapiSpec } from './openapi.js'
+import { asyncapiSpec } from './asyncapi.js'
 
 const outputDir = path.join(process.cwd(), 'docs')
 
@@ -18,3 +20,7 @@ if (!fs.existsSync(outputDir)) {
 const jsonPath = path.join(outputDir, 'openapi.json')
 fs.writeFileSync(jsonPath, JSON.stringify(openapiSpec, null, 2))
 console.log(`API specification exported to: ${jsonPath}`)
+
+const asyncPath = path.join(outputDir, 'asyncapi.json')
+fs.writeFileSync(asyncPath, JSON.stringify(asyncapiSpec, null, 2))
+console.log(`Realtime specification exported to: ${asyncPath}`)

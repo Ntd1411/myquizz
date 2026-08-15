@@ -12,6 +12,7 @@ import { quizRouter } from './modules/quiz/quiz.route.js'
 import gameRouter from './modules/game/game.route.js'
 import { GameSocket } from './modules/game/game.socket.js'
 import { docsRouter, internalDocsRouter } from './docs/serve.js'
+import { socketDocsRouter } from './docs/serve.socket.js'
 import RedisClient, { redisClient } from './infrastructure/cache/redis.client.js'
 import { bootstrapEngine } from './modules/game/engine/index.js'
 import { storageRouter } from './modules/storage/storage.route.js'
@@ -72,12 +73,13 @@ app.get('/health', async (req, res) => {
 
 app.use(globalRateLimiter)
 
-app.get('/', (req, res) => {
-  res.send('Hello, world')
-})
-
 const router = express.Router()
 router.get('/', (req, res) => res.send({ success: 'ok' }))
+
+// The realtime layer cannot be expressed in OpenAPI, so the Socket.IO events
+// are published as an AsyncAPI document on their own page. It is mounted first
+// because docsRouter answers every path under /docs.
+router.use('/docs/socket', socketDocsRouter)
 
 // Public reference, read-only. The interactive one lives under /api-docs and is
 // restricted to basic auth in the reverse proxy.

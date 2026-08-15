@@ -489,7 +489,7 @@ export const gamePaths: PathMap = {
     get: {
       summary: 'Retrieve my answer sheet',
       description:
-        "The caller's own review of a finished room: every question of the quiz, in the order that player played it, with the options, the answer key, the explanation, what the player picked and how long it took. Questions the player never submitted come back with answered: false instead of being dropped, so a skipped question is not read as a wrong one. Identity comes from the socket token, never from the accessToken cookie, and the room config must have flow.reviewMode enabled. Answers are only ever revealed here, once the session is finished.",
+        'The caller\'s own review of a finished room: every question of the quiz, in the order that player played it, with the options, the answer key, the explanation, what the player picked and how long it took. Questions the player never submitted come back with answered: false instead of being dropped, so a skipped question is not read as a wrong one. Identity comes from the socket token, never from the accessToken cookie, and the room config must have flow.reviewMode enabled. Answers are only ever revealed here, once the session is finished.',
       tags: [gameTag.name],
       parameters: [idParam, socketTokenHeader],
       responses: {
