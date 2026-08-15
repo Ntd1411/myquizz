@@ -6,7 +6,12 @@ import AppFooter from '@/components/layout/AppFooter.vue'
 import ToastHost from '@/components/base/ToastHost.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
-import { AUTH_EXPIRED_EVENT, RATE_LIMITED_EVENT } from '@/api/http'
+import {
+  AUTH_EXPIRED_EVENT,
+  RATE_LIMITED_EVENT,
+  FORBIDDEN_EVENT,
+  NOT_FOUND_EVENT,
+} from '@/api/http'
 import { useLenis, ScrollTrigger } from '@/composables/useMotion'
 
 const auth = useAuthStore()
@@ -33,14 +38,26 @@ function onRateLimited() {
   ui.toast('You are going too fast. Please wait a moment.', 'error')
 }
 
+function onForbidden() {
+  ui.toast('You do not have permission to do that.', 'error')
+}
+
+function onNotFound() {
+  ui.toast('That item no longer exists.', 'error')
+}
+
 onMounted(() => {
   window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
   window.addEventListener(RATE_LIMITED_EVENT, onRateLimited)
+  window.addEventListener(FORBIDDEN_EVENT, onForbidden)
+  window.addEventListener(NOT_FOUND_EVENT, onNotFound)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired)
   window.removeEventListener(RATE_LIMITED_EVENT, onRateLimited)
+  window.removeEventListener(FORBIDDEN_EVENT, onForbidden)
+  window.removeEventListener(NOT_FOUND_EVENT, onNotFound)
   ScrollTrigger.getAll().forEach((trigger) => trigger.kill())
 })
 </script>

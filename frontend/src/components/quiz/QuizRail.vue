@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import QuizCard from './QuizCard.vue'
 import { revealGroup } from '@/composables/useMotion'
+import StateBlock from '@/components/base/StateBlock.vue'
+import SkeletonBlock from '@/components/base/SkeletonBlock.vue'
 
 /**
  * Horizontal rail built on native scrolling.
@@ -232,17 +234,21 @@ watch(
         </button>
 
         <div v-if="loading" class="flex gap-[20px] overflow-hidden">
-          <div
+          <SkeletonBlock
             v-for="n in perView"
             :key="`skeleton-${n}`"
-            class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
+            :rows="1"
+            height="h-[300px]"
+            card
             :style="{ flex: `0 0 ${cardWidth}px`, width: `${cardWidth}px` }"
           />
         </div>
 
-        <p v-else-if="!total" class="py-lg text-body-sm text-ink-faint">
-          No quizzes in this section yet.
-        </p>
+        <StateBlock
+          v-else-if="!total"
+          icon="\u{1F4ED}"
+          title="No quizzes in this section yet"
+        />
 
         <!--
           Native scroller: swipe, wheel, trackpad and keyboard all work. tabindex makes

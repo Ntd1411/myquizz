@@ -8,6 +8,8 @@ import { useCursorList } from '@/composables/useCursorList'
 import { useInfiniteScroll } from '@/composables/useInfiniteScroll'
 import { useAuthStore } from '@/stores/auth.store'
 import { revealAppended, revealOnScroll, ScrollTrigger } from '@/composables/useMotion'
+import StateBlock from '@/components/base/StateBlock.vue'
+import SkeletonBlock from '@/components/base/SkeletonBlock.vue'
 
 /**
  * Home screen, fully server driven.
@@ -121,13 +123,14 @@ onBeforeUnmount(() => {
     </template>
 
     <div v-else-if="home.isError.value" class="container-page py-lg">
-      <div class="card-surface p-xl">
-        <p class="text-body-sm text-ans-a">
-          Could not load the home sections.
-        </p>
-        <button class="btn-utility mt-md" type="button" @click="home.refetch()">
-          Try again
-        </button>
+      <div class="card-surface">
+        <StateBlock
+          variant="error"
+          icon="\u{26A0}\u{FE0F}"
+          title="Could not load the home sections"
+          action-label="Try again"
+          @action="home.refetch()"
+        />
       </div>
     </div>
 
@@ -154,29 +157,32 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="feed.loading.value" class="mt-lg grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4">
-        <div
+        <SkeletonBlock
           v-for="n in 8"
           :key="`feed-skeleton-${n}`"
-          class="h-[300px] animate-pulse rounded-lg bg-hairline/60"
+          :rows="1"
+          height="h-[300px]"
+          card
         />
       </div>
 
-      <div v-else-if="feed.errorMessage.value" class="card-surface mt-lg p-xl">
-        <p class="text-body-sm text-ans-a">
-          {{ feed.errorMessage.value }}
-        </p>
-        <button class="btn-utility mt-md" type="button" @click="feed.loadFirst()">
-          Try again
-        </button>
+      <div v-else-if="feed.errorMessage.value" class="card-surface mt-lg">
+        <StateBlock
+          variant="error"
+          icon="\u{26A0}\u{FE0F}"
+          :message="feed.errorMessage.value"
+          title="Could not load the feed"
+          action-label="Try again"
+          @action="feed.loadFirst()"
+        />
       </div>
 
-      <div v-else-if="!feedItems.length" class="card-surface mt-lg p-xl text-center">
-        <p class="text-body-md text-ink">
-          Nothing here yet.
-        </p>
-        <p class="mt-xxs text-body-sm text-ink-2">
-          New quizzes show up as soon as they are published.
-        </p>
+      <div v-else-if="!feedItems.length" class="card-surface mt-lg">
+        <StateBlock
+          icon="\u{1F4ED}"
+          title="Nothing here yet"
+          message="New quizzes show up as soon as they are published."
+        />
       </div>
 
       <template v-else>

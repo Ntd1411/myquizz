@@ -97,6 +97,15 @@ watch(menuOpen, (open) => {
 
 onBeforeUnmount(unbindMenuDismissers)
 
+// The drawer covers the page, so background scrolling is paused while it is open.
+watch(mobileOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = ''
+})
+
 /**
  * Searching from Discover must not drop the filters already applied there, so the
  * current query is carried over and only the keyword is replaced.
@@ -286,6 +295,7 @@ async function handleLogout() {
           class="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-md border border-hairline bg-surface text-ink md:hidden"
           type="button"
           aria-label="Menu"
+          :aria-expanded="mobileOpen"
           @click="mobileOpen = !mobileOpen"
         >
           <svg
@@ -316,37 +326,98 @@ async function handleLogout() {
         </form>
       </div>
     </div>
+  </header>
 
-    <div v-if="mobileOpen" class="border-t border-hairline bg-surface md:hidden">
-      <div class="container-page flex flex-col gap-xs py-sm">
+  <!--
+    Mobile menu: teleported out of the header so the header's own backdrop-filter
+    cannot turn it into a containing block for these fixed elements. Left inside,
+    the drawer and its backdrop would be clipped to the header's own box instead of
+    the viewport, which is what made the menu look like it sat under the page.
+  -->
+  <Teleport to="body">
+    <Transition name="drawer-backdrop">
+      <div
+        v-if="mobileOpen"
+        class="fixed inset-0 z-[100] bg-ink/40 md:hidden"
+        @click="mobileOpen = false"
+      />
+    </Transition>
+    <Transition name="drawer-panel">
+      <aside
+        v-if="mobileOpen"
+        class="drawer-panel fixed inset-y-0 left-0 z-[101] flex w-[82vw] max-w-[320px] flex-col gap-lg overflow-y-auto bg-surface p-lg shadow-1 md:hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        @keydown.esc="mobileOpen = false"
+      >
+        <div class="flex items-center justify-between">
+          <RouterLink :to="{ name: 'home' }" class="flex items-center" aria-label="MyQuizz home" @click="mobileOpen = false">
+            <BrandLogo :size="20" />
+          </RouterLink>
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label="Close menu"
+            @click="mobileOpen = false"
+          >
+            <svg
+              class="h-[18px] w-[18px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
         <form @submit.prevent="submitSearch">
           <input v-model="keyword" class="field" type="search" placeholder="Search quizzes…">
         </form>
-        <RouterLink
-          v-for="link in visibleNavLinks"
-          :key="link.label"
-          :to="link.to"
-          class="nav-link nav-link-block"
-          :active-class="link.exact ? '' : 'nav-link-active'"
-          exact-active-class="nav-link-active"
-          @click="mobileOpen = false"
-        >
-          {{ link.label }}
+
+        <nav class="flex flex-col gap-xxs">
+          <RouterLink
+            v-for="link in visibleNavLinks"
+            :key="link.label"
+            :to="link.to"
+            class="nav-link nav-link-block"
+            :active-class="link.exact ? '' : 'nav-link-active'"
+            exact-active-class="nav-link-active"
+            @click="mobileOpen = false"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </nav>
+
+        <RouterLink :to="{ name: 'join-game' }" class="btn-primary" @click="mobileOpen = false">
+          Join game
         </RouterLink>
-        <RouterLink
-          v-if="auth.ready && !auth.isLoggedIn"
-          :to="{ name: 'login' }"
-          class="btn-utility"
-          @click="mobileOpen = false"
-        >
-          Log in
-        </RouterLink>
-        <button v-else-if="auth.ready" class="btn-utility" type="button" @click="handleLogout">
-          Log out
-        </button>
-      </div>
-    </div>
-  </header>
+
+        <div class="mt-auto flex flex-col gap-xs border-t border-hairline pt-lg">
+          <template v-if="auth.ready && auth.isLoggedIn">
+            <RouterLink :to="{ name: 'profile' }" class="nav-link nav-link-block" @click="mobileOpen = false">
+              Edit profile
+            </RouterLink>
+            <button class="btn-utility" type="button" @click="handleLogout">
+              Log out
+            </button>
+          </template>
+          <RouterLink
+            v-else-if="auth.ready"
+            :to="{ name: 'login' }"
+            class="btn-utility"
+            @click="mobileOpen = false"
+          >
+            Log in
+          </RouterLink>
+        </div>
+      </aside>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -381,5 +452,26 @@ async function handleLogout() {
   color: var(--ink);
   font-weight: 700;
   background-color: transparent;
+}
+
+/* Backdrop fades; the panel itself slides in from the left edge of the screen. */
+.drawer-backdrop-enter-active,
+.drawer-backdrop-leave-active {
+  transition: opacity 200ms ease;
+}
+
+.drawer-backdrop-enter-from,
+.drawer-backdrop-leave-to {
+  opacity: 0;
+}
+
+.drawer-panel-enter-active,
+.drawer-panel-leave-active {
+  transition: transform 220ms ease;
+}
+
+.drawer-panel-enter-from,
+.drawer-panel-leave-to {
+  transform: translateX(-100%);
 }
 </style>
