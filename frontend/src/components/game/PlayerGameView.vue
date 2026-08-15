@@ -41,6 +41,9 @@ const timer = useCountdown(
 )
 const nextIn = useCountdown(() => game.results?.nextQuestionAt ?? null)
 
+const timeLeft = computed(() => timer.secondsLeft.value)
+const urgent = computed(() => timeLeft.value !== null && timeLeft.value <= 5 && !answered.value)
+
 // What the stage should paint as chosen: the submitted answer once it exists, the
 // staged selection while the player is still building one.
 const selected = computed(() => {
@@ -53,11 +56,16 @@ const revealed = computed(() => phase.value === 'showing_results' && Boolean(gam
 const correctAnswer = computed(() => game.results?.correct_answer ?? null)
 
 /**
- * The room event only carries the key, never who was right, so the outcome is worked
- * out here. Without a revealed key (showCorrectAnswer=false) there is nothing to say.
+ * The room event carries the key but not who was right, so the outcome is worked out
+ * here, unless the ack already graded this answer. Without a revealed key
+ * (showCorrectAnswer=false) there is nothing to say at all.
  */
 const outcome = computed(() => {
-  if (!revealed.value || correctAnswer.value === null) return null
+  if (!revealed.value) return null
+  const graded = answered.value?.isCorrect
+  if (graded === true) return 'correct'
+  if (graded === false) return 'wrong'
+  if (correctAnswer.value === null) return null
   const sent = answered.value?.answer
   if (sent === undefined || sent === null) return 'missed'
   const asKey = (value) => String(value ?? '').trim().toLowerCase()
@@ -67,12 +75,14 @@ const outcome = computed(() => {
   const got = (Array.isArray(sent) ? sent : [sent]).map(asKey).sort()
   if (!got.length) return 'missed'
   if (isMulti.value)
-    return got.length === want.length && got.every((v, i) => v === want[i]) ? 'correct' : 'wrong'
+    return got.length === want.length && got.every((value, at) => value === want[at]) ? 'correct' : 'wrong'
   return want.includes(got[0]) ? 'correct' : 'wrong'
 })
 
-const myRow = computed(() =>
-  game.leaderboard.find((row) => String(row.id) === String(game.playerId)) ?? null,
+const scoreEarned = computed(() => answered.value?.scoreEarned ?? null)
+
+const myRow = computed(
+  () => game.leaderboard.find((row) => String(row.id) === String(game.playerId)) ?? null,
 )
 
 const canSubmit = computed(() => {
@@ -119,7 +129,7 @@ function submit() {
 <template>
   <div class="grid gap-md">
     <!-- Countdown before the first question -->
-    <section v-if="phase === 'countdown'" class="card-surface p-xl text-center">
+    <section v-if="phase === 'countdown'" class="wash-panel p-xl text-center">
       <p class="eyebrow-label">
         Get ready
       </p>
@@ -133,42 +143,53 @@ function submit() {
 
     <!-- Final screen. The full breakdown is a separate screen of its own. -->
     <section v-else-if="game.isFinished" class="card-surface p-xl text-center">
-      <p class="eyebrow-label">
-        Game over
+      <p class="final-mark">
+        &#9733;
       </p>
-      <h2 class="mt-xs text-heading-2 text-ink">
+      <h2 class="mt-md text-heading-2 text-ink">
         Thanks for playing
       </h2>
       <p v-if="myRow" class="mt-sm text-body-md text-ink-2">
-        You finished <span class="num">#{{ myRow.rank }}</span> with
-        <span class="num">{{ myRow.player_score }}</span> points.
+        You finished <span class="num text-ink">#{{ myRow.rank }}</span> with
+        <span class="num text-ink">{{ myRow.player_score }}</span> points.
       </p>
     </section>
 
     <!-- Question, waiting and results all share the same card so nothing jumps -->
-    <section v-else-if="question" class="card-surface p-xl">
-      <div class="flex items-center justify-between gap-sm">
-        <p class="eyebrow-label">
-          {{ game.isPaused ? 'Paused by the host' : 'Question' }}
-        </p>
-        <p v-if="timer.secondsLeft.value !== null" class="num text-heading-3 text-ink">
-          {{ timer.secondsLeft.value }}s
-        </p>
+    <section v-else-if="question" class="card-surface stage p-xl">
+      <div class="mb-lg">
+        <div class="flex items-center justify-between gap-sm">
+          <p class="stage-count">
+            <span class="eyebrow-label">{{ game.isPaused ? 'Paused by the host' : 'Question' }}</span>
+            <span class="num text-ink">{{ (question.index ?? 0) + 1 }}</span>
+            <span class="text-ink-3">/ {{ question.total ?? game.totalQuestions }}</span>
+          </p>
+          <p v-if="timeLeft !== null" class="num text-heading-2 text-ink" :class="{ 'is-urgent': urgent }">
+            {{ timeLeft }}s
+          </p>
+        </div>
+        <div v-if="timeLeft !== null" class="track mt-xs">
+          <div
+            class="track-fill"
+            :class="{ 'is-urgent': urgent }"
+            :style="{ width: `${Math.round((timer.progress.value ?? 0) * 100)}%` }"
+          />
+        </div>
       </div>
 
       <QuestionStage
-        class="mt-sm"
         :question="question"
         :selected="selected"
         :correct-answer="correctAnswer"
         :stats="revealed ? game.results?.stats : null"
-        :disabled="!game.canAnswer"
         :reveal="revealed"
+        :multi="isMulti"
+        :disabled="!game.canAnswer"
         @pick="pick"
       />
 
       <label v-if="isText" class="mt-lg block">
-        <span class="mb-xxs block text-body-sm font-medium text-ink-2">Your answer</span>
+        <span class="mb-xs block text-body-sm font-medium text-ink-2">Your answer</span>
         <input
           v-model="text"
           class="field"
@@ -189,30 +210,32 @@ function submit() {
         {{ sending ? 'Sending\u2026' : 'Submit answer' }}
       </button>
 
-      <!-- One status line, so the player always knows what is being waited for -->
-      <p v-if="revealed && outcome === 'correct'" class="mt-md text-body-md" style="color: var(--ans-d)">
-        Correct.
-      </p>
-      <p v-else-if="revealed && outcome === 'wrong'" class="mt-md text-body-md" style="color: var(--ans-a)">
-        Not this time.
-      </p>
-      <p v-else-if="revealed && outcome === 'missed'" class="mt-md text-body-md text-ink-2">
-        You did not answer this one.
-      </p>
-      <p v-else-if="revealed" class="mt-md text-body-md text-ink-2">
+      <!-- One status block, so the player always knows what is being waited for -->
+      <div v-if="revealed && outcome" class="verdict mt-lg" :class="`is-${outcome}`">
+        <span class="verdict-mark">
+          {{ outcome === 'correct' ? '&#10003;' : outcome === 'wrong' ? '&#10007;' : '&#8987;' }}
+        </span>
+        <span class="verdict-text">
+          <span class="verdict-title">
+            {{ outcome === 'correct' ? 'Correct' : outcome === 'wrong' ? 'Not this time' : 'You did not answer' }}
+          </span>
+          <span v-if="scoreEarned" class="num verdict-score">+{{ scoreEarned }}</span>
+        </span>
+      </div>
+      <p v-else-if="revealed" class="mt-lg text-body-md text-ink-2">
         Answers are in.
       </p>
-      <p v-else-if="phase === 'question_locked'" class="mt-md text-body-md text-ink-2">
+      <p v-else-if="phase === 'question_locked'" class="mt-lg text-body-md text-ink-2">
         Time is up. Waiting for the results&hellip;
       </p>
-      <p v-else-if="answered" class="mt-md text-body-md text-ink-2">
+      <p v-else-if="answered" class="mt-lg text-body-md text-ink-2">
         Answer sent. Waiting for the other players&hellip;
       </p>
 
-      <p v-if="revealed && nextIn.secondsLeft.value !== null" class="mt-xxs text-caption text-ink-3">
+      <p v-if="revealed && nextIn.secondsLeft.value !== null" class="mt-sm text-caption text-ink-3">
         Next question in <span class="num">{{ nextIn.secondsLeft.value }}</span>s
       </p>
-      <p v-else-if="revealed" class="mt-xxs text-caption text-ink-3">
+      <p v-else-if="revealed" class="mt-sm text-caption text-ink-3">
         Waiting for the host to move on&hellip;
       </p>
     </section>
@@ -224,7 +247,7 @@ function submit() {
       </p>
     </section>
 
-    <section v-if="game.leaderboard.length" class="card-surface p-xl">
+    <section v-if="game.leaderboard.length" class="card-surface p-lg">
       <p class="eyebrow-label">
         Standings
       </p>
@@ -237,3 +260,108 @@ function submit() {
     </section>
   </div>
 </template>
+
+<style scoped>
+.stage {
+  border-radius: var(--r-xl);
+}
+
+.stage-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--hairline);
+}
+
+.track-fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--spotlight);
+  transition: width var(--t-ui) linear;
+}
+
+.track-fill.is-urgent {
+  background: var(--ans-a);
+}
+
+.num.is-urgent {
+  color: var(--ans-a);
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+}
+
+.verdict-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-full);
+  background: var(--paper);
+  font-size: 18px;
+}
+
+.verdict-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.verdict-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.verdict-score {
+  font-size: 15px;
+}
+
+.verdict.is-correct {
+  border-color: var(--ans-d);
+  background: var(--ans-d-soft);
+  color: var(--ans-d);
+}
+
+.verdict.is-wrong {
+  border-color: var(--ans-a);
+  background: var(--ans-a-soft);
+  color: var(--ans-a);
+}
+
+.verdict.is-missed {
+  color: var(--ink-2);
+}
+
+.final-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-full);
+  background: var(--spotlight-soft);
+  color: var(--spotlight);
+  font-size: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-fill {
+    transition: none;
+  }
+}
+</style>

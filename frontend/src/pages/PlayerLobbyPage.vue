@@ -5,6 +5,7 @@ import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import GameShell from '@/components/game/GameShell.vue'
 import PlayerGameView from '@/components/game/PlayerGameView.vue'
 import PlayerList from '@/components/game/PlayerList.vue'
+import SelfPacedGameView from '@/components/game/SelfPacedGameView.vue'
 import { getGameByCode, joinGame } from '@/api/games.api'
 import { toErrorMessage } from '@/api/envelope'
 import { useGameSocket } from '@/composables/useGameSocket'
@@ -243,6 +244,8 @@ watch(
           :max-players="maxPlayers"
           data-enter
         />
+        <!-- Self-paced modes run on their own clock, with lives and a match budget. -->
+        <SelfPacedGameView v-else-if="game.isSelfPaced" data-enter />
         <PlayerGameView v-else data-enter />
       </div>
     </div>

@@ -266,6 +266,9 @@ export const useGameStore = defineStore('game', () => {
     touchClock(payload)
     awaitingNext.value = payload ?? null
     if (payload?.lives !== undefined) lives.value = payload.lives
+    // A reconnect learns the running total here: the answer ack that carried it is gone.
+    if (payload?.player_score !== undefined)
+      player.value = { ...(player.value ?? {}), player_score: payload.player_score }
     const previous = payload?.previous_result
     if (!previous) return
     answers.value = {

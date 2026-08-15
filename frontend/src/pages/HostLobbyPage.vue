@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import GameShell from '@/components/game/GameShell.vue'
 import HostGameConsole from '@/components/game/HostGameConsole.vue'
+import HostSelfPacedBoard from '@/components/game/HostSelfPacedBoard.vue'
 import PlayerList from '@/components/game/PlayerList.vue'
 import RoomSettingsDialog from '@/components/game/RoomSettingsDialog.vue'
 import { getGameByCode, getHostToken, listGameModes, updateGameConfig } from '@/api/games.api'
@@ -320,7 +321,9 @@ onBeforeUnmount(() => {
             </p>
             <span class="chip">{{ statusLabel }}</span>
           </section>
-          <HostGameConsole data-enter />
+          <!-- Self-paced: no shared question to drive, only progress to watch. -->
+          <HostSelfPacedBoard v-if="game.isSelfPaced" data-enter />
+          <HostGameConsole v-else data-enter />
         </template>
       </div>
     </div>

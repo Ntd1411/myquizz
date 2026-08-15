@@ -43,9 +43,17 @@ const nextLabel = computed(() =>
   phase.value === 'question_active' ? 'Lock answers' : 'Next question',
 )
 
+/**
+ * A socket emit has no ack: a refusal comes back later on the error channel. Reading it
+ * right after the call would only ever find the previous failure, so the channel is
+ * cleared first and read again once the server had a chance to answer.
+ */
 function guard(action, label) {
+  game.setError(null)
   action()
-  if (game.lastError) ui.toast(`${label} failed: ${game.lastError.message}`, 'error')
+  window.setTimeout(() => {
+    if (game.lastError) ui.toast(`${label} failed: ${game.lastError.message}`, 'error')
+  }, 600)
 }
 
 function next() {
