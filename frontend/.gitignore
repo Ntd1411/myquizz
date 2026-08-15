@@ -5,3 +5,10 @@ dist
 .DS_Store
 *.log
 .env.production
+coverage
+test-results
+tests
+e2e
+scripts
+playwright.config.js
+vitest.setup.js
