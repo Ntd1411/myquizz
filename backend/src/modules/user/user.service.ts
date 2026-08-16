@@ -6,7 +6,14 @@ import { deleteFileService } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
 import { generateOTP, generateResetToken } from './user.util.js'
-import { RESET_PREFIX, RESET_TTL, USER_CACHE_PREFIX, USER_CACHE_TTL } from './user.schema.js'
+import {
+  RESET_PREFIX,
+  RESET_RESEND_TTL,
+  RESET_TTL,
+  USER_CACHE_PREFIX,
+  USER_CACHE_TTL,
+  type ResetSchedule
+} from './user.schema.js'
 import type { User } from '../auth/auth.type.js'
 
 async function invalidateUserCache(userId: number): Promise<void> {
@@ -157,7 +164,25 @@ export async function deactivateAccountService(
   await invalidateUserCache(user.id)
 }
 
-export async function forgotPasswordService(email: string): Promise<Date> {
+async function clearResetState(email: string): Promise<void> {
+  const redis = RedisClient.getInstance()
+  const linkKey = `${RESET_PREFIX}:link:${email}`
+  const token = await redis.get(linkKey)
+
+  const keys = [
+    `${RESET_PREFIX}:${email}`,
+    `${RESET_PREFIX}:resend:${email}`,
+    linkKey
+  ]
+
+  if (token) keys.push(`${RESET_PREFIX}:${token}`)
+
+  for (const key of keys) {
+    await redis.del(key)
+  }
+}
+
+export async function forgotPasswordService(email: string): Promise<ResetSchedule> {
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
@@ -173,23 +198,37 @@ export async function forgotPasswordService(email: string): Promise<Date> {
 
   const redis = RedisClient.getInstance()
   const otpKey = `${RESET_PREFIX}:${email}`
-  const existingOtp = await redis.get(otpKey)
+  const linkKey = `${RESET_PREFIX}:link:${email}`
+  const resendKey = `${RESET_PREFIX}:resend:${email}`
 
-  if (existingOtp) {
-    // An OTP is already outstanding for this email. Re-requesting it (e.g. the
-    // reader retyped the same address) must not resend the email or reset the
-    // window - it just hands back the same expiry so the frontend can rebuild
-    // its countdown from a fresh page load.
-    const ttl = await redis.ttl(otpKey)
-    return new Date(Date.now() + Math.max(ttl, 0) * 1000)
+  const resendTtl = await redis.ttl(resendKey)
+
+  if (resendTtl > 0) {
+    const otpTtl = await redis.ttl(otpKey)
+
+    return {
+      resetTime: new Date(Date.now() + resendTtl * 1000),
+      expiresAt: new Date(Date.now() + Math.max(otpTtl, 0) * 1000)
+    }
+  }
+
+  // The cooldown is over, so this call really does send a new code. The previous link
+  // dies with it: otherwise every re-send would leave another working token behind.
+  const previousToken = await redis.get(linkKey)
+  if (previousToken) {
+    await redis.del(`${RESET_PREFIX}:${previousToken}`)
   }
 
   const otp = generateOTP()
   const resetToken = generateResetToken()
   const tokenKey = `${RESET_PREFIX}:${resetToken}`
+  // Written into the email, so it can never drift away from the actual TTL.
+  const lifetime = `${RESET_TTL / 60} minutes`
 
   await redis.setex(otpKey, RESET_TTL, otp)
   await redis.setex(tokenKey, RESET_TTL, email)
+  await redis.setex(linkKey, RESET_TTL, resetToken)
+  await redis.setex(resendKey, RESET_RESEND_TTL, resetToken)
 
   const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`
 
@@ -203,7 +242,7 @@ export async function forgotPasswordService(email: string): Promise<Date> {
     </a>
   </p>
   <p>Or use this OTP code: <strong>${otp}</strong></p>
-  <p>Link and OTP will expire in 5 minutes.</p>
+  <p>Link and OTP will expire in ${lifetime}.</p>
   <p>If you didn't request this, please ignore this email.</p>
 `
 
@@ -211,13 +250,15 @@ export async function forgotPasswordService(email: string): Promise<Date> {
     to: email,
     subject: 'Reset Password',
     html: resetHtml,
-    text: `Reset Password: ${resetUrl}\nOTP Code: ${otp}\nLink and OTP will expire in 5 minutes.`
+    text: `Reset Password: ${resetUrl}\nOTP Code: ${otp}\nLink and OTP will expire in ${lifetime}.`
   }).catch(error => {
     console.error('Failed to send reset password email:', error)
   })
 
-  const resetTime = new Date(Date.now() + RESET_TTL * 1000)
-  return resetTime
+  return {
+    resetTime: new Date(Date.now() + RESET_RESEND_TTL * 1000),
+    expiresAt: new Date(Date.now() + RESET_TTL * 1000)
+  }
 }
 
 export async function resetPasswordService(
@@ -254,17 +295,7 @@ export async function resetPasswordService(
     throw new AppError(500, 'Failed to reset password')
   }
 
-  await redis.del(otpKey)
-
-  const tokenPattern = `${RESET_PREFIX}:*`
-  const keys = await redis.keys(tokenPattern)
-
-  for (const key of keys) {
-    const value = await redis.get(key)
-    if (value === email) {
-      await redis.del(key)
-    }
-  }
+  await clearResetState(email)
 
   await invalidateUserCache(user.id)
 }
@@ -317,9 +348,7 @@ export async function resetPasswordWithTokenService(
   }
 
   await redis.del(tokenKey)
-
-  const otpKey = `${RESET_PREFIX}:${email}`
-  await redis.del(otpKey)
+  await clearResetState(email)
 
   await invalidateUserCache(user.id)
 }

@@ -289,7 +289,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Send a password reset code',
       description:
-        'Emails a six-digit code and a reset link, both valid for 5 minutes. data.resetTime is the moment the current code expires and a new one may be requested. Accounts created through Google have no password to reset.',
+        'Emails a six-digit code and a reset link, both valid for 2 minutes. The answer carries two instants: data.resetTime is when the next code may be requested, one minute after the send, and data.expiresAt is when the current code and link stop working. Asking again inside that first minute is not an error and sends nothing, it simply repeats the deadlines of the code already outstanding. Accounts created through Google have no password to reset.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object({ email: { type: 'string', format: 'email' } }, ['email']),
@@ -298,13 +298,17 @@ export const userPaths: PathMap = {
       responses: {
         200: successResponse({
           description:
-            'The code was queued for delivery. data.resetTime says when a new request is allowed.',
+            'The code was queued for delivery, or one was already outstanding. data.resetTime says when the next request is allowed, data.expiresAt when the current code dies.',
           data: object(
-            { resetTime: { type: 'string', format: 'date-time' } },
-            ['resetTime']
+            {
+              resetTime: { type: 'string', format: 'date-time' },
+              expiresAt: { type: 'string', format: 'date-time' }
+            },
+            ['resetTime', 'expiresAt']
           ),
           example: successExample({
-            resetTime: '2026-08-12T03:05:00.000Z'
+            resetTime: '2026-08-12T03:01:00.000Z',
+            expiresAt: '2026-08-12T03:02:00.000Z'
           })
         }),
         400: errorResponse('The account signs in with Google', [
@@ -316,11 +320,8 @@ export const userPaths: PathMap = {
           'Account is deactivated'
         ]),
         429: errorResponse(
-          'Either a code is still valid, or the IP hit authRateLimiter (5 requests per 5 minutes, successful sends excluded). Both messages carry the remaining seconds.',
-          [
-            'OTP already sent. Please wait 240 seconds before requesting again.',
-            'Too many requests. Please try again in 240 seconds'
-          ]
+          'The IP hit authRateLimiter (5 requests per 5 minutes, successful sends excluded). A code that is still valid is no longer an error: it answers 200 carrying the deadlines of the outstanding code.',
+          ['Too many requests. Please try again in 240 seconds']
         )
       }
     }
@@ -330,7 +331,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Reset the password with a code',
       description:
-        'Completes the reset started by POST /users/forgot-password, using the six-digit code from the email. The code and the matching link token are both dropped afterwards.',
+        'Completes the reset started by POST /users/forgot-password, using the six-digit code from the email. The code, the matching link token and the resend cooldown are all dropped afterwards.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object(
@@ -377,7 +378,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Reset the password with a token',
       description:
-        'Completes the reset using the token embedded in the emailed link instead of the six-digit code. Same 5-minute window, and using it also invalidates the code.',
+        'Completes the reset using the token embedded in the emailed link instead of the six-digit code. Same 2-minute window, and using it also invalidates the code and the resend cooldown.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object(

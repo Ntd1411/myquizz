@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 export const USER_CACHE_TTL = 5 * 60 // 5 minutes
 export const USER_CACHE_PREFIX = 'user:profile'
-export const RESET_TTL = 5 * 60 // 5 minutes
+export const RESET_TTL = 2 * 60 // 2 minutes
+export const RESET_RESEND_TTL = 60 // 1 minute
 export const RESET_PREFIX = 'user:reset'
 
 export const changePasswordSchema = z.object({
@@ -12,8 +13,6 @@ export const changePasswordSchema = z.object({
 
 export const updateProfileSchema = z.strictObject({
   fullname: z.string().min(2, 'Full name must be at least 2 characters').max(100, 'Full name must be at most 100 characters').optional(),
-  // An empty string is how a profile takes its number back off: the column is nullable
-  // and the field optional at sign-up, so clearing it has to be expressible here too.
   phone: z.union([z.string().regex(/^\+?[0-9]{7,15}$/, 'Phone must be 7-15 digits'), z.literal('')]).optional(),
   description: z.string().max(200, 'Description must be at most 200 characters').optional()
 })
@@ -48,3 +47,8 @@ export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>
 export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>
 export type ResetPasswordWithTokenRequest = z.infer<typeof resetPasswordWithTokenSchema>
 export type VerifyResetTokenRequest = z.infer<typeof verifyResetTokenSchema>
+
+export type ResetSchedule = {
+  resetTime: Date
+  expiresAt: Date
+}
