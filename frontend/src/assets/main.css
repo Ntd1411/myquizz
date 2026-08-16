@@ -225,6 +225,14 @@
     @apply btn bg-ans-a text-white;
   }
 
+  /*
+    Auth screens only. The Spotlight violet already fills the split-screen cover
+    art, so the primary action on those pages switches to a neutral ink button.
+  */
+  .btn-auth-primary {
+    @apply btn bg-ink text-white hover:bg-ink-2;
+  }
+
   .field {
     @apply w-full rounded-md border border-hairline bg-paper px-sm py-[10px] text-body-sm text-ink placeholder:text-ink-3 focus:outline-none;
     transition:

@@ -67,6 +67,16 @@ export async function resetPassword({ email, otp, newPassword }) {
 }
 
 /**
+ * The emailed reset link opens the app with ?token=...; the page calls this first
+ * and only shows the password form while the token is still alive. The token is
+ * NOT consumed here - the actual reset re-validates the same key.
+ */
+export async function verifyResetToken(token) {
+  const res = await http.post('/users/reset-password-token/verify', { token })
+  return unwrap(res.data)
+}
+
+/**
  * Token variant of the same flow: the link mailed by /users/forgot-password carries
  * this token as a query param instead of a 6-digit code the reader has to type.
  */

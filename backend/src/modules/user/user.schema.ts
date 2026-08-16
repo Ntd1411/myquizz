@@ -37,9 +37,14 @@ export const resetPasswordWithTokenSchema = z.object({
   newPassword: z.string().min(8, 'Password must be at least 8 characters')
 })
 
+export const verifyResetTokenSchema = z.object({
+  token: z.string().min(1, 'Token is required')
+})
+
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>
 export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>
 export type DeactivateAccountRequest = z.infer<typeof deactivateAccountSchema>
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>
 export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>
 export type ResetPasswordWithTokenRequest = z.infer<typeof resetPasswordWithTokenSchema>
+export type VerifyResetTokenRequest = z.infer<typeof verifyResetTokenSchema>

@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 960 1200">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c2fc9"/>
+      <stop offset="55%" stop-color="#6c4cf1"/>
+      <stop offset="100%" stop-color="#8a72f6"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe08a"/>
+      <stop offset="55%" stop-color="#f2b32e"/>
+      <stop offset="100%" stop-color="#d98f12"/>
+    </linearGradient>
+    <pattern id="dots" width="42" height="42" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="1.8" fill="#ffffff" opacity="0.35"/>
+    </pattern>
+    <filter id="blurBlob" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="70"/>
+    </filter>
+    <filter id="blurGround" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="cardShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="26" stdDeviation="28" flood-color="#241154" flood-opacity="0.35"/>
+    </filter>
+    <filter id="chipShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#241154" flood-opacity="0.25"/>
+    </filter>
+    <path id="sparkle" d="M0,-11 C1,-4 4,-1 11,0 C4,1 1,4 0,11 C-1,4 -4,1 -11,0 C-4,-1 -1,-4 0,-11 Z"/>
+    <path id="star5" d="M0,-16 L4.7,-5.3 L16,-4.9 L7,2.5 L9.9,14 L0,7 L-9.9,14 L-7,2.5 L-16,-4.9 L-4.7,-5.3 Z"/>
+  </defs>
+
+  <rect width="960" height="1200" fill="url(#bgGrad)"/>
+  <rect width="960" height="1200" fill="url(#dots)"/>
+
+  <circle cx="120" cy="160" r="170" fill="#ef4b45" opacity="0.16" filter="url(#blurBlob)"/>
+  <circle cx="840" cy="220" r="190" fill="#2f6be0" opacity="0.18" filter="url(#blurBlob)"/>
+  <circle cx="150" cy="1080" r="200" fill="#1ba968" opacity="0.16" filter="url(#blurBlob)"/>
+  <circle cx="860" cy="1040" r="170" fill="#f2b32e" opacity="0.16" filter="url(#blurBlob)"/>
+
+  <ellipse cx="480" cy="1000" rx="260" ry="46" fill="#1c0f4d" opacity="0.30" filter="url(#blurGround)"/>
+
+  <g>
+    <rect x="240" y="268" width="580" height="760" rx="32" fill="#efeaff" transform="rotate(-14 480 590)"/>
+    <rect x="216" y="240" width="580" height="760" rx="32" fill="#cfc4fb" transform="rotate(-9 480 590)"/>
+    <g filter="url(#cardShadow)" transform="rotate(-4 480 590)">
+      <rect x="190" y="210" width="580" height="760" rx="32" fill="#ffffff"/>
+
+      <text x="236" y="288" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#565968">Câu 3/10</text>
+      <circle cx="612" cy="280" r="7" fill="#6c4cf1"/>
+      <circle cx="638" cy="280" r="7" fill="#6c4cf1"/>
+      <circle cx="664" cy="280" r="7" fill="#6c4cf1"/>
+      <circle cx="690" cy="280" r="7" fill="#e6e7ee"/>
+
+      <rect x="236" y="326" width="460" height="16" rx="8" fill="#e3e5ee"/>
+      <rect x="236" y="354" width="320" height="16" rx="8" fill="#e3e5ee"/>
+
+      <rect x="236" y="404" width="488" height="80" rx="20" fill="#fdeceb"/>
+      <circle cx="278" cy="444" r="22" fill="#ef4b45"/>
+      <text x="278" y="444" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">A</text>
+      <rect x="322" y="434" width="300" height="16" rx="8" fill="#23242B" opacity="0.28"/>
+
+      <rect x="236" y="502" width="488" height="80" rx="20" fill="#eaf1fe"/>
+      <circle cx="278" cy="542" r="22" fill="#2f6be0"/>
+      <text x="278" y="542" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">B</text>
+      <rect x="322" y="532" width="260" height="16" rx="8" fill="#23242B" opacity="0.28"/>
+
+      <rect x="236" y="600" width="488" height="80" rx="20" fill="#fef5e3"/>
+      <circle cx="278" cy="640" r="22" fill="#f2b32e"/>
+      <text x="278" y="640" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">C</text>
+      <rect x="322" y="630" width="280" height="16" rx="8" fill="#23242B" opacity="0.28"/>
+
+      <rect x="236" y="698" width="488" height="80" rx="20" fill="#e7f7f0" stroke="#1ba968" stroke-width="3"/>
+      <circle cx="278" cy="738" r="22" fill="#1ba968"/>
+      <text x="278" y="738" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">D</text>
+      <rect x="322" y="728" width="240" height="16" rx="8" fill="#23242B" opacity="0.28"/>
+      <circle cx="676" cy="738" r="20" fill="#1ba968"/>
+      <path d="M665,738 L674,747 L689,728" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <rect x="236" y="822" width="488" height="64" rx="20" fill="#6c4cf1"/>
+      <text x="480" y="854" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">Tiếp tục</text>
+    </g>
+  </g>
+
+  <g transform="rotate(-8 150 300)" filter="url(#chipShadow)">
+    <rect x="70" y="270" width="150" height="60" rx="28" fill="#ffffff"/>
+    <circle cx="106" cy="300" r="18" fill="#eaf1fe"/>
+    <path d="M106,308 L106,292 M99,299 L106,290 L113,299" stroke="#2f6be0" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="168" y="300" font-family="Arial, sans-serif" font-size="24" font-weight="800" fill="#23242B" text-anchor="middle" dominant-baseline="central">98%</text>
+  </g>
+
+  <g transform="rotate(7 170 940)" filter="url(#chipShadow)">
+    <rect x="90" y="905" width="140" height="56" rx="26" fill="#ffffff"/>
+    <path d="M142,913 C158,929 158,949 142,953 C126,949 126,929 142,913 Z" fill="#f2b32e"/>
+    <path d="M142,923 C150,931 150,943 142,947 C134,943 134,931 142,923 Z" fill="#ffe08a"/>
+    <text x="185" y="933" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#23242B" text-anchor="middle" dominant-baseline="central">7</text>
+  </g>
+
+  <g transform="rotate(10 820 940)" filter="url(#chipShadow)">
+    <circle cx="820" cy="940" r="48" fill="url(#goldGrad)"/>
+    <use href="#star5" xlink:href="#star5" transform="translate(820 940) scale(1.15)" fill="#ffffff"/>
+  </g>
+
+  <use href="#sparkle" xlink:href="#sparkle" transform="translate(760 190) scale(1.6)" fill="#ffffff" opacity="0.9"/>
+  <use href="#sparkle" xlink:href="#sparkle" transform="translate(210 190) scale(1.1) rotate(20)" fill="#ffffff" opacity="0.8"/>
+  <use href="#sparkle" xlink:href="#sparkle" transform="translate(846 640) scale(1.3) rotate(-15)" fill="#ffffff" opacity="0.85"/>
+  <use href="#sparkle" xlink:href="#sparkle" transform="translate(120 660) scale(0.9) rotate(30)" fill="#ffffff" opacity="0.7"/>
+  <use href="#sparkle" xlink:href="#sparkle" transform="translate(700 1080) scale(1.2) rotate(12)" fill="#ffffff" opacity="0.8"/>
+</svg>

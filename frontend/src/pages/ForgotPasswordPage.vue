@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import AuthShell from '@/components/auth/AuthShell.vue'
 import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
-import BrandLogo from '@/components/base/BrandLogo.vue'
+import PasswordField from '@/components/base/PasswordField.vue'
 import { useUiStore } from '@/stores/ui.store'
 import { forgotPassword, resetPassword } from '@/api/users.api'
 import { toErrorMessage } from '@/api/envelope'
@@ -25,8 +26,9 @@ const resetting = ref(false)
 const formError = ref('')
 
 // The backend answers POST /users/forgot-password with { resetTime }: the instant
-// the OTP expires. A new code can only be requested once that window is over,
-// because the server rejects an earlier retry with 429.
+// the current OTP expires. Re-sending to the same email while it is still valid
+// does not send a new email or throw - it just echoes back this same expiry, so
+// the countdown here always reflects the one real OTP outstanding.
 const secondsLeft = ref(0)
 let timerId = null
 
@@ -64,30 +66,32 @@ function startCountdownFromResetTime(resetTime) {
 }
 
 /**
- * A 429 means an OTP is still alive; the message carries the remaining TTL, so the
- * countdown can be restored instead of leaving the button permanently enabled.
+ * Maps a failed send/resend into a fixed, user-facing message. The backend's own
+ * error text is never shown here - it may describe internal rate-limit windows or
+ * other details that are not meant for the reader.
  */
-function startCountdownFromError(error) {
-  const message = error?.response?.data?.message ?? ''
-  const match = /(\d+)\s*second/i.exec(message)
-  if (match) startCountdown(Number(match[1]))
+function sendCodeErrorMessage(error) {
+  const status = error?.response?.status
+  if (status === 404) return 'No account uses this email address.'
+  if (status === 410) return 'This account has been deactivated.'
+  if (status === 400) return 'This account cannot reset its password this way.'
+  if (error?.code === 'ERR_NETWORK') return 'Could not connect to the server.'
+  return 'Could not send the verification code. Please try again.'
 }
 
 async function sendCode() {
   formError.value = ''
   sending.value = true
   try {
+    // Re-requesting a code for an email that already has one outstanding is not an
+    // error: the backend just hands back the same expiry instead of resending the
+    // email, so this always lands here rather than in the catch block.
     const { resetTime } = await forgotPassword(email.value)
     startCountdownFromResetTime(resetTime)
     step.value = 'verify'
     ui.toast('A verification code has been sent to your email.')
   } catch (error) {
-    if (error?.response?.status === 429) {
-      // The previous code is still valid, so let the user type it in.
-      startCountdownFromError(error)
-      step.value = 'verify'
-    }
-    formError.value = toErrorMessage(error, 'Could not send the verification code.')
+    formError.value = sendCodeErrorMessage(error)
   } finally {
     sending.value = false
   }
@@ -123,109 +127,106 @@ onBeforeUnmount(stopCountdown)
 </script>
 
 <template>
-  <div class="container-page flex justify-center py-xxl">
-    <div class="card-surface w-full max-w-md p-lg">
-      <BrandLogo class="mb-md" :size="24" />
-
-      <h1 class="text-heading-2 text-ink">
-        Forgot password
-      </h1>
-
-      <!-- Step 1: ask for the account email. -->
-      <template v-if="step === 'request'">
-        <p class="mt-xxs text-body-sm text-ink-muted">
+  <AuthShell>
+    <div class="flex flex-col gap-md">
+      <div class="flex flex-col items-center gap-xxs text-center">
+        <h1 class="text-heading-2 text-ink">
+          Forgot password
+        </h1>
+        <p v-if="step === 'request'" class="text-body-sm text-ink-muted">
           Enter your account email and we will send you a verification code.
         </p>
-
-        <form class="mt-lg flex flex-col gap-sm" @submit.prevent="sendCode">
-          <BaseField
-            v-model="email"
-            label="Email"
-            type="email"
-            autocomplete="email"
-            required
-          />
-
-          <p v-if="formError" class="text-caption text-sticker-orange-deep">
-            {{ formError }}
-          </p>
-
-          <button class="btn-primary mt-xs" type="submit" :disabled="sending">
-            <BaseSpinner v-if="sending" />
-            <span>Send code</span>
-          </button>
-        </form>
-      </template>
-
-      <!-- Step 2: the code arrived, so the reset form takes over the same card. -->
-      <template v-else>
-        <p class="mt-xxs text-body-sm text-ink-muted">
+        <p v-else class="text-body-sm text-ink-muted">
           We sent a 6-digit code to <span class="font-medium text-ink">{{ email }}</span>.
           Enter it below with your new password.
         </p>
+      </div>
 
-        <form class="mt-lg flex flex-col gap-sm" @submit.prevent="submitReset">
-          <BaseField
-            v-model="otp"
-            label="Verification code"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            maxlength="6"
-            required
-          />
-          <BaseField
-            v-model="newPassword"
-            label="New password"
-            type="password"
-            autocomplete="new-password"
-            required
-          />
-          <BaseField
-            v-model="confirmPassword"
-            label="Confirm new password"
-            type="password"
-            autocomplete="new-password"
-            required
-          />
+      <!-- Step 1: ask for the account email. Enter submits natively. -->
+      <form v-if="step === 'request'" class="flex flex-col gap-md" @submit.prevent="sendCode">
+        <BaseField
+          v-model="email"
+          label="Email"
+          type="email"
+          placeholder="m@example.com"
+          autocomplete="email"
+          required
+        />
 
-          <div class="flex items-center justify-between text-caption">
-            <span v-if="secondsLeft > 0" class="text-ink-muted">
-              Code expires in <span class="font-semibold text-ink tabular-nums">{{ countdownLabel }}</span>
-            </span>
-            <span v-else class="text-sticker-orange-deep">The code has expired.</span>
+        <p v-if="formError" class="text-caption text-sticker-orange-deep" role="alert">
+          {{ formError }}
+        </p>
 
-            <!-- Resend stays disabled while the current code is still valid: the
-                 backend answers 429 until the OTP window is over. -->
-            <button
-              class="font-medium text-primary transition-opacity duration-150 hover:text-primary-active disabled:cursor-not-allowed disabled:text-ink-faint"
-              type="button"
-              :disabled="!canResend"
-              @click="sendCode"
-            >
-              Resend code
-            </button>
-          </div>
+        <button class="btn-auth-primary w-full" type="submit" :disabled="sending">
+          <BaseSpinner v-if="sending" />
+          <span>Send code</span>
+        </button>
+      </form>
 
-          <p v-if="formError" class="text-caption text-sticker-orange-deep">
-            {{ formError }}
-          </p>
+      <!-- Step 2: the code arrived, so the reset form takes over. -->
+      <form v-else class="flex flex-col gap-md" @submit.prevent="submitReset">
+        <BaseField
+          v-model="otp"
+          label="Verification code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="6"
+          required
+        />
+        <PasswordField
+          v-model="newPassword"
+          label="New password"
+          autocomplete="new-password"
+          required
+        />
+        <PasswordField
+          v-model="confirmPassword"
+          label="Confirm new password"
+          autocomplete="new-password"
+          required
+        />
 
-          <button class="btn-primary mt-xs" type="submit" :disabled="resetting">
-            <BaseSpinner v-if="resetting" />
-            <span>Reset password</span>
+        <div class="flex items-center justify-between text-caption">
+          <span v-if="secondsLeft > 0" class="text-ink-muted">
+            Code expires in <span class="font-semibold text-ink tabular-nums">{{ countdownLabel }}</span>
+          </span>
+          <span v-else class="text-sticker-orange-deep">The code has expired.</span>
+
+          <!-- Resend stays disabled while the current code is still valid. Clicking it
+               early would just re-fetch the same expiry without sending a new email. -->
+          <button
+            class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
+            type="button"
+            :disabled="!canResend"
+            @click="sendCode"
+          >
+            Resend code
           </button>
+        </div>
 
-          <button class="btn-ghost" type="button" @click="backToEmail">
-            Use another email
-          </button>
-        </form>
-      </template>
+        <p v-if="formError" class="text-caption text-sticker-orange-deep" role="alert">
+          {{ formError }}
+        </p>
 
-      <div class="mt-md text-caption">
-        <RouterLink :to="{ name: 'login' }" class="text-primary hover:text-primary-active">
+        <button class="btn-auth-primary w-full" type="submit" :disabled="resetting">
+          <BaseSpinner v-if="resetting" />
+          <span>Reset password</span>
+        </button>
+
+        <button class="w-full text-center text-caption text-ink-muted hover:text-ink" type="button" @click="backToEmail">
+          Use another email
+        </button>
+      </form>
+
+      <p class="text-center text-caption text-ink-muted">
+        Remembered it after all?
+        <RouterLink
+          :to="{ name: 'login' }"
+          class="font-medium text-ink underline-offset-4 hover:underline"
+        >
           Back to log in
         </RouterLink>
-      </div>
+      </p>
     </div>
-  </div>
+  </AuthShell>
 </template>

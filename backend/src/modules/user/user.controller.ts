@@ -6,6 +6,7 @@ import {
   getUserService,
   resetPasswordService,
   resetPasswordWithTokenService,
+  verifyResetTokenService,
   updateProfileService,
   uploadAvatarService
 } from './user.service.js'
@@ -187,6 +188,26 @@ export async function resetPassword(
     await resetPasswordService(email, otp, newPassword)
 
     return success(res, { message: 'Password reset successfully' })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function verifyResetToken(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { token } = req.body as { token?: string }
+
+    if (!token) {
+      throw new AppError(400, 'Token is required')
+    }
+
+    const result = await verifyResetTokenService(token)
+
+    return success(res, result)
   } catch (error) {
     next(error)
   }

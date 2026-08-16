@@ -1,19 +1,20 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import BaseField from '@/components/base/BaseField.vue'
+import AuthShell from '@/components/auth/AuthShell.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
-import BrandLogo from '@/components/base/BrandLogo.vue'
+import PasswordField from '@/components/base/PasswordField.vue'
 import PinInput from '@/components/base/PinInput.vue'
 import StateBlock from '@/components/base/StateBlock.vue'
-import { resetPassword, resetPasswordWithToken, forgotPassword } from '@/api/users.api'
+import { resetPassword, resetPasswordWithToken, forgotPassword, verifyResetToken } from '@/api/users.api'
 import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { revealOnEnter } from '@/composables/useMotion'
 
 /**
  * One route, two ways in:
- *   - The emailed link carries ?token=...: POST /users/reset-password-token.
+ *   - The emailed link carries ?token=...: the token is verified against the
+ *     backend first, then POST /users/reset-password-token finishes the job.
  *   - Resending a code from the forgot-password page or ProfilePage carries
  *     ?email=...&resetTime=...: POST /users/reset-password with the 6-digit OTP.
  *
@@ -36,6 +37,11 @@ const confirmPassword = ref('')
 const pending = ref(false)
 const formError = ref('')
 const resending = ref(false)
+
+// Token links are checked with the backend BEFORE the form is shown: an expired
+// or already-used link lands on the error state instead of failing at submit
+// time. The check does not consume the token - the real reset re-validates it.
+const tokenState = ref('idle')
 
 // Same countdown behaviour as ForgotPasswordPage: resend stays disabled until the
 // current code actually expires, because the backend answers an early retry with 429.
@@ -75,8 +81,19 @@ function startCountdownFromResetTime(resetTime) {
   startCountdown((expiresAt - Date.now()) / 1000)
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (mode.value === 'otp') startCountdownFromResetTime(route.query.resetTime)
+
+  if (mode.value === 'token') {
+    tokenState.value = 'verifying'
+    try {
+      await verifyResetToken(token.value)
+      tokenState.value = 'valid'
+    } catch {
+      tokenState.value = 'invalid'
+    }
+  }
+
   revealOnEnter(pageEl.value)
 })
 
@@ -138,52 +155,60 @@ async function submit() {
 </script>
 
 <template>
-  <div ref="pageEl" class="container-page flex justify-center py-xxl">
-    <div class="card-surface w-full max-w-md p-lg" data-enter>
-      <BrandLogo class="mb-md" :size="24" />
-
+  <AuthShell>
+    <div ref="pageEl" class="flex flex-col gap-md" data-enter>
       <StateBlock
-        v-if="mode === 'invalid'"
+        v-if="mode === 'invalid' || (mode === 'token' && tokenState === 'invalid')"
         variant="error"
-        icon="\u{1F517}"
-        title="This reset link is missing its details"
+        icon="🔗"
+        :title="mode === 'invalid'
+          ? 'This reset link is missing its details'
+          : 'This reset link is invalid or has expired'"
         message="Request a new reset email or code and open the link on this device."
       >
-        <RouterLink :to="{ name: 'forgot-password' }" class="btn-primary mt-xs">
+        <RouterLink :to="{ name: 'forgot-password' }" class="btn-auth-primary mt-xs">
           Request a new link
         </RouterLink>
       </StateBlock>
 
+      <!-- Token links verify against the backend before the form appears. -->
+      <div
+        v-else-if="mode === 'token' && tokenState !== 'valid'"
+        class="flex flex-col items-center gap-sm py-lg text-body-sm text-ink-muted"
+      >
+        <BaseSpinner />
+        <p>Checking your reset link…</p>
+      </div>
+
       <template v-else>
-        <h1 class="text-heading-2 text-ink">
-          Reset password
-        </h1>
+        <div class="flex flex-col items-center gap-xxs text-center">
+          <h1 class="text-heading-2 text-ink">
+            Reset password
+          </h1>
+          <p v-if="mode === 'otp'" class="text-body-sm text-ink-muted">
+            Enter the 6-digit code sent to <span class="font-medium text-ink">{{ email }}</span>
+            with your new password.
+          </p>
+          <p v-else class="text-body-sm text-ink-muted">
+            Choose a new password for your account.
+          </p>
+        </div>
 
-        <p v-if="mode === 'otp'" class="mt-xxs text-body-sm text-ink-muted">
-          Enter the 6-digit code sent to <span class="font-medium text-ink">{{ email }}</span>
-          with your new password.
-        </p>
-        <p v-else class="mt-xxs text-body-sm text-ink-muted">
-          Choose a new password for your account.
-        </p>
-
-        <form class="mt-lg flex flex-col gap-sm" @submit.prevent="submit">
+        <form class="flex flex-col gap-md" @submit.prevent="submit">
           <div v-if="mode === 'otp'" class="flex flex-col gap-xxs">
             <span class="text-caption font-medium text-ink-2">Verification code</span>
             <PinInput v-model="otp" :length="6" autofocus label="Verification code" />
           </div>
 
-          <BaseField
+          <PasswordField
             v-model="newPassword"
             label="New password"
-            type="password"
             autocomplete="new-password"
             required
           />
-          <BaseField
+          <PasswordField
             v-model="confirmPassword"
             label="Confirm new password"
-            type="password"
             autocomplete="new-password"
             required
           />
@@ -195,7 +220,7 @@ async function submit() {
             <span v-else class="text-sticker-orange-deep">The code has expired.</span>
 
             <button
-              class="font-medium text-primary transition-opacity duration-150 hover:text-primary-active disabled:cursor-not-allowed disabled:text-ink-faint"
+              class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
               type="button"
               :disabled="!canResend"
               @click="resendCode"
@@ -208,18 +233,22 @@ async function submit() {
             {{ formError }}
           </p>
 
-          <button class="btn-primary mt-xs" type="submit" :disabled="pending">
+          <button class="btn-auth-primary w-full" type="submit" :disabled="pending">
             <BaseSpinner v-if="pending" />
             <span>Reset password</span>
           </button>
         </form>
 
-        <div class="mt-md text-caption">
-          <RouterLink :to="{ name: 'login' }" class="text-primary hover:text-primary-active">
+        <p class="text-center text-caption text-ink-muted">
+          Remembered it after all?
+          <RouterLink
+            :to="{ name: 'login' }"
+            class="font-medium text-ink underline-offset-4 hover:underline"
+          >
             Back to log in
           </RouterLink>
-        </div>
+        </p>
       </template>
     </div>
-  </div>
+  </AuthShell>
 </template>

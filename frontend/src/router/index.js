@@ -12,19 +12,21 @@ const routes = [
   },
 
   // Auth. `guestOnly` bounces an already logged-in user back to the home page.
-  { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { guestOnly: true } },
-  { path: '/register', name: 'register', component: () => import('@/pages/RegisterPage.vue'), meta: { guestOnly: true } },
+  // Login and register are also `bare`: the split-screen shell owns the whole
+  // viewport, so the site header and footer would only crowd it.
+  { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { guestOnly: true, bare: true } },
+  { path: '/register', name: 'register', component: () => import('@/pages/RegisterPage.vue'), meta: { guestOnly: true, bare: true } },
   {
     path: '/forgot-password',
     name: 'forgot-password',
     component: () => import('@/pages/ForgotPasswordPage.vue'),
-    meta: { guestOnly: true },
+    meta: { guestOnly: true, bare: true },
   },
   {
     path: '/reset-password',
     name: 'reset-password',
     component: () => import('@/pages/ResetPasswordPage.vue'),
-    meta: { guestOnly: true },
+    meta: { guestOnly: true, bare: true },
   },
 
   // Landing route the backend redirects to after Google OAuth sets the cookies.
