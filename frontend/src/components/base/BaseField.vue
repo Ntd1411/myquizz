@@ -1,4 +1,6 @@
 <script setup>
+import { ref } from 'vue'
+
 // Thin labelled wrapper around a native input so every form looks identical.
 // Extra attributes (inputmode, maxlength, minlength, pattern, ...) are forwarded
 // to the input instead of the label, so callers can use native validation.
@@ -15,12 +17,18 @@ defineProps({
 })
 
 defineEmits(['update:modelValue'])
+
+// Exposed so parent pages (e.g. the register wizard) can focus this field's
+// input programmatically, such as when a new step comes into view.
+const inputRef = ref(null)
+defineExpose({ focus: () => inputRef.value?.focus() })
 </script>
 
 <template>
   <label class="block">
     <span class="mb-xxs block text-caption font-medium text-ink-2">{{ label }}</span>
     <input
+      ref="inputRef"
       class="field"
       :class="error ? 'border-ans-a' : ''"
       :type="type"

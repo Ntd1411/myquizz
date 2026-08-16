@@ -56,9 +56,11 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(payload) {
     pending.value = true
     try {
-      // POST /auth/register answers 201 with data.user and already sets the cookies,
-      // so the account is signed in immediately.
-      user.value = await authApi.register(payload)
+      // POST /auth/register only creates the row; it does not set any cookies.
+      // Chain a normal login with the same credentials right after, so signing up
+      // ends in exactly the same signed-in state as the login form does.
+      await authApi.register(payload)
+      user.value = await authApi.login({ email: payload.email, password: payload.password })
       ready.value = true
       return user.value
     } finally {
