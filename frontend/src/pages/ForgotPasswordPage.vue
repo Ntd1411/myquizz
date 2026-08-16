@@ -25,20 +25,33 @@ const sending = ref(false)
 const resetting = ref(false)
 const formError = ref('')
 
-// The backend answers POST /users/forgot-password with { resetTime }: the instant
-// the current OTP expires. Re-sending to the same email while it is still valid
-// does not send a new email or throw - it just echoes back this same expiry, so
-// the countdown here always reflects the one real OTP outstanding.
-const secondsLeft = ref(0)
+/*
+ * POST /users/forgot-password answers with two instants, but only resetTime is used
+ * here: it says when a new code may be requested, a minute after the send. The code
+ * stays valid longer (expiresAt) and that deadline is deliberately not shown - a dead
+ * code already fails with a clear error on submit, so a second countdown would only
+ * add noise and pressure. The deadline is kept absolute and re-read from a ticking
+ * clock, which keeps the label honest when a backgrounded tab throttles the interval.
+ */
+const now = ref(Date.now())
+const resendAt = ref(0)
 let timerId = null
 
-const canResend = computed(() => secondsLeft.value === 0 && !sending.value)
+function remainingSeconds(deadline) {
+  if (!deadline) return 0
+  return Math.max(0, Math.ceil((deadline - now.value) / 1000))
+}
 
-const countdownLabel = computed(() => {
-  const minutes = Math.floor(secondsLeft.value / 60)
-  const seconds = secondsLeft.value % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-})
+const resendIn = computed(() => remainingSeconds(resendAt.value))
+
+const canResend = computed(() => resendIn.value === 0 && !sending.value)
+
+function formatCountdown(seconds) {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+const resendLabel = computed(() => formatCountdown(resendIn.value))
 
 function stopCountdown() {
   if (timerId) {
@@ -47,22 +60,26 @@ function stopCountdown() {
   }
 }
 
-/** Ticks once per second down to zero, then re-enables the resend button. */
-function startCountdown(seconds) {
-  stopCountdown()
-  secondsLeft.value = Math.max(0, Math.floor(seconds))
-  if (secondsLeft.value === 0) return
+/** The interval only has to outlive the resend cooldown, so it stops right after it. */
+function startCountdown() {
+  now.value = Date.now()
+  if (timerId) return
 
   timerId = setInterval(() => {
-    secondsLeft.value -= 1
-    if (secondsLeft.value <= 0) stopCountdown()
+    now.value = Date.now()
+    if (resendIn.value === 0) stopCountdown()
   }, 1000)
 }
 
-function startCountdownFromResetTime(resetTime) {
-  const expiresAt = new Date(resetTime).getTime()
-  if (Number.isNaN(expiresAt)) return
-  startCountdown((expiresAt - Date.now()) / 1000)
+function toDeadline(value) {
+  const at = new Date(value).getTime()
+  return Number.isNaN(at) ? 0 : at
+}
+
+/** Takes the resend deadline the endpoint returns and restarts the clock on it. */
+function applySchedule({ resetTime }) {
+  resendAt.value = toDeadline(resetTime)
+  startCountdown()
 }
 
 /**
@@ -83,11 +100,10 @@ async function sendCode() {
   formError.value = ''
   sending.value = true
   try {
-    // Re-requesting a code for an email that already has one outstanding is not an
-    // error: the backend just hands back the same expiry instead of resending the
-    // email, so this always lands here rather than in the catch block.
-    const { resetTime } = await forgotPassword(email.value)
-    startCountdownFromResetTime(resetTime)
+    // Asking again during the cooldown is not an error: the backend then sends nothing
+    // and answers with the deadlines of the code already outstanding, so this always
+    // lands here rather than in the catch block.
+    applySchedule(await forgotPassword(email.value))
     step.value = 'verify'
     ui.toast('A verification code has been sent to your email.')
   } catch (error) {
@@ -186,21 +202,16 @@ onBeforeUnmount(stopCountdown)
           required
         />
 
-        <div class="flex items-center justify-between text-caption">
-          <span v-if="secondsLeft > 0" class="text-ink-muted">
-            Code expires in <span class="font-semibold text-ink tabular-nums">{{ countdownLabel }}</span>
-          </span>
-          <span v-else class="text-sticker-orange-deep">The code has expired.</span>
-
-          <!-- Resend stays disabled while the current code is still valid. Clicking it
-               early would just re-fetch the same expiry without sending a new email. -->
+        <div class="flex items-center justify-end text-caption">
+          <!-- Resend waits out the cooldown only, not the whole life of the code: a mail
+               that never arrived should not cost the reader the full two minutes. -->
           <button
             class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
             type="button"
             :disabled="!canResend"
             @click="sendCode"
           >
-            Resend code
+            {{ resendIn > 0 ? `Resend in ${resendLabel}` : 'Resend code' }}
           </button>
         </div>
 

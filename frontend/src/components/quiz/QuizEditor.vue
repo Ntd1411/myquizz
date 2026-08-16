@@ -680,7 +680,7 @@ defineExpose({
     <!-- Quiz metadata -->
     <section class="card-surface mb-lg p-lg">
       <div class="mb-md flex items-center gap-sm">
-        <BrandLogo variant="mark" :size="22" />
+        <BrandLogo variant="mark" :size="30" />
         <h2 class="text-heading-3 text-ink">
           Quiz details
         </h2>

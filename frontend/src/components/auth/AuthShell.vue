@@ -19,7 +19,7 @@ defineProps({
     <div class="flex flex-col gap-md p-lg md:p-[40px]">
       <div class="flex justify-center md:justify-start">
         <RouterLink :to="{ name: 'home' }" aria-label="Back to MyQuizz home">
-          <BrandLogo :size="24" />
+          <BrandLogo :size="30" />
         </RouterLink>
       </div>
 

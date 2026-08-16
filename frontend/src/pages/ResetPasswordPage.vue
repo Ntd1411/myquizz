@@ -16,7 +16,8 @@ import { revealOnEnter } from '@/composables/useMotion'
  *   - The emailed link carries ?token=...: the token is verified against the
  *     backend first, then POST /users/reset-password-token finishes the job.
  *   - Resending a code from the forgot-password page or ProfilePage carries
- *     ?email=...&resetTime=...: POST /users/reset-password with the 6-digit OTP.
+ *     ?email=...&resetTime=...: POST /users/reset-password with the 6-digit OTP,
+ *     that single timestamp driving the resend cooldown below.
  *
  * Neither query param means the page was opened directly, which is not a flow this
  * screen can recover: it sends the reader back to request a fresh link or code.
@@ -43,18 +44,32 @@ const resending = ref(false)
 // time. The check does not consume the token - the real reset re-validates it.
 const tokenState = ref('idle')
 
-// Same countdown behaviour as ForgotPasswordPage: resend stays disabled until the
-// current code actually expires, because the backend answers an early retry with 429.
-const secondsLeft = ref(0)
+/*
+ * Same countdown behaviour as ForgotPasswordPage: only the resend cooldown is tracked.
+ * The backend also answers with the moment the code dies, but that deadline is not
+ * surfaced - submitting a dead code fails with a plain error, which says it better than
+ * a ticking clock the reader has to race. The cooldown is kept as an absolute deadline
+ * read off one ticking clock, which also survives a backgrounded tab throttling it.
+ */
+const now = ref(Date.now())
+const resendAt = ref(0)
 let timerId = null
 
-const canResend = computed(() => secondsLeft.value === 0 && !resending.value)
+function remainingSeconds(deadline) {
+  if (!deadline) return 0
+  return Math.max(0, Math.ceil((deadline - now.value) / 1000))
+}
 
-const countdownLabel = computed(() => {
-  const minutes = Math.floor(secondsLeft.value / 60)
-  const seconds = secondsLeft.value % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-})
+const resendIn = computed(() => remainingSeconds(resendAt.value))
+
+const canResend = computed(() => resendIn.value === 0 && !resending.value)
+
+function formatCountdown(seconds) {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+const resendLabel = computed(() => formatCountdown(resendIn.value))
 
 function stopCountdown() {
   if (timerId) {
@@ -63,26 +78,33 @@ function stopCountdown() {
   }
 }
 
-function startCountdown(seconds) {
-  stopCountdown()
-  secondsLeft.value = Math.max(0, Math.floor(seconds))
-  if (secondsLeft.value === 0) return
+/** The interval only has to outlive the resend cooldown, so it stops right after it. */
+function startCountdown() {
+  now.value = Date.now()
+  if (timerId) return
 
   timerId = setInterval(() => {
-    secondsLeft.value -= 1
-    if (secondsLeft.value <= 0) stopCountdown()
+    now.value = Date.now()
+    if (resendIn.value === 0) stopCountdown()
   }, 1000)
 }
 
-function startCountdownFromResetTime(resetTime) {
-  if (!resetTime) return
-  const expiresAt = new Date(resetTime).getTime()
-  if (Number.isNaN(expiresAt)) return
-  startCountdown((expiresAt - Date.now()) / 1000)
+function toDeadline(value) {
+  if (!value) return 0
+  const at = new Date(value).getTime()
+  return Number.isNaN(at) ? 0 : at
+}
+
+/** Takes the deadline the endpoint (or the query string) carries and restarts the clock. */
+function applySchedule({ resetTime }) {
+  resendAt.value = toDeadline(resetTime)
+  if (resendAt.value) startCountdown()
 }
 
 onMounted(async () => {
-  if (mode.value === 'otp') startCountdownFromResetTime(route.query.resetTime)
+  if (mode.value === 'otp') {
+    applySchedule({ resetTime: route.query.resetTime })
+  }
 
   if (mode.value === 'token') {
     tokenState.value = 'verifying'
@@ -104,8 +126,9 @@ async function resendCode() {
   formError.value = ''
   resending.value = true
   try {
-    const resetTime = await forgotPassword(email.value)
-    startCountdownFromResetTime(resetTime)
+    // Only the cooldown deadline is read from the answer; the expiry it also reports
+    // stays hidden on purpose.
+    applySchedule(await forgotPassword(email.value))
     otp.value = ''
     ui.toast('A new verification code has been sent.')
   } catch (error) {
@@ -213,19 +236,15 @@ async function submit() {
             required
           />
 
-          <div v-if="mode === 'otp'" class="flex items-center justify-between text-caption">
-            <span v-if="secondsLeft > 0" class="text-ink-muted">
-              Code expires in <span class="font-semibold text-ink tabular-nums">{{ countdownLabel }}</span>
-            </span>
-            <span v-else class="text-sticker-orange-deep">The code has expired.</span>
-
+          <div v-if="mode === 'otp'" class="flex items-center justify-end text-caption">
+            <!-- Unlocked by the shorter cooldown, not by the death of the code. -->
             <button
               class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
               type="button"
               :disabled="!canResend"
               @click="resendCode"
             >
-              Resend code
+              {{ resendIn > 0 ? `Resend in ${resendLabel}` : 'Resend code' }}
             </button>
           </div>
 

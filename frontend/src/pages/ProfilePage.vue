@@ -380,11 +380,14 @@ async function sendResetCode() {
 
   sendingReset.value = true
   try {
-    const resetTime = await forgotPassword(email.value)
+    // The endpoint answers with two deadlines, but only the resend one is passed on:
+    // the reset screen reads it off the query string to drive its cooldown, and lets a
+    // failed submit speak for an expired code instead of counting it down.
+    const { resetTime } = await forgotPassword(email.value)
     ui.toast('We emailed you a reset code.', 'success')
     router.push({
       name: 'reset-password',
-      query: { email: email.value, resetTime: resetTime ?? undefined },
+      query: { email: email.value, resetTime },
     })
   } catch (error) {
     passwordError.value = toErrorMessage(error, 'Could not send the reset code.')
