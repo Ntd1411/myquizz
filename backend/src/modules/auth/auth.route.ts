@@ -4,7 +4,6 @@ import {
   loginSchema,
   registerSchema
 } from './auth.schema.js'
-import { authMiddleware } from './auth.middleware.js'
 import { login, register, refreshToken, logout, googleCallback, googleRedirect, googleOneTap } from './auth.controller.js'
 import { authRateLimiter } from '../../shared/middlewares/rate.limit.middleware.js'
 
@@ -16,10 +15,10 @@ authRouter.post('/register', validateBody(registerSchema), authRateLimiter, regi
 
 authRouter.post('/refresh', refreshToken)
 
-authRouter.post('/logout', authMiddleware, logout)
+authRouter.post('/logout', logout)
 
-authRouter.get('/google', authRateLimiter, googleRedirect)
+authRouter.get('/google', googleRedirect)
 
 authRouter.get('/google/callback', googleCallback)
 
-authRouter.post('/google/one-tap', authRateLimiter, googleOneTap)
+authRouter.post('/google/one-tap', googleOneTap)

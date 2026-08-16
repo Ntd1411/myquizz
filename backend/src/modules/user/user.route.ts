@@ -9,6 +9,7 @@ import {
   resetPassword,
   resetPasswordWithToken,
   updateProfile,
+  verifyResetToken,
   uploadAvatar
 } from './user.controller.js'
 import { validateBody } from '../../shared/validators/validator.js'
@@ -18,7 +19,8 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   resetPasswordWithTokenSchema,
-  updateProfileSchema
+  updateProfileSchema,
+  verifyResetTokenSchema
 } from './user.schema.js'
 import {
   authRateLimiter,
@@ -44,3 +46,5 @@ userRouter.post( '/forgot-password', authRateLimiter, validateBody(forgotPasswor
 userRouter.post( '/reset-password', resetPasswordRateLimiter, validateBody(resetPasswordSchema), resetPassword)
 
 userRouter.post( '/reset-password-token', resetPasswordRateLimiter, validateBody(resetPasswordWithTokenSchema), resetPasswordWithToken)
+
+userRouter.post( '/reset-password-token/verify', resetPasswordRateLimiter, validateBody(verifyResetTokenSchema), verifyResetToken)

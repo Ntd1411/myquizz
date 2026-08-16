@@ -140,7 +140,7 @@ export function createRateLimiter(options: RateLimitOptions) {
 }
 
 export const uploadRateLimiter = createRateLimiter({
-  windowMs: 10 * 60 * 1000, // 10 minutes
+  windowMs: 2 * 60 * 1000, // 2 minutes
   maxRequests: 20,
   keyPrefix: 'rate_limit:upload',
   skipFailedRequests: true, // Only count successful requests
@@ -155,14 +155,14 @@ export const globalRateLimiter = createRateLimiter({
 })
 
 export const apiRateLimiter = createRateLimiter({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  maxRequests: 2000,
+  windowMs: 1 * 60 * 1000, // 1 minute
+  maxRequests: 100,
   keyPrefix: 'rate_limit:api',
   byIp: true
 })
 
 export const authRateLimiter = createRateLimiter({
-  windowMs: 5 * 60 * 1000, // 5 minutes
+  windowMs: 2 * 60 * 1000, // 2 minutes
   maxRequests: 5,
   keyPrefix: 'rate_limit:auth',
   byIp: true,
@@ -170,7 +170,7 @@ export const authRateLimiter = createRateLimiter({
 })
 
 export const resetPasswordRateLimiter = createRateLimiter({
-  windowMs: 10 * 60 * 1000, // 10 minutes
+  windowMs: 2 * 60 * 1000, // 2 minutes
   maxRequests: 5,
   keyPrefix: 'rate_limit:reset-password',
   byIp: true,
