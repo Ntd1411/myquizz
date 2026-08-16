@@ -74,6 +74,12 @@ app.get('/health', async (req, res) => {
 app.use(globalRateLimiter)
 
 const router = express.Router()
+
+router.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store')
+  next()
+})
+
 router.get('/', (req, res) => res.send({ success: 'ok' }))
 
 // The realtime layer cannot be expressed in OpenAPI, so the Socket.IO events
