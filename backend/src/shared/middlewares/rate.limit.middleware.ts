@@ -176,3 +176,18 @@ export const resetPasswordRateLimiter = createRateLimiter({
   byIp: true,
   skipFailedRequests: true // Only count successful requests
 })
+
+/**
+ * Guards the proof step of the password reset: POST /users/password-reset/verify
+ * and GET /users/password-reset/ticket.
+ *
+ * Unlike the limiters above this one charges every attempt, successful or not.
+ * A code guesser only ever produces failures, so excusing them would leave the
+ * six-digit code protected by nothing but its own attempt counter.
+ */
+export const resetVerifyRateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 20,
+  keyPrefix: 'rate_limit:reset-verify',
+  byIp: true
+})

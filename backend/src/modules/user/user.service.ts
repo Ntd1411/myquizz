@@ -1,18 +1,29 @@
 import { AppError } from '../../shared/errors/AppError.js'
 import { userRepository } from './user.repository.js'
-import { hashPassword, verifyPassword } from '../auth/auth.util.js'
+import { hashPassword, hashToken, verifyPassword } from '../auth/auth.util.js'
+import { authRepository } from '../auth/auth.repository.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { deleteFileService } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
-import { generateOTP, generateResetToken } from './user.util.js'
 import {
+  generateOTP,
+  generateResetTicket,
+  generateResetToken,
+  maskEmail
+} from './user.util.js'
+import {
+  RESET_MAX_ATTEMPTS,
   RESET_PREFIX,
   RESET_RESEND_TTL,
+  RESET_TICKET_TTL,
   RESET_TTL,
   USER_CACHE_PREFIX,
   USER_CACHE_TTL,
-  type ResetSchedule
+  type ResetSchedule,
+  type ResetTicket,
+  type ResetTicketStatus,
+  type VerifyResetRequest
 } from './user.schema.js'
 import type { User } from '../auth/auth.type.js'
 
@@ -164,41 +175,75 @@ export async function deactivateAccountService(
   await invalidateUserCache(user.id)
 }
 
-async function clearResetState(email: string): Promise<void> {
-  const redis = RedisClient.getInstance()
-  const linkKey = `${RESET_PREFIX}:link:${email}`
-  const token = await redis.get(linkKey)
-
-  const keys = [
-    `${RESET_PREFIX}:${email}`,
-    `${RESET_PREFIX}:resend:${email}`,
-    linkKey
-  ]
-
-  if (token) keys.push(`${RESET_PREFIX}:${token}`)
-
-  for (const key of keys) {
-    await redis.del(key)
-  }
+/**
+ * A reset lives in Redis under one namespace per kind of value, so no lookup can
+ * ever hand back the wrong kind:
+ *
+ * - user:reset:otp:<email>       hash { otp, token, attempts }, RESET_TTL
+ * - user:reset:link:<tokenHash>  the address behind an emailed link, RESET_TTL
+ * - user:reset:resend:<email>    cooldown marker, RESET_RESEND_TTL
+ * - user:reset:ticket:<hash>     the address allowed to set a password, RESET_TICKET_TTL
+ *
+ * Only digests of the code, the link token and the ticket are stored: a dump of
+ * Redis is then a list of hashes, not a list of working credentials.
+ */
+function otpKeyOf(email: string): string {
+  return `${RESET_PREFIX}:otp:${email}`
 }
 
-export async function forgotPasswordService(email: string): Promise<ResetSchedule> {
+/**
+ * Burns the proof of one reset: the code, the link that carried it, and the
+ * cooldown. A ticket already handed out is deliberately left alone, that one
+ * dies on its own TTL or when the password is written.
+ */
+async function clearResetState(email: string): Promise<void> {
+  const redis = RedisClient.getInstance()
+  const otpKey = otpKeyOf(email)
+  const tokenHash = await redis.hget(otpKey, 'token')
+
+  const keys = [otpKey, `${RESET_PREFIX}:resend:${email}`]
+
+  if (tokenHash) keys.push(`${RESET_PREFIX}:link:${tokenHash}`)
+
+  await redis.del(...keys)
+}
+
+/**
+ * The account behind an address, refused for the same three reasons at every
+ * step: no row, a deactivated row, or an account that signs in with Google and
+ * has no password to reset. Checked again at the last step, because minutes pass
+ * between asking for a code and typing the new password.
+ */
+async function findResettableUser(
+  email: string,
+  notFoundMessage = 'User not found'
+): Promise<User> {
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
-    throw new AppError(404, 'Email not found')
+    throw new AppError(404, notFoundMessage)
   }
 
   if (user.deleted_at) {
     throw new AppError(410, 'Account is deactivated')
   }
 
-  if (user.auth_provider === 'google')
+  if (user.auth_provider === 'google') {
     throw new AppError(400, 'Google account cannot reset password')
+  }
+
+  return user
+}
+
+/**
+ * Step one: send the proof. Neither the code nor the link can set a password by
+ * itself, both are only accepted by verifyResetService.
+ */
+export async function forgotPasswordService(email: string): Promise<ResetSchedule> {
+  await findResettableUser(email, 'Email not found')
 
   const redis = RedisClient.getInstance()
-  const otpKey = `${RESET_PREFIX}:${email}`
-  const linkKey = `${RESET_PREFIX}:link:${email}`
+  const otpKey = otpKeyOf(email)
   const resendKey = `${RESET_PREFIX}:resend:${email}`
 
   const resendTtl = await redis.ttl(resendKey)
@@ -214,23 +259,26 @@ export async function forgotPasswordService(email: string): Promise<ResetSchedul
 
   // The cooldown is over, so this call really does send a new code. The previous link
   // dies with it: otherwise every re-send would leave another working token behind.
-  const previousToken = await redis.get(linkKey)
-  if (previousToken) {
-    await redis.del(`${RESET_PREFIX}:${previousToken}`)
+  const previousTokenHash = await redis.hget(otpKey, 'token')
+  if (previousTokenHash) {
+    await redis.del(`${RESET_PREFIX}:link:${previousTokenHash}`)
   }
 
   const otp = generateOTP()
   const resetToken = generateResetToken()
-  const tokenKey = `${RESET_PREFIX}:${resetToken}`
+  const tokenHash = hashToken(resetToken)
   // Written into the email, so it can never drift away from the actual TTL.
   const lifetime = `${RESET_TTL / 60} minutes`
 
-  await redis.setex(otpKey, RESET_TTL, otp)
-  await redis.setex(tokenKey, RESET_TTL, email)
-  await redis.setex(linkKey, RESET_TTL, resetToken)
-  await redis.setex(resendKey, RESET_RESEND_TTL, resetToken)
+  // The record is replaced rather than merged into, so a re-send cannot inherit
+  // the attempt count of the code it replaces.
+  await redis.del(otpKey)
+  await redis.hset(otpKey, { otp: hashToken(otp), token: tokenHash, attempts: 0 })
+  await redis.expire(otpKey, RESET_TTL)
+  await redis.setex(`${RESET_PREFIX}:link:${tokenHash}`, RESET_TTL, email)
+  await redis.setex(resendKey, RESET_RESEND_TTL, '1')
 
-  const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`
+  const resetUrl = `${env.FRONTEND_URL}/reset-password/link?token=${resetToken}`
 
   const resetHtml = `
   <h2>Reset Password</h2>
@@ -261,80 +309,139 @@ export async function forgotPasswordService(email: string): Promise<ResetSchedul
   }
 }
 
-export async function resetPasswordService(
-  email: string,
-  otp: string,
-  newPassword: string
-): Promise<void> {
+/**
+ * Checks the six-digit code. Wrong guesses are charged to the code itself and not
+ * only to the IP that sent them: six digits fall to a spread-out botnet long
+ * before any per-IP window notices, so the code is what has to give up.
+ */
+async function emailFromResetOtp(email: string, otp: string): Promise<string> {
   const redis = RedisClient.getInstance()
-  const otpKey = `${RESET_PREFIX}:${email}`
+  const otpKey = otpKeyOf(email)
 
-  const savedOtp = await redis.get(otpKey)
+  const savedOtp = await redis.hget(otpKey, 'otp')
 
   if (!savedOtp) {
     throw new AppError(400, 'OTP expired or not found')
   }
 
-  if (savedOtp !== otp) {
+  if (savedOtp !== hashToken(otp)) {
+    const attempts = await redis.hincrby(otpKey, 'attempts', 1)
+
+    if (attempts >= RESET_MAX_ATTEMPTS) {
+      await clearResetState(email)
+      throw new AppError(429, 'Too many invalid codes. Please request a new one')
+    }
+
     throw new AppError(400, 'Invalid OTP')
   }
 
-  const user = await userRepository.findByEmail(email)
+  return email
+}
 
-  if (!user) {
-    throw new AppError(404, 'User not found')
+// The emailed link names its own address, so nothing has to be typed with it.
+async function emailFromResetToken(token: string): Promise<string> {
+  const redis = RedisClient.getInstance()
+
+  const email = await redis.get(`${RESET_PREFIX}:link:${hashToken(token)}`)
+
+  if (!email) {
+    throw new AppError(400, 'Reset token expired or invalid')
   }
 
-  const newPasswordHash = await hashPassword(newPassword)
-  const isPasswordChanged = await userRepository.changePassword(
-    user.id,
-    newPasswordHash
-  )
-
-  if (!isPasswordChanged) {
-    throw new AppError(500, 'Failed to reset password')
-  }
-
-  await clearResetState(email)
-
-  await invalidateUserCache(user.id)
+  return email
 }
 
 /**
- * Checks a reset-link token WITHOUT consuming it. The page the emailed link opens
- * calls this first and only shows the password form while the token is still
- * alive; the actual reset re-checks the same key and deletes it.
+ * Step two: proof, and nothing else. Whichever half of the email the user still
+ * has is exchanged for a ticket, and the password form is only reachable with
+ * that ticket. Splitting the proof from the write is the whole point: the code
+ * can die the moment it is used while the user still gets ten minutes to think
+ * of a password, and a reset page can no longer be opened by replaying a URL.
  */
-export async function verifyResetTokenService(token: string): Promise<{ email: string }> {
+export async function verifyResetService(
+  input: VerifyResetRequest
+): Promise<ResetTicket> {
+  const email =
+    'token' in input
+      ? await emailFromResetToken(input.token)
+      : await emailFromResetOtp(input.email, input.otp)
+
+  await findResettableUser(email)
+
   const redis = RedisClient.getInstance()
-  const tokenKey = `${RESET_PREFIX}:${token}`
+  const ticket = generateResetTicket()
 
-  const email = await redis.get(tokenKey)
+  await redis.setex(
+    `${RESET_PREFIX}:ticket:${hashToken(ticket)}`,
+    RESET_TICKET_TTL,
+    email
+  )
 
-  if (!email) {
-    throw new AppError(400, 'Reset token expired or invalid')
+  // The proof is spent here rather than at the write, so one email opens exactly
+  // one reset page and the link stops working the moment the code is used.
+  await clearResetState(email)
+
+  return {
+    ticket,
+    expiresAt: new Date(Date.now() + RESET_TICKET_TTL * 1000),
+    email: maskEmail(email)
   }
-
-  return { email }
 }
 
-export async function resetPasswordWithTokenService(
-  token: string,
+/**
+ * Reads a ticket WITHOUT spending it, so the reset page can decide what to render
+ * before it shows a form. An expired ticket then shows an explanation instead of
+ * a form that fails after the password has been typed twice.
+ */
+export async function readResetTicketService(
+  ticket: string
+): Promise<ResetTicketStatus> {
+  const redis = RedisClient.getInstance()
+  const ticketKey = `${RESET_PREFIX}:ticket:${hashToken(ticket)}`
+
+  const email = await redis.get(ticketKey)
+
+  if (!email) {
+    throw new AppError(400, 'Reset session expired or invalid')
+  }
+
+  const ttl = await redis.ttl(ticketKey)
+
+  return {
+    email: maskEmail(email),
+    expiresAt: new Date(Date.now() + Math.max(ttl, 0) * 1000)
+  }
+}
+
+/**
+ * Step three, the only place that writes a password. It never sees the code or
+ * the emailed token, only the ticket, and that ticket is single use.
+ *
+ * Every refresh token of the account is revoked: a reset is what somebody locked
+ * out of their account does, and whoever locked them out must not keep a session.
+ * Access tokens already issued stay valid until they expire, which is the same
+ * window the rest of the app lives with.
+ */
+export async function completeResetService(
+  ticket: string,
   newPassword: string
 ): Promise<void> {
   const redis = RedisClient.getInstance()
-  const tokenKey = `${RESET_PREFIX}:${token}`
+  const ticketKey = `${RESET_PREFIX}:ticket:${hashToken(ticket)}`
 
-  const email = await redis.get(tokenKey)
+  const email = await redis.get(ticketKey)
 
   if (!email) {
-    throw new AppError(400, 'Reset token expired or invalid')
+    throw new AppError(400, 'Reset session expired or invalid')
   }
 
-  const user = await userRepository.findByEmail(email)
+  const user = await findResettableUser(email)
 
-  if (!user) {
-    throw new AppError(404, 'User not found')
+  if (user.password && (await verifyPassword(newPassword, user.password))) {
+    throw new AppError(
+      400,
+      'New password must be different from the old password'
+    )
   }
 
   const newPasswordHash = await hashPassword(newPassword)
@@ -347,8 +454,23 @@ export async function resetPasswordWithTokenService(
     throw new AppError(500, 'Failed to reset password')
   }
 
-  await redis.del(tokenKey)
+  await redis.del(ticketKey)
   await clearResetState(email)
-
+  await authRepository.revokeUserSessions(user.id)
   await invalidateUserCache(user.id)
+
+  // Sent, never awaited: the password is already written, and a mail outage must
+  // not turn a finished reset into a 500 the user retries with a spent ticket.
+  mailService.sendMail({
+    to: email,
+    subject: 'Your password was changed',
+    html: `
+  <h2>Password changed</h2>
+  <p>The password of your MyQuizz account was just changed, and every device was signed out.</p>
+  <p>If this was not you, reset the password again immediately.</p>
+`,
+    text: 'The password of your MyQuizz account was just changed, and every device was signed out. If this was not you, reset the password again immediately.'
+  }).catch(error => {
+    console.error('Failed to send password change email:', error)
+  })
 }

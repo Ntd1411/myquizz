@@ -1,17 +1,18 @@
 import type { Response, NextFunction } from 'express'
 import {
   changePasswordService,
+  completeResetService,
   deactivateAccountService,
   forgotPasswordService,
   getUserService,
-  resetPasswordService,
-  resetPasswordWithTokenService,
-  verifyResetTokenService,
+  readResetTicketService,
   updateProfileService,
-  uploadAvatarService
+  uploadAvatarService,
+  verifyResetService
 } from './user.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest, User } from '../auth/auth.type.js'
+import type { VerifyResetRequest } from './user.schema.js'
 import { success } from '../../shared/utils/response.js'
 
 export function getMe(
@@ -169,43 +170,15 @@ export async function forgotPassword(
   }
 }
 
-export async function resetPassword(
+export async function verifyReset(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const { email, otp, newPassword } = req.body as {
-      email?: string
-      otp?: string
-      newPassword?: string
-    }
-
-    if (!email || !otp || !newPassword) {
-      throw new AppError(400, 'Email, OTP and new password are required')
-    }
-
-    await resetPasswordService(email, otp, newPassword)
-
-    return success(res, { message: 'Password reset successfully' })
-  } catch (error) {
-    next(error)
-  }
-}
-
-export async function verifyResetToken(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const { token } = req.body as { token?: string }
-
-    if (!token) {
-      throw new AppError(400, 'Token is required')
-    }
-
-    const result = await verifyResetTokenService(token)
+    // The body came through validateBody(verifyResetSchema), so it is already
+    // one of the two accepted shapes: email + otp, or token on its own.
+    const result = await verifyResetService(req.body as VerifyResetRequest)
 
     return success(res, result)
   } catch (error) {
@@ -213,22 +186,42 @@ export async function verifyResetToken(
   }
 }
 
-export async function resetPasswordWithToken(
+export async function getResetTicket(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const { token, newPassword } = req.body as {
-      token?: string
+    const { ticket } = req.query as { ticket?: string }
+
+    if (!ticket) {
+      throw new AppError(400, 'Ticket is required')
+    }
+
+    const result = await readResetTicketService(ticket)
+
+    return success(res, result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function completeReset(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { ticket, newPassword } = req.body as {
+      ticket?: string
       newPassword?: string
     }
 
-    if (!token || !newPassword) {
-      throw new AppError(400, 'Token and new password are required')
+    if (!ticket || !newPassword) {
+      throw new AppError(400, 'Ticket and new password are required')
     }
 
-    await resetPasswordWithTokenService(token, newPassword)
+    await completeResetService(ticket, newPassword)
 
     return success(res, { message: 'Password reset successfully' })
   } catch (error) {
