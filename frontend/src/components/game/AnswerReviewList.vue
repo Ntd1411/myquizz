@@ -152,30 +152,37 @@ const rows = computed(() => {
           </li>
         </ul>
 
-        <!-- Written answers have no options, so the raw values are all there is. -->
+        <!--
+          Written answers have no options, so the typed value is put in the same box an
+          option would use: one border language for every question type.
+        -->
         <div v-else class="review-written">
-          <p class="review-written-row">
+          <div class="review-option-slot">
             <span
               class="review-option-tag"
               :class="row.state === 'is-correct' ? 'is-right' : 'is-off'"
             >
               Your answer
             </span>
-            <span
-              class="review-answer"
-              :class="row.state === 'is-correct' ? 'is-right' : 'is-off'"
-            >{{ answerText(row.your_answer) }}</span>
-          </p>
+            <div
+              class="review-option"
+              :class="row.state === 'is-correct' ? 'is-correct' : 'is-wrong'"
+            >
+              <span class="review-option-text">{{ answerText(row.your_answer) }}</span>
+            </div>
+          </div>
           <!-- The key is only worth repeating when the player did not already write it. -->
-          <p
+          <div
             v-if="row.correct_answer !== null && row.state !== 'is-correct'"
-            class="review-written-row"
+            class="review-option-slot"
           >
             <span class="review-option-tag is-right">
               Correct answer
             </span>
-            <span class="review-answer is-right">{{ answerText(row.correct_answer) }}</span>
-          </p>
+            <div class="review-option is-correct">
+              <span class="review-option-text">{{ answerText(row.correct_answer) }}</span>
+            </div>
+          </div>
         </div>
 
         <p v-if="row.explanation" class="mt-xs text-caption text-ink-3">
@@ -238,19 +245,6 @@ const rows = computed(() => {
   margin-top: 8px;
   max-height: 120px;
   border-radius: var(--r-md);
-}
-
-.review-answer {
-  color: var(--ink);
-  font-weight: 500;
-}
-
-.review-answer.is-right {
-  color: var(--ans-d);
-}
-
-.review-answer.is-off {
-  color: var(--ans-a);
 }
 
 .review-flag {
@@ -341,16 +335,11 @@ const rows = computed(() => {
   color: var(--ans-d);
 }
 
+/* Same rhythm as the option list, tags included. */
 .review-written {
-  margin-top: 10px;
+  margin-top: 24px;
   display: grid;
-  gap: 10px;
-}
-
-.review-written-row {
-  display: grid;
-  gap: 2px;
-  font-size: 13px;
+  gap: 20px;
 }
 
 .review-score {
