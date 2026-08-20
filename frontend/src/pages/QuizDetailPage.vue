@@ -146,6 +146,19 @@ function goPlay() {
   router.push({ name: 'join-game' })
 }
 
+function goPreview() {
+  // Playing it alone opens no room and writes nothing down, so it needs no setup step
+  // and no account: it is the cheapest way to find out how the quiz actually reads.
+  //
+  // It opens in a new tab on purpose. The run is a chrome-less screen on a clock, and
+  // leaving this page behind means a reader can look at the questions, play them, and
+  // come back to the overview without the browser's back button landing them in the
+  // middle of a countdown. `router.resolve` is used rather than a hand-built path so the
+  // route definition stays the single source of the URL.
+  const target = router.resolve({ name: 'quiz-preview', params: { id: props.id } })
+  window.open(target.href, '_blank', 'noopener')
+}
+
 onMounted(() => revealOnEnter(pageEl.value))
 
 // Questions arrive with the query, so the scroll reveals can only be wired afterwards.
@@ -244,6 +257,15 @@ watch(
             <button class="btn btn-primary" type="button" @click="hostGame">
               Host a game
             </button>
+            <!-- An empty quiz has nothing to play, so the button says so by being off. -->
+            <button
+              class="btn btn-utility"
+              type="button"
+              :disabled="!questions.length"
+              @click="goPreview"
+            >
+              Try it yourself
+            </button>
             <button class="btn btn-utility" type="button" @click="goPlay">
               Join with a code
             </button>
@@ -254,6 +276,7 @@ watch(
 
           <p class="mt-xs text-caption text-ink-faint">
             Hosting opens a room with its own code. Players join from /join, no account needed.
+            Trying it yourself opens a new tab: no room, no score kept.
           </p>
         </div>
       </section>
