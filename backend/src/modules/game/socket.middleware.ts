@@ -26,11 +26,13 @@ export const signSocketToken = (payload: SocketTokenPayload) =>
 export const verifySocketToken = (token: string) =>
   jwt.verify(token, env.SOCKET_JWT_SECRET) as SocketTokenPayload
 
-// middleware: run one time at handshake, results stored in socket.data
+// middleware: run one time at handshake, results stored in socket.data.
+// A rejected handshake reaches the browser as an error message, so the message is the
+// error code itself: the client turns the code into a sentence in the reader's language.
 export const socketAuth = async (socket: Socket, next: (err?: Error) => void) => {
   try {
     const token = socket.handshake.auth?.['token'] as string | undefined
-    if (!token) return next(new Error('UNAUTHORIZED: missing socket token'))
+    if (!token) return next(new Error('GAME_TOKEN_INVALID'))
 
     const payload = verifySocketToken(token) // invalid signature / expired
 
@@ -38,17 +40,17 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
     const session = (await cache.getSession(payload.gsid))
       ?? (await repo.getSessionById(payload.gsid))
     if (!session || ['finished', 'cancelled'].includes(session.session_status))
-      return next(new Error('GONE: game is not active'))
+      return next(new Error('GAME_ROOM_NOT_FOUND'))
 
     const socketData = socket.data as CustomSocketData
 
     if (payload.role === 'player') {
-      if (payload.psid === null) return next(new Error('UNAUTHORIZED: missing playerSessionId'))
+      if (payload.psid === null) return next(new Error('GAME_TOKEN_INVALID'))
       const player = (await cache.getPlayer(payload.gsid, payload.psid))
         ?? (await repo.getPlayerSession(payload.psid))
       // kicked = remove from cache + db -> old token auto expired
       if (!player || player.game_session_id !== payload.gsid)
-        return next(new Error('GONE: player not in room'))
+        return next(new Error('GAME_PLAYER_NOT_FOUND'))
       socketData.player = player
     }
 
@@ -58,6 +60,6 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
     socketData.playerSessionId = payload.psid
     next()
   } catch {
-    next(new Error('UNAUTHORIZED: socket token is not valid'))
+    next(new Error('GAME_TOKEN_INVALID'))
   }
 }

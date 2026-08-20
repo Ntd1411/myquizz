@@ -60,7 +60,7 @@ export function createRateLimiter(options: RateLimitOptions) {
       } else {
         // Limit by userId (default)
         if (!userId) {
-          throw new AppError(401, 'Unauthorized')
+          throw new AppError(401, 'Unauthorized', 'AUTH_TOKEN_MISSING')
         }
         identifier = userId.toString()
       }
@@ -90,7 +90,8 @@ export function createRateLimiter(options: RateLimitOptions) {
 
         throw new AppError(
           429,
-          `Too many requests. Please try again in ${retryAfter} seconds`
+          `Too many requests. Please try again in ${retryAfter} seconds`,
+          'RATE_LIMITED'
         )
       }
 

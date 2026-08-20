@@ -6,20 +6,31 @@ import { AppError } from '../errors/AppError.js'
 import z from 'zod'
 import { fail } from '../utils/response.js'
 
+/**
+ * Turns anything thrown in a handler into a coded response.
+ *
+ * Everything worth reading about the failure is logged here and nowhere else. The
+ * response itself carries a code and a status, because the client writes the
+ * sentence: an API that ships English prose cannot be translated by its consumer.
+ */
 export function errorHandler(
   err: any,
   req: Request,
   res: Response,
   _next: NextFunction
 ) {
-  console.error('Error:', err)
-
   // AppError instances
   if (err instanceof AppError) {
-    return fail(res, err.message, err.details || null, err.statusCode)
+    // An expected refusal is not a defect: log the reason, not a stack trace.
+    console.warn(`${err.code} on ${req.method} ${req.originalUrl}: ${err.message}`)
+    return fail(res, err.code, err.statusCode)
   }
 
-  // Zod validation errors
+  console.error(`Error on ${req.method} ${req.originalUrl}:`, err)
+
+  // Zod validation errors. The per-field reasons stay in the log: the client already
+  // validates the same shapes, so a body that fails here is a client bug, not
+  // something to explain to whoever is holding the phone.
   if (err instanceof z.ZodError) {
     const fieldErrors = err.issues.reduce(
       (acc, issue) => {
@@ -29,25 +40,26 @@ export function errorHandler(
       },
       {} as Record<string, string>
     )
-    return fail(res, 'Validation error', fieldErrors, 400)
+    console.warn('Validation failed:', fieldErrors)
+    return fail(res, 'VALIDATION_ERROR', 400)
   }
 
   // Multer errors
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return fail(res, 'File too large. Maximum size is 20MB', null, 413)
+    return fail(res, 'FILE_TOO_LARGE', 413)
   }
   if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-    return fail(res, 'Invalid field name', null, 400)
+    return fail(res, 'FILE_FIELD_INVALID', 400)
   }
   if (err.message?.includes('File type not supported')) {
-    return fail(res, 'File type not supported', null, 400)
+    return fail(res, 'FILE_TYPE_UNSUPPORTED', 400)
   }
 
   // Database errors
   if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
-    return fail(res, 'Service unavailable', null, 503)
+    return fail(res, 'SERVICE_UNAVAILABLE', 503)
   }
 
   // Default error
-  return fail(res, 'Internal server error', null, 500)
+  return fail(res, 'SERVER_ERROR', 500)
 }

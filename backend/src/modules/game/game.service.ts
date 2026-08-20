@@ -55,7 +55,7 @@ export const createGame = async (input: CreateGameInput, hostId: number) => {
 // GET /games/:code
 export const getLobby = async (code: string) => {
   const session = await loadSessionByCode(code)
-  if (!session) throw new AppError(404, 'Room not found')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   const players: LobbyPlayer[] =
     (await cache.getPlayers(session.id)) ?? (await repo.listPlayers(session.id))
   return { session, players, config: session.config }
@@ -66,9 +66,11 @@ export const updateGameConfig = async (
   gameId: number, hostId: number, patch: unknown
 ) => {
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Room not found')
-  if (session.session_host !== hostId) throw new AppError(403, 'Only host can update config')
-  if (session.session_status !== 'lobby') throw new AppError(409, 'Can only update config in lobby')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (session.session_host !== hostId)
+    throw new AppError(403, 'Only host can update config', 'GAME_NOT_HOST')
+  if (session.session_status !== 'lobby')
+    throw new AppError(409, 'Can only update config in lobby', 'GAME_LOBBY_ONLY')
 
   return writeConfig(session, patch)
 }
@@ -76,19 +78,19 @@ export const updateGameConfig = async (
 // POST /games/:code/join — for both user and guest
 export const joinGame = async (code: string, input: JoinGameInput) => {
   const session = await loadSessionByCode(code)
-  if (!session) throw new AppError(404, 'Room not found')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   const config = session.config
 
   if (session.session_status !== 'lobby' && !config.lobby.allowLateJoin)
-    throw new AppError(409, 'Game already started, no late join allowed')
+    throw new AppError(409, 'Game already started, no late join allowed', 'GAME_ALREADY_STARTED')
   if (!input.player_id && !config.lobby.allowGuests)
-    throw new AppError(403, 'Room does not allow guests')
+    throw new AppError(403, 'Room does not allow guests', 'GAME_GUESTS_NOT_ALLOWED')
   if (input.player_id === session.session_host)
-    throw new AppError(403, 'Host can not join game')
+    throw new AppError(403, 'Host can not join game', 'GAME_HOST_CANNOT_JOIN')
 
   const currentPlayers = (await cache.countPlayers(session.id)) ?? (await repo.countPlayers(session.id))
   if ((currentPlayers ?? 0) >= config.lobby.maxPlayers)
-    throw new AppError(409, 'Room is full')
+    throw new AppError(409, 'Room is full', 'GAME_ROOM_FULL')
 
   let player: PlayerSessionRow | null = null
   if (input.player_id) {
@@ -121,8 +123,9 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
 // POST /games/:id/host-token — host get token socket
 export const issueHostToken = async (gameId: number, hostId: number) => {
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Room not found')
-  if (session.session_host !== hostId) throw new AppError(403, 'Only host can request host token')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (session.session_host !== hostId)
+    throw new AppError(403, 'Only host can request host token', 'GAME_NOT_HOST')
 
   return {
     socketToken: signSocketToken({
@@ -142,7 +145,7 @@ export const getLeaderboard = async (gameId: number) =>
 export const getResults = async (gameId: number) => {
   // Get session meta from cache, but always read final stats from Postgres
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Room not found')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   return {
     session,
     leaderboard: await repo.getLeaderboard(gameId),
@@ -212,27 +215,30 @@ const buildReview = (
 }
 
 export const getPlayerReview = async (gameId: number, token: string | undefined) => {
-  if (!token) throw new AppError(401, 'Missing socket token')
+  if (!token) throw new AppError(401, 'Missing socket token', 'GAME_TOKEN_INVALID')
 
   let payload: SocketTokenPayload
   try {
     payload = verifySocketToken(token)
   } catch {
-    throw new AppError(401, 'Socket token is not valid')
+    throw new AppError(401, 'Socket token is not valid', 'GAME_TOKEN_INVALID')
   }
-  if (payload.gsid !== gameId) throw new AppError(403, 'Token belongs to another room')
+  if (payload.gsid !== gameId)
+    throw new AppError(403, 'Token belongs to another room', 'GAME_TOKEN_WRONG_ROOM')
   if (payload.role !== 'player' || payload.psid === null)
-    throw new AppError(403, 'Only a player can review their own answers')
+    throw new AppError(403, 'Only a player can review their own answers', 'GAME_TOKEN_INVALID')
 
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Room not found')
-  if (!session.config.flow.reviewMode) throw new AppError(403, 'Review is disabled in this room')
-  if (session.session_status !== 'finished') throw new AppError(409, 'Game is still running')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (!session.config.flow.reviewMode)
+    throw new AppError(403, 'Review is disabled in this room', 'GAME_REVIEW_DISABLED')
+  if (session.session_status !== 'finished')
+    throw new AppError(409, 'Game is still running', 'GAME_STILL_RUNNING')
 
   // read the player from Postgres: endGame flushes the final rows and clears the cache
   const player = await repo.getPlayerSession(payload.psid)
   if (!player || player.game_session_id !== gameId)
-    throw new AppError(404, 'Player not found in this room')
+    throw new AppError(404, 'Player not found in this room', 'GAME_PLAYER_NOT_FOUND')
 
   return buildReview(session, player, await repo.getSnapshotQuestions(gameId))
 }
@@ -248,14 +254,14 @@ const buildConfig = (mode: string, base: GameConfig, patch: unknown) => {
 
 export const applyConfigPatchFromSocket = async (gameId: number, patch: unknown) => {
   const session = await loadSessionById(gameId)
-  if (!session) throw new AppError(404, 'Room not found')
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   return writeConfig(session, patch)
 }
 
 const writeConfig = async (session: GameSessionRow, patch: unknown) => {
   // the config is part of the room contract: changing it mid-game desyncs players
   if (session.session_status !== 'lobby')
-    throw new AppError(409, 'Can only update config in lobby')
+    throw new AppError(409, 'Can only update config in lobby', 'GAME_LOBBY_ONLY')
 
   const { config, ignored } = buildConfig(session.game_mode, session.config, patch)
   // both sides went through gameConfigSchema.parse, so the key order is stable

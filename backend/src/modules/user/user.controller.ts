@@ -38,7 +38,7 @@ export async function getUser(
     const userId = Number(req.params.userId)
 
     if (!Number.isInteger(userId) || userId <= 0) {
-      throw new AppError(400, 'Invalid user ID')
+      throw new AppError(400, 'Invalid user ID', 'VALIDATION_ERROR')
     }
 
     const user = await getUserService(userId)
@@ -76,7 +76,7 @@ export async function changePassword(
     }
 
     if (!oldPassword || !newPassword) {
-      throw new AppError(400, 'Old password and new password are required')
+      throw new AppError(400, 'Old password and new password are required', 'VALIDATION_ERROR')
     }
 
     await changePasswordService(user, oldPassword, newPassword)
@@ -95,7 +95,7 @@ export async function uploadAvatar(
   try {
     const { fileUrl } = req.body as { fileUrl?: string }
     if (!fileUrl) {
-      throw new AppError(400, 'No file uploaded')
+      throw new AppError(400, 'No file uploaded', 'FILE_FIELD_INVALID')
     }
 
     const avatarUrl = await uploadAvatarService(req.user?.id as number, fileUrl)
@@ -139,7 +139,7 @@ export async function deactivateAccount(
     const { password } = req.body as { password?: string }
 
     if (!password) {
-      throw new AppError(400, 'Password is required to deactivate account')
+      throw new AppError(400, 'Password is required to deactivate account', 'VALIDATION_ERROR')
     }
 
     await deactivateAccountService(user, password)
@@ -159,7 +159,7 @@ export async function forgotPassword(
     const { email } = req.body as { email?: string }
 
     if (!email) {
-      throw new AppError(400, 'Email is required')
+      throw new AppError(400, 'Email is required', 'VALIDATION_ERROR')
     }
 
     const { resetTime, expiresAt } = await forgotPasswordService(email)
@@ -195,7 +195,7 @@ export async function getResetTicket(
     const { ticket } = req.query as { ticket?: string }
 
     if (!ticket) {
-      throw new AppError(400, 'Ticket is required')
+      throw new AppError(400, 'Ticket is required', 'RESET_TICKET_INVALID')
     }
 
     const result = await readResetTicketService(ticket)
@@ -218,7 +218,7 @@ export async function completeReset(
     }
 
     if (!ticket || !newPassword) {
-      throw new AppError(400, 'Ticket and new password are required')
+      throw new AppError(400, 'Ticket and new password are required', 'RESET_TICKET_INVALID')
     }
 
     await completeResetService(ticket, newPassword)

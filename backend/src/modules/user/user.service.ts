@@ -45,11 +45,11 @@ export async function getUserService(userId: number): Promise<User> {
   // Cache miss
   const user = await userRepository.findById(userId)
   if (!user) {
-    throw new AppError(404, 'User not found')
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND')
   }
 
   if (user.deleted_at) {
-    throw new AppError(410, 'Account is deactivated')
+    throw new AppError(410, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
   await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
@@ -63,20 +63,29 @@ export async function changePasswordService(
   newPassword: string
 ): Promise<void> {
   if (!user.password) {
-    throw new AppError(400, 'User does not have a password set')
+    throw new AppError(
+      400,
+      'User does not have a password set',
+      'AUTH_GOOGLE_ONLY'
+    )
   }
 
   if (oldPassword === newPassword) {
     throw new AppError(
       400,
-      'New password must be different from the old password'
+      'New password must be different from the old password',
+      'RESET_PASSWORD_REUSED'
     )
   }
 
   const isValid = await verifyPassword(oldPassword, user.password)
 
   if (!isValid) {
-    throw new AppError(400, 'Old password is incorrect')
+    throw new AppError(
+      400,
+      'Old password is incorrect',
+      'USER_PASSWORD_INCORRECT'
+    )
   }
 
   const newPasswordHash = await hashPassword(newPassword)
@@ -87,7 +96,7 @@ export async function changePasswordService(
   )
 
   if (!isPasswordChanged) {
-    throw new AppError(500, 'Failed to change password')
+    throw new AppError(500, 'Failed to change password', 'SERVER_ERROR')
   }
 
   await invalidateUserCache(user.id)
@@ -99,7 +108,7 @@ export async function uploadAvatarService(
 ): Promise<string> {
   const user = await userRepository.findById(userId)
   if (!user) {
-    throw new AppError(404, 'User not found')
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND')
   }
   if (user.avatar)
     await deleteFileService(user.avatar)
@@ -107,7 +116,7 @@ export async function uploadAvatarService(
   const isAvatarUploaded = await userRepository.uploadAvatar(userId, avatarUrl)
 
   if (!isAvatarUploaded) {
-    throw new AppError(500, 'Failed to upload avatar')
+    throw new AppError(500, 'Failed to upload avatar', 'SERVER_ERROR')
   }
 
   await invalidateUserCache(userId)
@@ -129,7 +138,11 @@ export async function updateProfileService(
     if (phone) {
       const user = await userRepository.findByPhone(phone)
       if (user) {
-        throw new AppError(400, 'Phone number is already in use')
+        throw new AppError(
+          400,
+          'Phone number is already in use',
+          'AUTH_PHONE_TAKEN'
+        )
       }
     }
     updates.phone = phone || null
@@ -138,13 +151,13 @@ export async function updateProfileService(
   if (description !== undefined) updates.description = description || null
 
   if (Object.keys(updates).length === 0) {
-    throw new AppError(400, 'No fields to update')
+    throw new AppError(400, 'No fields to update', 'USER_NO_FIELDS_TO_UPDATE')
   }
 
   const isProfileUpdated = await userRepository.updateProfile(userId, updates)
 
   if (!isProfileUpdated) {
-    throw new AppError(500, 'Failed to update profile')
+    throw new AppError(500, 'Failed to update profile', 'SERVER_ERROR')
   }
 
   await invalidateUserCache(userId)
@@ -157,19 +170,23 @@ export async function deactivateAccountService(
   password: string
 ): Promise<void> {
   if (!user.password) {
-    throw new AppError(400, 'Cannot deactivate your account')
+    throw new AppError(
+      400,
+      'Cannot deactivate an account that has no password',
+      'AUTH_GOOGLE_ONLY'
+    )
   }
 
   const isPasswordCorrect = await verifyPassword(password, user.password)
 
   if (!isPasswordCorrect) {
-    throw new AppError(403, 'Invalid credentials')
+    throw new AppError(403, 'Invalid credentials', 'USER_PASSWORD_INCORRECT')
   }
 
   const isDeactivated = await userRepository.deactivate(user.id)
 
   if (!isDeactivated) {
-    throw new AppError(500, 'Failed to deactivate account')
+    throw new AppError(500, 'Failed to deactivate account', 'SERVER_ERROR')
   }
 
   await invalidateUserCache(user.id)
@@ -221,15 +238,19 @@ async function findResettableUser(
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
-    throw new AppError(404, notFoundMessage)
+    throw new AppError(404, notFoundMessage, 'USER_EMAIL_NOT_FOUND')
   }
 
   if (user.deleted_at) {
-    throw new AppError(410, 'Account is deactivated')
+    throw new AppError(410, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
   if (user.auth_provider === 'google') {
-    throw new AppError(400, 'Google account cannot reset password')
+    throw new AppError(
+      400,
+      'Google account cannot reset password',
+      'AUTH_GOOGLE_ONLY'
+    )
   }
 
   return user
@@ -321,7 +342,7 @@ async function emailFromResetOtp(email: string, otp: string): Promise<string> {
   const savedOtp = await redis.hget(otpKey, 'otp')
 
   if (!savedOtp) {
-    throw new AppError(400, 'OTP expired or not found')
+    throw new AppError(400, 'OTP expired or not found', 'RESET_OTP_EXPIRED')
   }
 
   if (savedOtp !== hashToken(otp)) {
@@ -329,10 +350,14 @@ async function emailFromResetOtp(email: string, otp: string): Promise<string> {
 
     if (attempts >= RESET_MAX_ATTEMPTS) {
       await clearResetState(email)
-      throw new AppError(429, 'Too many invalid codes. Please request a new one')
+      throw new AppError(
+        429,
+        'Too many invalid codes. Please request a new one',
+        'RESET_OTP_ATTEMPTS'
+      )
     }
 
-    throw new AppError(400, 'Invalid OTP')
+    throw new AppError(400, 'Invalid OTP', 'RESET_OTP_INVALID')
   }
 
   return email
@@ -345,7 +370,11 @@ async function emailFromResetToken(token: string): Promise<string> {
   const email = await redis.get(`${RESET_PREFIX}:link:${hashToken(token)}`)
 
   if (!email) {
-    throw new AppError(400, 'Reset token expired or invalid')
+    throw new AppError(
+      400,
+      'Reset token expired or invalid',
+      'RESET_LINK_INVALID'
+    )
   }
 
   return email
@@ -402,7 +431,11 @@ export async function readResetTicketService(
   const email = await redis.get(ticketKey)
 
   if (!email) {
-    throw new AppError(400, 'Reset session expired or invalid')
+    throw new AppError(
+      400,
+      'Reset session expired or invalid',
+      'RESET_TICKET_INVALID'
+    )
   }
 
   const ttl = await redis.ttl(ticketKey)
@@ -432,7 +465,11 @@ export async function completeResetService(
   const email = await redis.get(ticketKey)
 
   if (!email) {
-    throw new AppError(400, 'Reset session expired or invalid')
+    throw new AppError(
+      400,
+      'Reset session expired or invalid',
+      'RESET_TICKET_INVALID'
+    )
   }
 
   const user = await findResettableUser(email)
@@ -440,7 +477,8 @@ export async function completeResetService(
   if (user.password && (await verifyPassword(newPassword, user.password))) {
     throw new AppError(
       400,
-      'New password must be different from the old password'
+      'New password must be different from the old password',
+      'RESET_PASSWORD_REUSED'
     )
   }
 
@@ -451,7 +489,7 @@ export async function completeResetService(
   )
 
   if (!isPasswordChanged) {
-    throw new AppError(500, 'Failed to reset password')
+    throw new AppError(500, 'Failed to reset password', 'SERVER_ERROR')
   }
 
   await redis.del(ticketKey)

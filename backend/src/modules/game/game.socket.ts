@@ -1,5 +1,6 @@
 import type { Namespace, Server, Socket } from 'socket.io'
 import { socketAuth, type CustomSocketData } from './socket.middleware.js'
+import { AppError } from '../../shared/errors/AppError.js'
 import { getModeHandler } from './engine/registry.js'
 import * as cache from './game.cache.js'
 import * as repo from './game.repository.js'
@@ -134,10 +135,11 @@ export class GameSocket {
   ) {
     socket.on(event, (payload: unknown, ack?: Ack) => {
       handler(payload, ack).catch((e: unknown) => {
-        const message = e instanceof Error ? e.message : 'INTERNAL_ERROR'
+        // The prose stays in the log, the room only ever sees the code
+        const code = e instanceof AppError ? e.code : 'SERVER_ERROR'
         console.error(`[game.socket] ${event} failed:`, e)
-        if (typeof ack === 'function') ack({ error: message })
-        else socket.emit('error', { event, message })
+        if (typeof ack === 'function') ack({ error: { code } })
+        else socket.emit('error', { event, code })
       })
     })
   }
@@ -149,7 +151,7 @@ export class GameSocket {
   // state helpers (Redis first, Postgres as the fallback)
   private async loadSession(gameId: number): Promise<GameSessionRow> {
     const session = (await cache.getSession(gameId)) ?? (await repo.getSessionById(gameId))
-    if (!session) throw new Error('GONE: room not found')
+    if (!session) throw new AppError(410, 'room not found', 'GAME_ROOM_NOT_FOUND')
     return session
   }
 
@@ -164,7 +166,8 @@ export class GameSocket {
   private async loadPlayer(gameId: number, playerId: number): Promise<PlayerSessionRow> {
     const player =
       (await cache.getPlayer(gameId, playerId)) ?? (await repo.getPlayerSession(playerId))
-    if (!player || player.game_session_id !== gameId) throw new Error('GONE: player not in room')
+    if (!player || player.game_session_id !== gameId)
+      throw new AppError(410, 'player not in room', 'GAME_PLAYER_NOT_FOUND')
     return player
   }
 
@@ -213,7 +216,8 @@ export class GameSocket {
   // guards: identity always comes from the socket token
   private requireHost(socket: Socket): { data: CustomSocketData; gameId: number } {
     const data = socket.data as CustomSocketData
-    if (data.role !== 'host' || !data.gameId) throw new Error('FORBIDDEN: host only')
+    if (data.role !== 'host' || !data.gameId)
+      throw new AppError(403, 'host only', 'GAME_NOT_HOST')
     return { data, gameId: data.gameId }
   }
 
@@ -221,7 +225,7 @@ export class GameSocket {
     const data = socket.data as CustomSocketData
     // never read a playerId from the client payload
     if (data.role !== 'player' || !data.playerSessionId || !data.gameId)
-      throw new Error('FORBIDDEN: player only')
+      throw new AppError(403, 'player only', 'GAME_PLAYER_ONLY')
     return { gameId: data.gameId, psid: data.playerSessionId }
   }
 
@@ -491,7 +495,8 @@ export class GameSocket {
 
   private async onLobbyJoin(socket: Socket) {
     const data = socket.data as CustomSocketData
-    if (!data.gameId || !data.code) throw new Error('FORBIDDEN: no room in token')
+    if (!data.gameId || !data.code)
+      throw new AppError(403, 'no room in token', 'GAME_TOKEN_INVALID')
     const session = await this.loadSession(data.gameId)
 
     if (data.role === 'player' && data.playerSessionId) {
@@ -574,7 +579,8 @@ export class GameSocket {
   private async onStart(socket: Socket) {
     const { gameId } = this.requireHost(socket)
     const current = await this.loadSession(gameId)
-    if (current.session_status !== 'lobby') throw new Error('CONFLICT: game already started')
+    if (current.session_status !== 'lobby')
+      throw new AppError(409, 'game already started', 'GAME_ALREADY_STARTED')
 
     const cfg = current.config
     const countdown = Math.max(0, cfg.timing.countdownSeconds ?? 0)
@@ -749,12 +755,13 @@ export class GameSocket {
     const { gameId } = this.requireHost(socket)
     const session = await this.loadSession(gameId)
     if (session.config.flow.pacing !== 'host')
-      throw new Error('CONFLICT: self-paced modes have no host advance')
-    if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
+      throw new AppError(409, 'self-paced modes have no host advance', 'GAME_PACING_MISMATCH')
+    if (session.session_status !== 'active')
+      throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
     if (session.current_phase === 'countdown')
-      throw new Error('CONFLICT: countdown in progress, cannot advance manually')
+      throw new AppError(409, 'countdown in progress, cannot advance manually', 'GAME_ADVANCE_NOT_ALLOWED')
     if (session.config.timing.autoAdvance)
-      throw new Error('CONFLICT: autoAdvance is enabled, host cannot advance manually')
+      throw new AppError(409, 'autoAdvance is enabled, host cannot advance manually', 'GAME_ADVANCE_NOT_ALLOWED')
 
     this.clearTimer(gameId)
     if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false)
@@ -768,22 +775,22 @@ export class GameSocket {
     const { gameId, psid } = this.requirePlayer(socket)
     const session = await this.loadSession(gameId)
     if (session.config.flow.pacing !== 'self')
-      throw new Error('CONFLICT: question:next is only for self-paced modes')
+      throw new AppError(409, 'question:next is only for self-paced modes', 'GAME_PACING_MISMATCH')
     if (session.session_status !== 'active')
-      throw new Error('CONFLICT: game is not active')
+      throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
     if (session.config.timing.autoAdvance)
-      throw new Error('CONFLICT: autoAdvance is on, the server advances automatically')
+      throw new AppError(409, 'autoAdvance is on, the server advances automatically', 'GAME_ADVANCE_NOT_ALLOWED')
 
     const player = await this.loadPlayer(gameId, psid)
     if (player.status === 'eliminated' || player.status === 'finished')
-      throw new Error('CONFLICT: player is no longer active')
+      throw new AppError(409, 'player is no longer active', 'GAME_PLAYER_INACTIVE')
 
     // The player can only advance after answering the question they are on.
     // current_question_index is already incremented by onAnswer, so if it
     // equals the number of answered questions the player has moved past it.
     const answered = (player.answered_questions ?? []).length
     if (player.current_question_index > answered)
-      throw new Error('CONFLICT: answer the current question before advancing')
+      throw new AppError(409, 'answer the current question before advancing', 'GAME_ANSWER_REQUIRED')
 
     await this.sendSelfQuestion(socket, session, { fromPlayerNext: true })
   }
@@ -791,7 +798,8 @@ export class GameSocket {
   private async onPause(socket: Socket) {
     const { gameId } = this.requireHost(socket)
     const session = await this.loadSession(gameId)
-    if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
+    if (session.session_status !== 'active')
+      throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
 
     const remaining = session.phase_ends_at ? Date.parse(session.phase_ends_at) - Date.now() : 0
     this.paused.set(gameId, Math.max(0, remaining)) // keep the leftover time of the current phase
@@ -807,7 +815,8 @@ export class GameSocket {
   private async onResume(socket: Socket) {
     const { gameId } = this.requireHost(socket)
     const session = await this.loadSession(gameId)
-    if (session.session_status !== 'paused') throw new Error('CONFLICT: game is not paused')
+    if (session.session_status !== 'paused')
+      throw new AppError(409, 'game is not paused', 'GAME_NOT_PAUSED')
 
     const remaining = this.paused.get(gameId) ?? 0
     this.paused.delete(gameId)
@@ -840,9 +849,9 @@ export class GameSocket {
     const session = await this.loadSession(gameId)
     // ending from the lobby would write finished_at on a match that never started
     if (session.session_status === 'lobby')
-      throw new Error('CONFLICT: the game has not started yet')
+      throw new AppError(409, 'the game has not started yet', 'GAME_NOT_STARTED')
     if (session.session_status === 'finished' || session.session_status === 'cancelled')
-      throw new Error('CONFLICT: game is not active')
+      throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
     await this.endGame(session)
   }
 
@@ -850,14 +859,15 @@ export class GameSocket {
   private async onAnswer(socket: Socket, payload: unknown, ack?: Ack) {
     const { gameId, psid } = this.requirePlayer(socket)
     const session = await this.loadSession(gameId)
-    if (session.session_status !== 'active') throw new Error('CONFLICT: game is not active')
+    if (session.session_status !== 'active')
+      throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
     if (session.current_phase === 'countdown')
-      throw new Error('CONFLICT: the game has not started yet')
+      throw new AppError(409, 'the game has not started yet', 'GAME_NOT_STARTED')
 
     const cfg = session.config
     const player = await this.loadPlayer(gameId, psid)
     if (player.status === 'eliminated' || player.status === 'finished')
-      throw new Error('CONFLICT: player can not answer anymore')
+      throw new AppError(409, 'player can not answer anymore', 'GAME_PLAYER_INACTIVE')
 
     const body = (payload ?? {}) as { answer?: unknown }
     const questions = await this.loadQuestions(gameId)
@@ -871,11 +881,11 @@ export class GameSocket {
       ? this.orderedQuestionsFor(questions, cfg, gameId, psid)
       : questions
     const q = (marathon && total > 0) ? orderedQuestions[index % total] : orderedQuestions[index]
-    if (!q) throw new Error('CONFLICT: no active question')
+    if (!q) throw new AppError(409, 'no active question', 'GAME_QUESTION_NOT_FOUND')
 
     // one answer per question, no exceptions
     if ((player.answered_questions ?? []).some((a) => a.question_index === index))
-      throw new Error('CONFLICT: answer already submitted')
+      throw new AppError(409, 'answer already submitted', 'GAME_ANSWER_DUPLICATE')
 
     // server authoritative timing
     const clock = selfPaced ? await cache.getPlayerClock(gameId, psid) : null
@@ -898,11 +908,11 @@ export class GameSocket {
       }
     } else {
       if (session.current_phase !== 'question_active')
-        throw new Error('CONFLICT: question is locked')
+        throw new AppError(409, 'question is locked', 'GAME_QUESTION_LOCKED')
       const deadline = session.phase_ends_at ? Date.parse(session.phase_ends_at) : null
       // host-paced ignores allowAnswerLate: the room advances together, only skew is tolerated
       if (deadline && now > deadline + LATE_GRACE_MS)
-        throw new Error('CONFLICT: time is up for this question')
+        throw new AppError(409, 'time is up for this question', 'GAME_ANSWER_TOO_LATE')
       timeTaken = deadline && limit !== null ? Math.max(0, limit - (deadline - now) / 1000) : 0
     }
     // a late answer keeps its real duration for the history, but never feeds the speed bonus
@@ -918,7 +928,7 @@ export class GameSocket {
       { answer: body.answer, isCorrect, timeTaken, scoreEarned: 0 },
       false
     )
-    if (!accepted) throw new Error('CONFLICT: answer already submitted')
+    if (!accepted) throw new AppError(409, 'answer already submitted', 'GAME_ANSWER_DUPLICATE')
 
     const handler = getModeHandler(session.game_mode)
     const outcome = handler.evaluateAnswer(
@@ -1374,7 +1384,7 @@ export class GameSocket {
 
   private async onSync(socket: Socket) {
     const data = socket.data as CustomSocketData
-    if (!data.gameId) throw new Error('FORBIDDEN: no room in token')
+    if (!data.gameId) throw new AppError(403, 'no room in token', 'GAME_TOKEN_INVALID')
     const session = await this.loadSession(data.gameId)
     const player =
       data.role === 'player' && data.playerSessionId

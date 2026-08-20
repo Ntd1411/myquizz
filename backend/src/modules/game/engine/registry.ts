@@ -7,7 +7,7 @@ export const registerMode = (h: GameModeHandler) => registry.set(h.mode, h)
 
 export const getModeHandler = (mode: string): GameModeHandler => {
   const h = registry.get(mode)
-  if (!h) throw new AppError(400, `Unsupported mode: ${mode}`)
+  if (!h) throw new AppError(400, `Unsupported mode: ${mode}`, 'GAME_MODE_UNSUPPORTED')
   return h
 }
 

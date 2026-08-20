@@ -71,7 +71,7 @@ export async function getMyQuizzes(
     // authMiddleware already guarantees a session; this keeps the type honest
     // instead of asserting one with `as number`.
     if (viewerId === undefined) {
-      throw new AppError(401, 'Authentication required')
+      throw new AppError(401, 'Authentication required', 'QUIZ_AUTH_REQUIRED')
     }
 
     const page = await listingService.getOwnQuizzesService({ viewerId, query })

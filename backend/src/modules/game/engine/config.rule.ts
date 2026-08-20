@@ -112,7 +112,7 @@ export const MODE_CONFIG_SPEC: Record<string, ModeConfigSpec> = {
 
 export const getConfigSpec = (mode: string): ModeConfigSpec => {
   const spec = MODE_CONFIG_SPEC[mode]
-  if (!spec) throw new AppError(400, `Unsupported mode: ${mode}`)
+  if (!spec) throw new AppError(400, `Unsupported mode: ${mode}`, 'GAME_MODE_UNSUPPORTED')
   return spec
 }
 
