@@ -9,7 +9,6 @@ import { IMAGE_ACCEPT, checkImageFile, uploadImage } from '@/api/storage.api'
 import { toErrorMessage } from '@/api/envelope'
 import { saveAutoDraft } from '@/composables/useQuizDraft'
 import { createDefaultCoverDataUrl, createDefaultCoverFile } from '@/utils/defaultCover'
-import { useUiStore } from '@/stores/ui.store'
 import BaseCombo from '@/components/base/BaseCombo.vue'
 import BrandLogo from '@/components/base/BrandLogo.vue'
 import ImageCropper from '@/components/quiz/ImageCropper.vue'
@@ -40,8 +39,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['submit', 'cancel', 'dirty'])
-
-const ui = useUiStore()
 
 const draft = ref(props.quiz ? { ...makeQuizMeta(), ...props.quiz } : makeQuizMeta())
 const items = ref(props.questions?.length ? [...props.questions] : [makeQuestion()])
@@ -597,7 +594,8 @@ async function submit() {
   showErrors.value = true
 
   if (allIssues.value.length) {
-    ui.toast(allIssues.value[0], 'error')
+    // Every problem is already printed under the field that owns it, and the first one
+    // is repeated at the top of the form, so the save simply stops here.
     return
   }
 
@@ -611,7 +609,6 @@ async function submit() {
     // away silently: the save stops and every pending file is kept for a retry.
     preparingCover.value = false
     formError.value = toErrorMessage(error, 'Could not upload the images. Nothing was saved.')
-    ui.toast(formError.value, 'error')
     return
   }
 
@@ -620,7 +617,7 @@ async function submit() {
   } catch (error) {
     // A decorative cover is not worth losing the quiz over: the author is told,
     // and the save goes ahead without one.
-    ui.toast(toErrorMessage(error, 'Could not prepare a cover image. Saving without one.'), 'error')
+    formError.value = toErrorMessage(error, 'Could not prepare a cover image. Saving without one.')
   } finally {
     preparingCover.value = false
   }

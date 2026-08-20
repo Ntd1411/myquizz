@@ -31,7 +31,7 @@ defineProps({
     </div>
 
     <div class="relative hidden bg-wash lg:block">
-      <img :src="coverSrc" :alt="coverAlt" class="absolute inset-0 h-full w-full object-cover" >
+      <img :src="coverSrc" :alt="coverAlt" class="absolute inset-0 h-full w-full object-cover">
     </div>
   </div>
 </template>

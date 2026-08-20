@@ -2,11 +2,11 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
+
 import BrandLogo from '@/components/base/BrandLogo.vue'
 
 const auth = useAuthStore()
-const ui = useUiStore()
+
 const route = useRoute()
 const router = useRouter()
 
@@ -125,7 +125,7 @@ async function handleLogout() {
   menuOpen.value = false
   mobileOpen.value = false
   await auth.logout()
-  ui.toast('Signed out.')
+
   router.push({ name: 'home' })
 }
 </script>

@@ -8,11 +8,10 @@ export const http = axios.create({
   withCredentials: true,
 })
 
-// Events the app layer listens to (see App.vue / auth store).
+// The only app-wide event left (see App.vue). A dead session is not something a
+// single screen can answer; every other failure is reported where it happened, by
+// the code that knows what the user was trying to do.
 export const AUTH_EXPIRED_EVENT = 'myquizz:auth-expired'
-export const RATE_LIMITED_EVENT = 'myquizz:rate-limited'
-export const FORBIDDEN_EVENT = 'myquizz:forbidden'
-export const NOT_FOUND_EVENT = 'myquizz:not-found'
 
 // Single-flight refresh. A burst of parallel 401s must trigger only ONE
 // /auth/refresh call; every other request waits for the same promise.
@@ -41,17 +40,10 @@ http.interceptors.response.use(
     const original = error.config
     const status = error.response?.status
 
-    if (status === 429) {
-      window.dispatchEvent(new CustomEvent(RATE_LIMITED_EVENT))
-      return Promise.reject(error)
-    }
-
-    // 403 and 404 are final: retrying changes nothing, and every caller used to answer
-    // them with a slightly different sentence. One central toast keeps the wording
-    // identical. A page that renders its own state for these (a missing quiz, a private
-    // profile) opts out with `skipErrorToast` so the screen does not say it twice.
-    if ((status === 403 || status === 404) && !original?.skipErrorToast && !original?.skipAuthHandling) {
-      window.dispatchEvent(new CustomEvent(status === 403 ? FORBIDDEN_EVENT : NOT_FOUND_EVENT))
+    // 403, 404 and 429 are final: retrying changes nothing, so they travel straight
+    // back to the caller. They used to raise an app-wide notice, which meant the same
+    // failure was announced twice on any screen that also rendered its own state.
+    if (status === 403 || status === 404 || status === 429) {
       return Promise.reject(error)
     }
 

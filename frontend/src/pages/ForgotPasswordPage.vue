@@ -5,10 +5,9 @@ import AuthShell from '@/components/auth/AuthShell.vue'
 import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import PinInput from '@/components/base/PinInput.vue'
-import { useUiStore } from '@/stores/ui.store'
 import { forgotPassword, verifyResetCode } from '@/api/users.api'
 import { saveResetTicket } from '@/utils/resetTicket'
-import { toErrorMessage } from '@/api/envelope'
+import { toErrorCode, toErrorMessage } from '@/api/envelope'
 
 /**
  * Steps one and two of a reset: ask for the code, then prove the email arrived.
@@ -23,7 +22,6 @@ import { toErrorMessage } from '@/api/envelope'
  * ProfilePage can also land here already on the code step: it has an address and has
  * just asked for a code, so it hands both over through the query string.
  */
-const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -109,18 +107,26 @@ onMounted(() => {
 onBeforeUnmount(stopCountdown)
 
 /**
- * Maps a failed send/resend into a fixed, user-facing message. The backend's own
- * error text is never shown here - it may describe internal rate-limit windows or
- * other details that are not meant for the reader.
+ * Maps a failed send/resend into a fixed, user-facing message. The match is on
+ * error.code, the only part of a failure the API promises: the status alone
+ * cannot tell a Google-only account from a rejected body, since both are 400.
+ * Anything else falls through to the shared table, which also covers the
+ * network and server cases.
  */
 function sendCodeErrorMessage(error) {
-  const status = error?.response?.status
-  if (status === 404) return 'No account uses this email address.'
-  if (status === 410) return 'This account has been deactivated.'
-  if (status === 400) return 'This account cannot reset its password this way.'
-  if (status === 429) return 'Too many attempts. Please try again in a few minutes.'
-  if (error?.code === 'ERR_NETWORK') return 'Could not connect to the server.'
-  return 'Could not send the verification code. Please try again.'
+  const fallback = 'Could not send the verification code. Please try again.'
+  const code = toErrorCode(error)
+
+  if (code === 'USER_EMAIL_NOT_FOUND') return 'No account uses this email address.'
+  if (code === 'USER_DEACTIVATED') return 'This account has been deactivated.'
+  if (code === 'AUTH_GOOGLE_ONLY') {
+    return 'This account cannot reset its password this way.'
+  }
+  if (code === 'RATE_LIMITED') {
+    return 'Too many attempts. Please try again in a few minutes.'
+  }
+
+  return toErrorMessage(error, fallback)
 }
 
 async function sendCode() {
@@ -130,10 +136,11 @@ async function sendCode() {
     // Asking again during the cooldown is not an error: the backend then sends nothing
     // and answers with the deadlines of the code already outstanding, so this always
     // lands here rather than in the catch block.
+    // Moving to the code step is the receipt: that screen names the address the mail
+    // went to, which says more than a notice that fades after three seconds.
     applySchedule(await forgotPassword(email.value))
     otp.value = ''
     step.value = 'verify'
-    ui.toast('A verification code has been sent to your email.')
   } catch (error) {
     formError.value = sendCodeErrorMessage(error)
   } finally {

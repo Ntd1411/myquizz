@@ -45,7 +45,7 @@ const imageHeight = computed(() => Math.round(props.size / (1 - MARK_TRIM * 2)))
         class="absolute top-1/2 left-1/2 w-auto max-w-none -translate-x-1/2 -translate-y-1/2"
         :style="{ height: `${imageHeight}px` }"
         decoding="async"
-      />
+      >
     </span>
 
     <span

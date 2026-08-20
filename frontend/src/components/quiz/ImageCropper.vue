@@ -182,7 +182,9 @@ async function apply() {
     const file = await cropToFile(source, crop, { width: props.width, height: props.height })
     emit('apply', { file, crop })
   } catch (failure) {
-    error.value = failure?.message || 'The crop could not be created.'
+    // Canvas and DOM exceptions are English and unpredictable; keep them in the console.
+    if (failure) console.warn('crop failed', failure)
+    error.value = 'The crop could not be created.'
   } finally {
     working.value = false
   }
@@ -198,7 +200,8 @@ onMounted(async () => {
     natural.value = { width: source.naturalWidth, height: source.naturalHeight }
     displaySrc.value = source.src
   } catch (failure) {
-    error.value = failure?.message || 'This image could not be loaded.'
+    if (failure) console.warn('image load failed', failure)
+    error.value = 'This image could not be loaded.'
     loading.value = false
     return
   }

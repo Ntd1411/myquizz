@@ -83,7 +83,7 @@ async function load() {
   const [detail, list] = await Promise.all([
     getQuizById(props.quizId).catch(() => null),
     listGameModes().catch((error) => {
-      loadError.value = toErrorMessage(error)
+      loadError.value = toErrorMessage(error, 'Could not load the game modes.')
       return []
     }),
   ])
@@ -110,7 +110,7 @@ async function submit() {
     mode: mode.value,
     config: Object.keys(patch).length ? patch : undefined,
   }).catch((error) => {
-    formError.value = toErrorMessage(error)
+    formError.value = toErrorMessage(error, 'Could not create the room.')
     return null
   })
   submitting.value = false

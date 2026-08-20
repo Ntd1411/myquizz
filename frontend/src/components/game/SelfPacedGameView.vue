@@ -5,7 +5,6 @@ import QuestionStage from '@/components/game/QuestionStage.vue'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useCountdown } from '@/composables/useServerClock'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * Player screen for the self-paced modes (solo, survival, marathon, practice).
@@ -22,12 +21,15 @@ import { useUiStore } from '@/stores/ui.store'
  */
 const game = useGameStore()
 const socket = useGameSocket()
-const ui = useUiStore()
 
 const picks = ref([])
 const text = ref('')
 const sending = ref(false)
 const advancing = ref(false)
+
+// Refusals are shown inside the question card, under the buttons that caused them,
+// and die with the question they belong to.
+const actionError = ref('')
 
 const question = computed(() => game.question)
 const questionType = computed(() => question.value?.question_type ?? 'multiple_choice')
@@ -125,6 +127,7 @@ watch(
   () => {
     picks.value = []
     text.value = ''
+    actionError.value = ''
     advancing.value = false
   },
 )
@@ -132,8 +135,13 @@ watch(
 async function send(value) {
   if (!game.canAnswer || sending.value) return
   sending.value = true
+  actionError.value = ''
   await socket.answer(value).catch((error) => {
-    ui.toast(game.lastError?.message ?? error?.message ?? 'Could not send your answer.', 'error')
+    // The refusal is a code, and the store already paired it with a sentence: show that
+    // one and keep the generic line for a code that has none.
+    const refusal = game.lastError ?? error
+    if (refusal) console.warn(`answer refused: ${refusal.code}`)
+    actionError.value = refusal?.message || 'Could not send your answer. Try again.'
   })
   sending.value = false
 }
@@ -162,12 +170,14 @@ function submit() {
  */
 function goNext() {
   advancing.value = true
+  actionError.value = ''
   game.setError(null)
   socket.playerNext()
   window.setTimeout(() => {
     advancing.value = false
     if (game.lastError?.event === 'question:next') {
-      ui.toast(game.lastError.message || 'Could not load the next question.', 'error')
+      console.warn(`next question refused: ${game.lastError.code}`)
+      actionError.value = game.lastError.message || 'Could not load the next question. Try again.'
     }
   }, 600)
 }
@@ -326,6 +336,10 @@ function goNext() {
       </button>
       <p v-else-if="outcome" class="mt-md text-center text-body-sm text-ink-3">
         The next question is on its way&hellip;
+      </p>
+
+      <p v-if="actionError" class="mt-md text-center text-body-sm text-ans-a" role="alert">
+        <span v-text="actionError" />
       </p>
     </section>
 

@@ -46,9 +46,9 @@ export function useGameSocket() {
     'player:finished': (payload) => game.applyPlayerFinished(payload),
     'game:ended': (payload) => game.applyEnded(payload),
     error: (payload) => {
-      const parsed = parseSocketError(payload?.message ?? '')
-      console.error(`[game] ${payload?.event ?? 'event'} failed: ${parsed.code} - ${parsed.message}`)
-      game.setError({ ...parsed, event: payload?.event ?? null })
+      const { code } = parseSocketError(payload?.code ?? '')
+      console.error(`[game] ${payload?.event ?? 'event'} failed: ${code}`)
+      game.setError({ code, event: payload?.event ?? null })
     },
   }
 

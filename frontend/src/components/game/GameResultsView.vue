@@ -7,7 +7,6 @@ import { toErrorMessage } from '@/api/envelope'
 import { useFinalResults } from '@/composables/useFinalResults'
 import { readPlayerSession } from '@/composables/usePlayerSession'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * Player end screen.
@@ -21,11 +20,13 @@ import { useUiStore } from '@/stores/ui.store'
  * finished. REST also keeps working once the room is closed, which the socket does not.
  */
 const game = useGameStore()
-const ui = useUiStore()
 const { leaderboard, reviewEnabled, loading, error } = useFinalResults()
 
 const showReview = ref(false)
 const requesting = ref(false)
+
+// Why the review could not be opened, said on the screen that asked for it.
+const reviewError = ref('')
 
 const meId = computed(() => game.playerId)
 const myRow = computed(
@@ -180,15 +181,17 @@ async function openReview() {
     return
   }
 
+  reviewError.value = ''
+
   const token = readPlayerSession()?.socketToken
   if (!game.sessionId || !token) {
-    ui.toast('This browser no longer holds a seat in that room.', 'error')
+    reviewError.value = 'This browser no longer holds a seat in that room.'
     return
   }
 
   requesting.value = true
   const data = await getGameReview(game.sessionId, token).catch((err) => {
-    ui.toast(toErrorMessage(err, 'Review is not available for this room.'), 'error')
+    reviewError.value = toErrorMessage(err, 'Review is not available for this room.')
     return null
   })
   requesting.value = false
@@ -201,6 +204,10 @@ async function openReview() {
 
 <template>
   <section class="grid gap-lg">
+    <p v-if="reviewError" class="review-error" role="alert">
+      <span v-text="reviewError" />
+    </p>
+
     <!-- Outcome. One number the player came for, everything else is secondary. -->
     <div class="card-surface hero p-xl text-center">
       <p class="eyebrow-label">

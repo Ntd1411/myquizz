@@ -370,11 +370,6 @@
     @apply text-body-sm font-semibold text-spotlight hover:underline;
   }
 
-  /* Toast: a hairline is enough on white; a shadow would read as a modal. */
-  .toast {
-    @apply rounded-md border border-hairline bg-paper px-md py-sm text-body-sm text-ink;
-  }
-
   .rail-arrow {
     @apply absolute z-20 grid h-10 w-10 place-items-center rounded-full border border-hairline bg-paper text-ink shadow-soft transition-colors duration-ui hover:bg-canvas;
     top: 40%;

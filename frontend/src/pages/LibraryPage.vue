@@ -11,7 +11,6 @@ import { groupDigits, formatCount } from '@/utils/formatNumber'
 import { toTextParts } from '@/utils/linkify'
 import { useCursorList } from '@/composables/useCursorList'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
 import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useMotion'
 
 /**
@@ -58,7 +57,6 @@ import { revealOnEnter, revealAppended, ScrollTrigger } from '@/composables/useM
  * `keyword` parameter of the endpoint is simply never sent from here.
  */
 const auth = useAuthStore()
-const ui = useUiStore()
 
 const PAGE_SIZE = 24
 
@@ -84,6 +82,9 @@ const sort = ref('recently_updated')
 // The quiz waiting for a delete confirmation, and whether the request is in flight.
 const pendingDelete = ref(null)
 const deleting = ref(false)
+// A refused delete is reported inside the dialog that asked for it, so the quiz it
+// refers to is still named on screen.
+const deleteError = ref('')
 
 // Every quiz in this library belongs to the signed-in user, so one author request
 // covers the header and all the cards.
@@ -297,11 +298,13 @@ function clearFilters() {
  * than window.confirm, which cannot be styled and blocks the whole tab.
  */
 function askDelete(quiz) {
+  deleteError.value = ''
   pendingDelete.value = quiz
 }
 
 function cancelDelete() {
   if (deleting.value) return
+  deleteError.value = ''
   pendingDelete.value = null
 }
 
@@ -315,15 +318,16 @@ async function confirmDelete() {
   if (!quiz || deleting.value) return
 
   deleting.value = true
+  deleteError.value = ''
   try {
     await deleteQuiz(quiz.id)
-    ui.toast('Quiz deleted.', 'success')
+    // The row leaving the grid is the confirmation, so the dialog just closes.
     pendingDelete.value = null
     await list.loadFirst()
   } catch (error) {
-    // The envelope carries the reason under error.message (404 gone, 403 not yours),
-    // which only toErrorMessage reads; error.message alone is the axios status text.
-    ui.toast(toErrorMessage(error, 'Could not delete this quiz.'), 'error')
+    // The dialog stays open with the reason in it: the quiz is still there, so the
+    // reader can read what happened and try again or back out.
+    deleteError.value = toErrorMessage(error, 'Could not delete this quiz.')
   } finally {
     deleting.value = false
   }
@@ -741,6 +745,9 @@ watch(
             <button class="btn-utility" type="button" :disabled="deleting" @click="cancelDelete">
               Keep it
             </button>
+            <p v-if="deleteError" class="dialog-error" role="alert">
+              <span v-text="deleteError" />
+            </p>
             <button class="btn-danger" type="button" :disabled="deleting" @click="confirmDelete">
               {{ deleting ? 'Deleting…' : 'Delete' }}
             </button>
@@ -1265,6 +1272,14 @@ watch(
   place-items: center;
   padding: 20px;
   background-color: rgba(35, 36, 43, 0.32);
+}
+
+/* Spans the action row it sits in, so the buttons keep their own line below it. */
+.dialog-error {
+  flex-basis: 100%;
+  color: var(--ans-a);
+  font-size: 13.5px;
+  line-height: 1.45;
 }
 
 .dialog {

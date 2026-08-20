@@ -30,9 +30,8 @@ export async function createGame({ quizId, sessionName, mode, config }) {
 
 /** Public lobby state for a room code. Answers are never included. */
 export async function getGameByCode(code) {
-  // A wrong room code is a normal typo, and the join screen already says so inline,
-  // so this lookup opts out of the central 403/404 toast.
-  const res = await http.get(`/games/${encodeURIComponent(code)}`, { skipErrorToast: true })
+  // A wrong room code is a normal typo, and the join screen says so inline.
+  const res = await http.get(`/games/${encodeURIComponent(code)}`)
   const payload = unwrap(res.data).session ?? {}
   return {
     session: payload.session ?? null,

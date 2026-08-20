@@ -7,7 +7,6 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toErrorMessage } from '@/api/envelope'
-import { useUiStore } from '@/stores/ui.store'
 import { setPendingDraft } from '@/composables/useQuizDraft'
 import { revealOnEnter } from '@/composables/useMotion'
 import {
@@ -50,7 +49,6 @@ const METHODS = [
 ]
 
 const router = useRouter()
-const ui = useUiStore()
 
 const pageEl = ref(null)
 const method = ref('manual')
@@ -64,10 +62,8 @@ const selected = computed(() => METHODS.find((item) => item.value === method.val
 onMounted(() => revealOnEnter(pageEl.value))
 
 function selectMethod(item) {
-  if (item.disabled) {
-    ui.toast('AI generation is not available yet.')
-    return
-  }
+  // The card already reads "Coming soon", so a disabled method simply does nothing.
+  if (item.disabled) return
   method.value = item.value
   issues.value = []
   fileName.value = ''
@@ -81,7 +77,8 @@ async function onDownloadTemplate(kind) {
   try {
     await downloadTemplate(kind)
   } catch (error) {
-    ui.toast(toErrorMessage(error, 'Could not build that template.'), 'error')
+    // The issue list under the method is where this screen reports every problem.
+    issues.value = [toErrorMessage(error, 'Could not build that template.')]
   }
 }
 
@@ -94,17 +91,16 @@ function handOver(questions, meta = {}, label = 'import') {
 
   const found = collectQuestionIssues(questions)
   if (found.length) {
+    // Every problem is listed with the row it belongs to, which a one-line notice
+    // could never do.
     issues.value = found
-    ui.toast(
-      `${found.length} problem${found.length === 1 ? '' : 's'} found. Fix them and try again.`,
-      'error',
-    )
     return
   }
 
   issues.value = []
   setPendingDraft({ quiz: meta, questions, source: label })
-  ui.toast(`Converted ${questions.length} question${questions.length === 1 ? '' : 's'}.`, 'success')
+  // The editor opens with a banner counting the imported questions, so the hand-over
+  // announces itself on the screen that received the work.
   router.push({ name: 'create-quiz' })
 }
 

@@ -7,7 +7,6 @@ import PasswordField from '@/components/base/PasswordField.vue'
 import StateBlock from '@/components/base/StateBlock.vue'
 import { verifyResetLink, getResetTicket, completeReset } from '@/api/users.api'
 import { saveResetTicket, loadResetTicket, clearResetTicket } from '@/utils/resetTicket'
-import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { revealOnEnter } from '@/composables/useMotion'
 
@@ -28,7 +27,6 @@ import { revealOnEnter } from '@/composables/useMotion'
  * The ticket is read back from the server before the form appears, so a session that
  * expired says so instead of failing after the password has been typed twice.
  */
-const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -167,12 +165,11 @@ async function submit() {
     // out server side: logging in again is the only way on from here.
     clearResetTicket()
     stopCountdown()
-    ui.toast('Your password has been reset. Please log in again.', 'success')
-    router.push({ name: 'login' })
+    router.push({ name: 'login', query: { reason: 'password-reset' } })
   } catch (error) {
-    // The backend text is worth showing here: it is written for the reader and says
-    // which of the three refusals happened - a spent ticket, a password identical to
-    // the current one, or a deactivated account.
+    // Which of the three refusals happened is read off the error code - a spent
+    // ticket, a password identical to the current one, a deactivated account - and
+    // turned into our own sentence, printed under the form the reader just used.
     formError.value = toErrorMessage(error, 'Could not reset your password.')
   } finally {
     pending.value = false

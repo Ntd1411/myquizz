@@ -5,7 +5,6 @@ import QuestionStage from './QuestionStage.vue'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useCountdown } from '@/composables/useServerClock'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * The host console of a running host-paced match.
@@ -20,9 +19,12 @@ import { useUiStore } from '@/stores/ui.store'
  */
 const game = useGameStore()
 const socket = useGameSocket()
-const ui = useUiStore()
 
 const ending = ref(false)
+
+// A refused control lands at the top of the console, where the host is looking,
+// and stays until the next control is used.
+const actionError = ref('')
 
 /**
  * The host screen is usually on a shared display, so the question and its key stay hidden
@@ -57,9 +59,15 @@ const nextLabel = computed(() =>
  */
 function guard(action, label) {
   game.setError(null)
+  actionError.value = ''
   action()
   window.setTimeout(() => {
-    if (game.lastError) ui.toast(`${label} failed: ${game.lastError.message}`, 'error')
+    // The store already turned the server's code into a sentence, so it can be shown
+    // as is. Only a code with no sentence of its own falls back to the generic line.
+    if (game.lastError) {
+      console.warn(`${label} refused: ${game.lastError.code}`)
+      actionError.value = game.lastError.message || `${label} did not go through. Try again.`
+    }
   }, 600)
 }
 
@@ -87,6 +95,10 @@ function end() {
 
 <template>
   <div class="console">
+    <p v-if="actionError" class="console-error" role="alert">
+      <span v-text="actionError" />
+    </p>
+
     <section v-if="phase === 'countdown'" class="card-surface p-xl text-center">
       <p class="eyebrow-label">
         Starting
@@ -206,5 +218,14 @@ function end() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+.console-error {
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ans-a);
+  background: var(--ans-a-soft);
+  color: var(--ans-a);
+  font-size: 14px;
 }
 </style>

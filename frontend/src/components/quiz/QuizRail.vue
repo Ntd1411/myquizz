@@ -246,7 +246,7 @@ watch(
 
         <StateBlock
           v-else-if="!total"
-          icon="\u{1F4ED}"
+          :icon="'\u{1F4ED}'"
           title="No quizzes in this section yet"
         />
 

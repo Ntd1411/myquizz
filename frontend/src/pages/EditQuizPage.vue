@@ -9,14 +9,12 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useQueryClient } from '@tanstack/vue-query'
 import { getQuizById, updateQuiz } from '@/api/quizzes.api'
 import { ApiError, toErrorMessage } from '@/api/envelope'
-import { useUiStore } from '@/stores/ui.store'
 import { clearAutoDraft, draftKey, readAutoDraft } from '@/composables/useQuizDraft'
 import QuizEditor from '@/components/quiz/QuizEditor.vue'
 import { quizToDraft } from '@/utils/quizImport'
 
 const route = useRoute()
 const router = useRouter()
-const ui = useUiStore()
 const queryClient = useQueryClient()
 
 const quizId = route.params.id
@@ -117,7 +115,7 @@ async function submit(payload) {
     // is enough, they refetch the next time one is opened.
     queryClient.invalidateQueries({ queryKey: ['quizzes'] })
 
-    ui.toast('Your changes have been saved.', 'success')
+    // The detail page opens on the new version, which says more than a notice would.
     router.push({ name: 'quiz-detail', params: { id: quizId } })
   } catch (error) {
     const status = statusOf(error)
@@ -127,8 +125,8 @@ async function submit(payload) {
         : status === 404
           ? 'This quiz no longer exists.'
           : toErrorMessage(error, 'Could not save your changes.')
+    // Reported in the editor, above the questions that are still unsaved.
     editor.value?.setError(message)
-    ui.toast(message, 'error')
   } finally {
     saving.value = false
   }

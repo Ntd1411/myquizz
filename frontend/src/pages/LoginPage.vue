@@ -6,19 +6,29 @@ import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import PasswordField from '@/components/base/PasswordField.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
 import { startGoogleLogin } from '@/api/auth.api'
 import { toErrorMessage } from '@/api/envelope'
 import { useGoogleOneTap } from '@/composables/useGoogleOneTap'
 
 const auth = useAuthStore()
-const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
 
 const email = ref('')
 const password = ref('')
-const formError = ref('')
+
+/**
+ * The single place this screen reports anything. A redirect back from the OAuth
+ * callback carries a `reason`, so an interrupted Google sign-in reads as a
+ * sentence under the form instead of a notice floating over an unrelated page.
+ */
+const formError = ref(
+  route.query.reason === 'google'
+    ? 'Google sign-in failed. Try again or use your password.'
+    : route.query.reason === 'session'
+      ? 'Your session could not be verified. Please log in again.'
+      : '',
+)
 
 function goAfterLogin() {
   router.push(route.query.redirect || { name: 'home' })
@@ -28,7 +38,6 @@ async function submit() {
   formError.value = ''
   try {
     await auth.login({ email: email.value, password: password.value })
-    ui.toast('Signed in successfully.')
     goAfterLogin()
   } catch (error) {
     formError.value = toErrorMessage(error, 'Incorrect email or password.')
@@ -41,9 +50,8 @@ async function submit() {
 useGoogleOneTap({
   prompt: true,
   enabled: !auth.isLoggedIn,
-  onSuccess: async (user) => {
+  onSuccess: async () => {
     await auth.refresh()
-    ui.toast(`Welcome back, ${user?.fullname || user?.email || 'friend'}.`)
     goAfterLogin()
   },
   onError: (error) => {

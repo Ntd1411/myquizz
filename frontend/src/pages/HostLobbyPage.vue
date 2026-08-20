@@ -13,7 +13,6 @@ import { toErrorMessage } from '@/api/envelope'
 import { buildPatch, changedValues, ignoredMessage, modeLabel, readValues } from '@/constants/gameConfig'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 import { revealOnEnter } from '@/composables/useMotion'
 
 /**
@@ -41,7 +40,6 @@ const props = defineProps({
 })
 
 const game = useGameStore()
-const ui = useUiStore()
 const socket = useGameSocket()
 
 const pageEl = ref(null)
@@ -99,7 +97,7 @@ async function load() {
   loadError.value = ''
 
   const room = await getGameByCode(props.code).catch((error) => {
-    loadError.value = toErrorMessage(error)
+    loadError.value = toErrorMessage(error, 'That room does not exist any more.')
     return null
   })
   if (!room?.session) {
@@ -109,7 +107,7 @@ async function load() {
   session.value = room.session
 
   const token = await getHostToken(room.session.id).catch((error) => {
-    loadError.value = toErrorMessage(error)
+    loadError.value = toErrorMessage(error, 'You are not the host of this room.')
     return null
   })
   if (!token) {
@@ -126,7 +124,8 @@ async function saveConfig() {
   if (saving.value || !spec.value) return
   const patch = buildPatch(changedValues(values.value, baseline.value))
   if (!Object.keys(patch).length) {
-    ui.toast('Nothing to save yet.')
+    // Reported in the dialog the host is looking at, next to the fields they did not change.
+    configError.value = 'Nothing to save yet.'
     return
   }
 
@@ -137,11 +136,14 @@ async function saveConfig() {
   const overSocket = connection.value === 'connected'
   const result = overSocket
     ? await socket.updateConfig(patch).catch((error) => {
-      configError.value = error?.message || 'Could not save the room settings.'
+      // A socket ack carries the same developer-facing English as REST, so the reason
+      // is logged and the reader gets the sentence this screen owns.
+      if (error) console.warn('lobby:config-update refused', error)
+      configError.value = 'Could not save the room settings.'
       return null
     })
     : await updateGameConfig(session.value.id, patch).catch((error) => {
-      configError.value = toErrorMessage(error)
+      configError.value = toErrorMessage(error, 'Could not save the room settings.')
       return null
     })
   saving.value = false
@@ -153,8 +155,8 @@ async function saveConfig() {
 
   ignored.value = result.ignored ?? []
   applyConfig(result.config)
-  ui.toast(ignored.value.length ? 'Saved, some settings were kept as they were.' : 'Room settings saved.')
-  // The dialog stays open when the server kept a value, so the host can see which one.
+  // A save says itself: the dialog closes and the room card shows the new settings. It
+  // only stays open when the server kept a value, and then `ignoredMessages` names which.
   if (!ignored.value.length) settingsOpen.value = false
 }
 
@@ -180,7 +182,9 @@ async function copy(text, label) {
     ?.writeText(text)
     .then(() => true)
     .catch(() => false)
-  ui.toast(ok ? `${label} copied.` : 'Copy failed, select the text instead.')
+  // The clipboard is its own receipt. A refusal is a browser permission problem, which
+  // the host cannot fix from this screen, so it goes to the console.
+  if (!ok) console.warn(`could not copy the ${label.toLowerCase()} to the clipboard`)
 }
 
 // A config change made from another host tab arrives as lobby:updated. It is only mirrored
