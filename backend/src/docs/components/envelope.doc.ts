@@ -11,6 +11,7 @@
  * paging, so no such schema is documented.
  */
 
+import { ERROR_CODES } from '../../shared/errors/codes.js'
 import type { SchemaMap } from '../types.js'
 import { EXAMPLE_TIMESTAMP, ref } from '../types.js'
 
@@ -90,23 +91,21 @@ export const envelopeSchemas: SchemaMap = {
   ErrorEnvelope: {
     type: 'object',
     description:
-      'Shape of every 4xx and 5xx response. data is always null, and details only carries a value for validation failures, where it maps each rejected field to its reason.',
+      'Shape of every 4xx and 5xx response. data is always null and error carries a single machine-readable code. No sentence and no field dump is returned: the client owns the wording, which is what lets the same API serve a UI in any language, and the reason behind the refusal stays in the server log.',
     required: ['success', 'data', 'error', 'meta'],
     properties: {
       success: { type: 'boolean', enum: [false], example: false },
       data: { type: 'object', nullable: true, example: null },
       error: {
         type: 'object',
-        required: ['message', 'details'],
+        required: ['code'],
         properties: {
-          message: { type: 'string', example: 'Quiz not found' },
-          details: {
-            type: 'object',
-            nullable: true,
+          code: {
+            type: 'string',
             description:
-              'Field-by-field reasons on a validation error, null otherwise.',
-            additionalProperties: { type: 'string' },
-            example: null
+              'Names the situation, never the sentence. Match on this value: the list of codes an operation can answer with is documented on that operation, and VALIDATION_ERROR covers any body rejected by a schema. The enum below is the whole vocabulary, generated from shared/errors/codes.ts, so it cannot drift from what the server can send. See the Error codes section of the introduction for what each one means.',
+            enum: [...ERROR_CODES],
+            example: 'QUIZ_NOT_FOUND'
           }
         }
       },

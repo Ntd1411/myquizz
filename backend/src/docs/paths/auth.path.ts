@@ -88,21 +88,18 @@ export const authPaths: PathMap = {
           [
             validationError({ password: 'Password must be at least 8 characters' }),
             validationError({ email: 'Email must be valid' }),
-            validationError({ phone: 'Phone must be 7-15 digits' }),
-            'Email, password, and fullname are required'
+            validationError({ phone: 'Phone must be 7-15 digits' })
           ]
         ),
         409: errorResponse('Email or phone already taken', [
-          'Email already registered',
-          'Phone number already registered'
+          'AUTH_EMAIL_TAKEN',
+          'AUTH_PHONE_TAKEN'
         ]),
         429: errorResponse(
           'authRateLimiter, applied after validation: 5 requests per IP per 5 minutes, and a successful registration does not consume the quota.',
-          ['Too many requests. Please try again in 240 seconds']
+          ['RATE_LIMITED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to create user'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -139,19 +136,18 @@ export const authPaths: PathMap = {
           'Rejected body. loginSchema runs before the controller, so a missing field answers Validation error; the plain sentence below is a guard the controller can no longer reach.',
           [
             validationError({ email: 'Email must be valid' }),
-            validationError({ password: 'Password is required' }),
-            'Email and password are required'
+            validationError({ password: 'Password is required' })
           ]
         ),
         401: errorResponse('Unknown email or wrong password', [
-          'Invalid email or password'
+          'AUTH_INVALID_CREDENTIALS'
         ]),
         403: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ]),
         429: errorResponse(
           'authRateLimiter, applied after validation: 5 requests per IP per 5 minutes, and a successful login does not consume the quota, so only failed attempts add up.',
-          ['Too many requests. Please try again in 240 seconds']
+          ['RATE_LIMITED']
         )
       }
     }
@@ -173,14 +169,14 @@ export const authPaths: PathMap = {
           })
         }),
         400: errorResponse('No refreshToken cookie was sent', [
-          'Refresh token is required'
+          'AUTH_REFRESH_INVALID'
         ]),
         401: errorResponse(
           'The refresh token is invalid, already rotated, or its user is gone. Every session of that user is revoked when an unknown token is replayed.',
-          ['Invalid refresh token', 'User not found']
+          ['AUTH_REFRESH_INVALID', 'USER_NOT_FOUND']
         ),
         403: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ])
       }
     }
@@ -198,19 +194,18 @@ export const authPaths: PathMap = {
           example: successExample({ message: 'Logged out successfully' })
         }),
         400: errorResponse('One of the two cookies is missing', [
-          'Access token and refresh token are required'
+          'VALIDATION_ERROR'
         ]),
         401: errorResponse(
           'A token does not verify or does not belong to the caller. The mismatched case revokes every session of that user.',
           [
-            'Access token missing',
-            'Token is blacklisted',
-            'Invalid access token',
-            'Invalid refresh token'
+            'AUTH_TOKEN_MISSING',
+            'AUTH_TOKEN_INVALID',
+            'AUTH_REFRESH_INVALID'
           ]
         ),
         403: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ])
       }
     }
@@ -226,7 +221,7 @@ export const authPaths: PathMap = {
         302: { description: 'Redirect to the Google consent screen' },
         429: errorResponse(
           'authRateLimiter: 5 requests per IP per 5 minutes. A redirect counts as a success and is not charged to the quota.',
-          ['Too many requests. Please try again in 240 seconds']
+          ['RATE_LIMITED']
         )
       }
     }
@@ -254,20 +249,14 @@ export const authPaths: PathMap = {
             'Redirect to FRONTEND_URL/auth/callback, or to the same URL with ?error=... when Google refused'
         },
         400: errorResponse('Google came back without a code or a state', [
-          'Missing authorization code or state'
+          'AUTH_GOOGLE_FAILED'
         ]),
         401: errorResponse(
           'The state does not match the cookie, or the Google profile cannot be used',
-          [
-            'Google OAuth error: access_denied',
-            'Invalid OAuth state',
-            'Google did not return an id_token',
-            'Cannot read profile from Google account',
-            'Google email is not verified, cannot link account'
-          ]
+          ['AUTH_GOOGLE_FAILED', 'AUTH_GOOGLE_EMAIL_UNVERIFIED']
         ),
         403: errorResponse('The matching local account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ])
       }
     }
@@ -311,18 +300,18 @@ export const authPaths: PathMap = {
           })
         }),
         400: errorResponse('No credential in the body', [
-          'Missing Google credential'
+          'AUTH_GOOGLE_FAILED'
         ]),
         401: errorResponse('The credential does not verify', [
-          'Cannot read profile from Google account',
-          'Google email is not verified, cannot link account'
+          'AUTH_GOOGLE_FAILED',
+          'AUTH_GOOGLE_EMAIL_UNVERIFIED'
         ]),
         403: errorResponse('The matching local account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ]),
         429: errorResponse(
           'authRateLimiter: 5 requests per IP per 5 minutes, successful sign-ins excluded.',
-          ['Too many requests. Please try again in 240 seconds']
+          ['RATE_LIMITED']
         )
       }
     }

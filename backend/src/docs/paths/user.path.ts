@@ -31,13 +31,12 @@ export const userTag: TagObject = {
 
 // Raised by authMiddleware before the controller runs, on every protected route.
 const unauthenticated = errorResponse('No usable accessToken cookie', [
-  'Access token missing',
-  'Token is blacklisted',
-  'Invalid access token'
+  'AUTH_TOKEN_MISSING',
+  'AUTH_TOKEN_INVALID'
 ])
 
 const deactivated = errorResponse('The account was deactivated', [
-  'Account is deactivated'
+  'USER_DEACTIVATED'
 ])
 
 const exampleUser = {
@@ -96,20 +95,14 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'Nothing to write, the body carries a field that cannot be edited, or the new phone belongs to somebody else',
           [
-            'No fields to update',
-            'Phone number is already in use',
-            validationError({ email: 'Unrecognized key: "email"' }),
-            validationError({ phone: 'Phone must be 7-15 digits' }),
-            validationError({
-              description: 'Description must be at most 200 characters'
-            })
+            'USER_NO_FIELDS_TO_UPDATE',
+            'AUTH_PHONE_TAKEN',
+            validationError({ email: 'Unrecognized key: "email"' })
           ]
         ),
         401: unauthenticated,
         403: deactivated,
-        500: errorResponse('The row could not be written', [
-          'Failed to update profile'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     },
     delete: {
@@ -133,22 +126,14 @@ export const userPaths: PathMap = {
         }),
         400: errorResponse(
           'The body is missing a password, or the account has none because it was created through Google',
-          [
-            'Password is required to deactivate account',
-            'Cannot deactivate your account',
-            validationError({
-              password: 'Password must be at least 8 characters'
-            })
-          ]
+          ['VALIDATION_ERROR', 'AUTH_GOOGLE_ONLY']
         ),
         401: unauthenticated,
         403: errorResponse(
           'The password does not match, or the account is already deactivated',
-          ['Invalid credentials', 'Account is deactivated']
+          ['USER_PASSWORD_INCORRECT', 'USER_DEACTIVATED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to deactivate account'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -183,11 +168,11 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('userId is not a positive integer', [
-          'Invalid user ID'
+          'VALIDATION_ERROR'
         ]),
-        404: errorResponse('No account with that id', ['User not found']),
+        404: errorResponse('No account with that id', ['USER_NOT_FOUND']),
         410: errorResponse('The account exists but was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ])
       }
     }
@@ -222,10 +207,9 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'Missing field, wrong old password, unchanged password, or an account that has no password at all',
           [
-            'Old password and new password are required',
-            'Old password is incorrect',
-            'New password must be different from the old password',
-            'User does not have a password set',
+            'USER_PASSWORD_INCORRECT',
+            'RESET_PASSWORD_REUSED',
+            'AUTH_GOOGLE_ONLY',
             validationError({
               newPassword: 'Password must be at least 8 characters'
             })
@@ -235,11 +219,9 @@ export const userPaths: PathMap = {
         403: deactivated,
         429: errorResponse(
           'authRateLimiter: 5 requests per IP per 2 minutes, successful changes excluded.',
-          ['Too many requests. Please try again in 90 seconds']
+          ['RATE_LIMITED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to change password'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -271,16 +253,14 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('The body carries no fileUrl', [
-          'No file uploaded'
+          'FILE_FIELD_INVALID'
         ]),
         401: unauthenticated,
         403: deactivated,
         404: errorResponse('The session points at a row that is gone', [
-          'User not found'
+          'USER_NOT_FOUND'
         ]),
-        500: errorResponse('The row could not be written', [
-          'Failed to upload avatar'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -312,16 +292,16 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('The account signs in with Google', [
-          'Email is required',
-          'Google account cannot reset password'
+          'VALIDATION_ERROR',
+          'AUTH_GOOGLE_ONLY'
         ]),
-        404: errorResponse('No account with that email', ['Email not found']),
-        410: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+        404: errorResponse('No account with that email', [
+          'USER_EMAIL_NOT_FOUND'
         ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
         429: errorResponse(
           'The IP hit authRateLimiter (5 requests per 2 minutes, successful sends excluded). A code that is still valid is no longer an error: it answers 200 carrying the deadlines of the outstanding code.',
-          ['Too many requests. Please try again in 90 seconds']
+          ['RATE_LIMITED']
         )
       }
     }
@@ -380,25 +360,20 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'A code or token that expired, was never issued, or does not match',
           [
-            'OTP expired or not found',
-            'Invalid OTP',
-            'Reset token expired or invalid',
-            'Google account cannot reset password',
+            'RESET_OTP_EXPIRED',
+            'RESET_OTP_INVALID',
+            'RESET_LINK_INVALID',
+            'AUTH_GOOGLE_ONLY',
             validationError({ otp: 'OTP must be 6 digits' })
           ]
         ),
         404: errorResponse('No account behind that code or token', [
-          'User not found'
+          'USER_NOT_FOUND'
         ]),
-        410: errorResponse('The account was deactivated', [
-          'Account is deactivated'
-        ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
         429: errorResponse(
           'Either the code ran out of attempts (5 wrong tries, after which it is deleted and a new email is required), or the IP hit resetVerifyRateLimiter: 20 requests per 10 minutes, failures included.',
-          [
-            'Too many invalid codes. Please request a new one',
-            'Too many requests. Please try again in 420 seconds'
-          ]
+          ['RESET_OTP_ATTEMPTS', 'RATE_LIMITED']
         )
       }
     }
@@ -435,12 +410,11 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('No ticket in the query, or one that is gone', [
-          'Ticket is required',
-          'Reset session expired or invalid'
+          'RESET_TICKET_INVALID'
         ]),
         429: errorResponse(
           'resetVerifyRateLimiter: 20 requests per IP per 10 minutes, failures included.',
-          ['Too many requests. Please try again in 420 seconds']
+          ['RATE_LIMITED']
         )
       }
     }
@@ -476,26 +450,23 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'Missing field, a ticket that expired or was already spent, or a password that is the current one',
           [
-            'Ticket and new password are required',
-            'Reset session expired or invalid',
-            'New password must be different from the old password',
-            'Google account cannot reset password',
+            'RESET_TICKET_INVALID',
+            'RESET_PASSWORD_REUSED',
+            'AUTH_GOOGLE_ONLY',
             validationError({
               newPassword: 'Password must be at least 8 characters'
             })
           ]
         ),
-        404: errorResponse('No account behind that ticket', ['User not found']),
-        410: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+        404: errorResponse('No account behind that ticket', [
+          'USER_NOT_FOUND'
         ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
         429: errorResponse(
           'resetPasswordRateLimiter: 5 requests per IP per 2 minutes. Rejected attempts are not charged, so only completed resets add up.',
-          ['Too many requests. Please try again in 90 seconds']
+          ['RATE_LIMITED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to reset password'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   }

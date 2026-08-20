@@ -36,13 +36,12 @@ export const quizTag: TagObject = {
 
 // Raised by authMiddleware before the controller runs, on the authoring routes.
 const unauthenticated = errorResponse('No usable accessToken cookie', [
-  'Access token missing',
-  'Token is blacklisted',
-  'Invalid access token'
+  'AUTH_TOKEN_MISSING',
+  'AUTH_TOKEN_INVALID'
 ])
 
 const deactivated = errorResponse('The account was deactivated', [
-  'Account is deactivated'
+  'USER_DEACTIVATED'
 ])
 
 const quizData = object({ quiz: ref('Quiz') }, ['quiz'])
@@ -108,10 +107,10 @@ const quizIdParam: OpenApiObject = {
 // decodeListCursor throws this plain message for every failure: bad base64, a
 // wrong version prefix, a sort or filter set that no longer matches the current
 // request, or a primary value whose type does not fit the sort.
-const invalidCursor = 'Invalid cursor'
+const invalidCursor = 'QUIZ_CURSOR_INVALID'
 
 // The feed has its own cursor format, and its own message.
-const invalidFeedCursor = 'Invalid feed cursor'
+const invalidFeedCursor = 'QUIZ_CURSOR_INVALID'
 
 export const quizPaths: PathMap = {
   '/quizzes': {
@@ -166,16 +165,12 @@ export const quizPaths: PathMap = {
           data: quizData
         }),
         400: errorResponse('Rejected payload or a quiz without questions', [
-          'Quiz must have at least one question',
-          validationError({ quiz_name: 'Quiz name at least 3 chars' }),
-          validationError({ quiz_language: 'Language is required' })
+          'QUIZ_NO_QUESTIONS',
+          validationError({ quiz_name: 'Quiz name at least 3 chars' })
         ]),
         401: unauthenticated,
         403: deactivated,
-        500: errorResponse('The rows could not be written', [
-          'Failed to create quiz',
-          'Failed to create all questions'
-        ])
+        500: errorResponse('The rows could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -280,7 +275,7 @@ export const quizPaths: PathMap = {
           'The cursor does not belong to the current query, a parameter is out of range, the date range is inverted, or mine was requested without a session',
           [
             invalidCursor,
-            'mine=true requires an authenticated session',
+            'QUIZ_AUTH_REQUIRED',
             validationError({
               created_from: 'created_from must not be after created_to'
             })
@@ -426,7 +421,7 @@ export const quizPaths: PathMap = {
           ]
         ),
         404: errorResponse('No account with that id, or a deactivated one', [
-          'User not found'
+          'USER_NOT_FOUND'
         ])
       }
     }
@@ -445,7 +440,7 @@ export const quizPaths: PathMap = {
         }),
         404: errorResponse(
           'No such quiz, or a private one the caller does not own',
-          ['Quiz not found']
+          ['QUIZ_NOT_FOUND']
         )
       }
     },
@@ -478,8 +473,7 @@ export const quizPaths: PathMap = {
           data: quizData
         }),
         400: errorResponse('Empty patch, or a question list that is empty', [
-          'No valid fields to update',
-          'Quiz must have at least one question',
+          'QUIZ_NO_QUESTIONS',
           validationError({
             'questions.0.answer_options': 'At least 2 options required'
           })
@@ -488,7 +482,7 @@ export const quizPaths: PathMap = {
         403: deactivated,
         404: errorResponse(
           'No such quiz, or one the caller does not own. Ownership failures are reported as 404 on purpose.',
-          ['Quiz not found or unauthorized', 'Quiz not found']
+          ['QUIZ_NOT_FOUND']
         )
       }
     },
@@ -506,7 +500,7 @@ export const quizPaths: PathMap = {
         403: deactivated,
         404: errorResponse(
           'No such quiz, one the caller does not own, or one that was already deleted',
-          ['Quiz not found or unauthorized', 'Quiz not found or already deleted']
+          ['QUIZ_NOT_FOUND']
         )
       }
     }
