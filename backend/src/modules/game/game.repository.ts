@@ -1,7 +1,8 @@
 import { pool, withTransaction } from '../../infrastructure/database/connection.js'
 import { generateSessionCode } from './game.util.js'
 import type { GameConfig } from './game.schema.js'
-import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow, AnsweredQuestion, SnapshotQuestion } from './game.type.js'
+import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow, AnsweredQuestion, SnapshotQuestion, HistoryEntry, HistoryViewer } from './game.type.js'
+import type { HistoryCursor } from './game.history.cursor.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
 // Quiz snapshot: snapshot the quiz at the time of game creation
@@ -78,6 +79,21 @@ export const getSessionByCode = async (code: string) => {
      LEFT JOIN users as u ON u.id = gs.session_host
      WHERE gs.session_code = $1 AND gs.deleted_at IS NULL`,
     [code]
+  )
+  return rows[0] ?? null
+}
+
+/**
+ * Same lookup, deleted rows included. The history has to tell a room that never
+ * existed (404) from one that was deleted (410), which the filtered lookup above
+ * cannot do because it hides both the same way.
+ */
+export const getSessionByIdIncludingDeleted = async (id: number) => {
+  const { rows } = await pool.query<GameSessionRow>(
+    `SELECT gs.*, u.fullname as session_host_name, u.avatar as session_host_avatar FROM game_sessions as gs
+     LEFT JOIN users as u ON u.id = gs.session_host
+     WHERE gs.id = $1`,
+    [id]
   )
   return rows[0] ?? null
 }
@@ -264,6 +280,173 @@ export const updateSessionState = async (
   const { rows } = await pool.query<GameSessionRow>(sql, values)
   if (!rows[0]) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   return rows[0]
+}
+
+// The quiz as it was when the room was created. Read from the snapshot, never from
+// the quizzes table: the quiz may have been renamed or deleted since it was played.
+export const getSnapshotQuiz = async (gameSessionId: number) => {
+  const { rows } = await pool.query<{ quiz: Record<string, unknown> | null }>(
+    `SELECT qs.snapshot_data->'quiz' AS quiz
+       FROM game_sessions gs
+       JOIN quiz_snapshots qs ON qs.id = gs.quiz_snapshot_id
+      WHERE gs.id = $1`,
+    [gameSessionId]
+  )
+  return rows[0]?.quiz ?? null
+}
+
+// ---------- Play history ----------
+/*
+ * The timestamp a closed room is ordered by. A room cancelled before it ever ended
+ * has finished_at = null and still belongs in a history list, so created_at stands
+ * in for it. This expression must stay byte-identical to the one in
+ * migrations/011_game_history_indexes.sql, or Postgres stops matching the index and
+ * sorts every row instead.
+ */
+const ENDED_AT = 'coalesce(gs.finished_at, gs.created_at)'
+
+const ENDED_AT_TEXT = `to_char(${ENDED_AT} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+
+// Only rooms nobody can join any more belong in a history: a room still in its
+// lobby is something the reader is expected to walk back into, not to look back at.
+const CLOSED_STATUSES = 'gs.session_status IN (\'finished\', \'cancelled\')'
+
+// Shared projection of both tabs. The quiz name and image come from the snapshot so
+// a deleted quiz still shows what was played, and the host joins with LEFT JOIN so a
+// deleted account never makes a match disappear from its own players' history.
+const HISTORY_COLUMNS = `
+  gs.id,
+  gs.session_name,
+  gs.game_mode,
+  gs.session_status,
+  gs.total_players,
+  gs.total_questions,
+  ${ENDED_AT_TEXT} AS ended_at,
+  (qs.snapshot_data->'quiz'->>'id')::int AS quiz_id,
+  qs.snapshot_data->'quiz'->>'quiz_name' AS quiz_name,
+  qs.snapshot_data->'quiz'->>'quiz_image' AS quiz_image,
+  u.fullname AS host_name,
+  u.avatar AS host_avatar`
+
+/**
+ * The matches one reader took part in, newest first.
+ *
+ * The viewer's own rank is computed in the database with a lateral count of the
+ * players ahead of them, so a page of twenty matches does not have to load twenty
+ * full rooms into memory just to number one row each.
+ */
+export const listPlayedSessions = async (
+  viewer: HistoryViewer, cursor: HistoryCursor | null, limit: number
+): Promise<HistoryEntry[]> => {
+  const values: unknown[] = []
+
+  // A signed-in reader is matched on their account, a guest on the UUID in their
+  // browser. The caller guarantees exactly one of the two is set.
+  let identity: string
+  if (viewer.userId !== null) {
+    values.push(viewer.userId)
+    identity = `ps.player_id = $${values.length}`
+  } else {
+    values.push(viewer.guestId)
+    identity = `ps.player_guest_id = $${values.length}`
+  }
+
+  let keyset = ''
+  if (cursor) {
+    values.push(cursor.endedAt, cursor.id)
+    keyset = `AND (${ENDED_AT}, gs.id) < ($${values.length - 1}::timestamptz, $${values.length}::int)`
+  }
+
+  values.push(limit)
+
+  const sql = `
+    SELECT ${HISTORY_COLUMNS},
+      ps.player_score,
+      ps.correct_answers_count,
+      rk.rank
+    FROM player_sessions ps
+    JOIN game_sessions gs ON gs.id = ps.game_session_id
+    JOIN quiz_snapshots qs ON qs.id = gs.quiz_snapshot_id
+    LEFT JOIN users u ON u.id = gs.session_host
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int + 1 AS rank
+        FROM player_sessions ahead
+       WHERE ahead.game_session_id = ps.game_session_id
+         AND ahead.deleted_at IS NULL
+         AND (ahead.player_score, ahead.correct_answers_count)
+           > (ps.player_score, ps.correct_answers_count)
+    ) rk ON true
+    WHERE ${identity}
+      AND ps.deleted_at IS NULL
+      AND gs.deleted_at IS NULL
+      AND ${CLOSED_STATUSES}
+      ${keyset}
+    ORDER BY ${ENDED_AT} DESC, gs.id DESC
+    LIMIT $${values.length}`
+
+  const { rows } = await pool.query<HistoryEntry>(sql, values)
+  return rows
+}
+
+export const countPlayedSessions = async (viewer: HistoryViewer) => {
+  const identity = viewer.userId !== null ? 'ps.player_id = $1' : 'ps.player_guest_id = $1'
+  const sql = `
+    SELECT count(*)::int AS n
+      FROM player_sessions ps
+      JOIN game_sessions gs ON gs.id = ps.game_session_id
+     WHERE ${identity}
+       AND ps.deleted_at IS NULL
+       AND gs.deleted_at IS NULL
+       AND ${CLOSED_STATUSES}`
+  const { rows } = await pool.query<{ n: number }>(sql, [viewer.userId ?? viewer.guestId])
+  return rows[0]?.n ?? 0
+}
+
+/**
+ * The rooms one account hosted, newest first. A host has no player row, so the
+ * result columns are null here and the list shows the turnout instead.
+ */
+export const listHostedSessions = async (
+  userId: number, cursor: HistoryCursor | null, limit: number
+): Promise<HistoryEntry[]> => {
+  const values: unknown[] = [userId]
+
+  let keyset = ''
+  if (cursor) {
+    values.push(cursor.endedAt, cursor.id)
+    keyset = `AND (${ENDED_AT}, gs.id) < ($${values.length - 1}::timestamptz, $${values.length}::int)`
+  }
+
+  values.push(limit)
+
+  const sql = `
+    SELECT ${HISTORY_COLUMNS},
+      NULL::int AS player_score,
+      NULL::int AS correct_answers_count,
+      NULL::int AS rank
+    FROM game_sessions gs
+    JOIN quiz_snapshots qs ON qs.id = gs.quiz_snapshot_id
+    LEFT JOIN users u ON u.id = gs.session_host
+    WHERE gs.session_host = $1
+      AND gs.deleted_at IS NULL
+      AND ${CLOSED_STATUSES}
+      ${keyset}
+    ORDER BY ${ENDED_AT} DESC, gs.id DESC
+    LIMIT $${values.length}`
+
+  const { rows } = await pool.query<HistoryEntry>(sql, values)
+  return rows
+}
+
+export const countHostedSessions = async (userId: number) => {
+  const sql = `
+    SELECT count(*)::int AS n
+      FROM game_sessions gs
+     WHERE gs.session_host = $1
+       AND gs.deleted_at IS NULL
+       AND ${CLOSED_STATUSES}`
+  const { rows } = await pool.query<{ n: number }>(sql, [userId])
+  return rows[0]?.n ?? 0
 }
 
 // Flush the hot player state from Redis into Postgres

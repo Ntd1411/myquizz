@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { HISTORY_ROLES } from './game.history.cursor.js'
 
 const scoringSchema = z.object({
   basePoints: z.number().default(1000),
@@ -118,5 +119,44 @@ export const updateConfigSchema = z.object({
   config: gameConfigPatchSchema.default(() => gameConfigPatchSchema.parse({}))
 })
 
+/*
+ * Request shapes for the play-history endpoints.
+ *
+ * Everything in req.query is a string, so each parameter is validated as text and
+ * only then converted, exactly like the quiz listing schemas in quiz/quiz.schema.ts.
+ */
+const intQuery = (min: number, max: number) =>
+  z.string().regex(/^\d+$/, 'Must be a non-negative integer')
+    .transform(Number)
+    .pipe(z.number().int().min(min).max(max))
+
+// Only the literal strings are accepted: 'yes', '1' or '' would each be a
+// different guess about intent, and guessing here hides client bugs.
+const boolQuery = z.enum(['true', 'false']).transform((value) => value === 'true')
+
+/**
+ * Query for GET /games/history. The cursor stays opaque here and is only
+ * length-capped; its contents are validated in game.history.cursor.ts, which turns
+ * anything malformed or replayed into a 400 instead of a 500.
+ */
+export const historyQuerySchema = z.object({
+  role: z.enum(HISTORY_ROLES).default('played'),
+  cursor: z.string().trim().min(1).max(300).optional(),
+  limit: intQuery(1, 50).default(20),
+  include_total: boolQuery.default(false)
+})
+
+export const gameIdParamSchema = z.object({
+  id: intQuery(1, Number.MAX_SAFE_INTEGER)
+})
+
+/**
+ * A guest's history is protected by nothing but this UUID, so a header that is not
+ * one is dropped rather than passed on as an identity.
+ */
+export const guestIdHeaderSchema = z.string().uuid()
+
+export type HistoryQuery = z.infer<typeof historyQuerySchema>
+export type GameIdParams = z.infer<typeof gameIdParamSchema>
 export type CreateGameInput = z.infer<typeof createGameSchema>
 export type JoinGameInput = z.infer<typeof joinGameSchema>

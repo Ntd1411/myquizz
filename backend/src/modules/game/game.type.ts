@@ -17,6 +17,9 @@ export interface GameSessionRow {
   current_phase: string
   phase_ends_at: string | null
   quiz_id?: number | null
+  // Only selected by the history lookup, which has to tell "never existed" (404)
+  // from "was deleted" (410) instead of filtering deleted rows away.
+  deleted_at?: string | null
 }
 
 export interface PlayerSessionRow {
@@ -57,6 +60,49 @@ export interface QuestionStatRow {
   question_index: number
   answer_count: number
   correct_count: number
+}
+
+/**
+ * Who is reading a history list or a past match.
+ *
+ * A signed-in reader is identified by their account; a guest only by the UUID in
+ * their browser. Exactly one of the two is ever set: the cookie wins, so pasting
+ * someone else's guest id into the header while signed in reads nothing.
+ */
+export interface HistoryViewer {
+  userId: number | null
+  guestId: string | null
+}
+
+/** One row of GET /games/history. */
+export interface HistoryEntry {
+  id: number
+  session_name: string
+  game_mode: string
+  session_status: string
+  total_players: number
+  total_questions: number
+  // Moment the room closed, or when it was created if it was cancelled first.
+  ended_at: string
+  // Quiz identity as it was when the room was created: the snapshot is immutable,
+  // so a renamed or deleted quiz still shows the name that was played.
+  quiz_id: number | null
+  quiz_name: string | null
+  quiz_image: string | null
+  host_name: string | null
+  host_avatar: string | null
+  // The viewer's own result, on the played tab only; null on the hosted tab.
+  player_score: number | null
+  correct_answers_count: number | null
+  rank: number | null
+}
+
+/** One page of the history list. total only appears when include_total asked for it. */
+export interface HistoryPage {
+  items: HistoryEntry[]
+  nextCursor: string | null
+  hasMore: boolean
+  total?: number
 }
 
 export interface CachedAnswer {

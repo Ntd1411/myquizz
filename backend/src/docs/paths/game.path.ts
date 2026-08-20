@@ -18,6 +18,7 @@ import {
   arrayOf,
   AUTH_NOTE,
   errorResponse,
+  EXAMPLE_TIMESTAMP,
   jsonBody,
   object,
   OPTIONAL_AUTH_NOTE,
@@ -511,6 +512,225 @@ export const gamePaths: PathMap = {
         409: errorResponse('The room is not over yet', [
           'GAME_STILL_RUNNING'
         ])
+      }
+    }
+  },
+
+  '/games/history': {
+    get: {
+      summary: 'List my past matches',
+      description: `Closed matches (finished or cancelled) the caller took part in, newest first, paged by keyset cursor. ${OPTIONAL_AUTH_NOTE} Without a session the identity is the x-guest-id header, which is what makes a guest's own history readable; role=hosted needs an account and answers 401 otherwise. Ordering is coalesce(finished_at, created_at) then id, both descending, because a room cancelled before it ever ended has no finished_at. A cursor is bound to the role it was issued for and replaying it on the other tab is refused.`,
+      tags: [gameTag.name],
+      parameters: [
+        {
+          in: 'header',
+          name: 'x-guest-id',
+          required: false,
+          schema: { type: 'string', format: 'uuid' },
+          description:
+            'Guest identity, the same UUID sent as player_guest_id when joining. Read only when there is no session; a cookie always wins.',
+          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+        },
+        {
+          in: 'query',
+          name: 'role',
+          required: false,
+          schema: { type: 'string', enum: ['played', 'hosted'], default: 'played' },
+          description:
+            'played returns the matches the caller had a seat in, hosted the rooms they opened.'
+        },
+        {
+          in: 'query',
+          name: 'cursor',
+          required: false,
+          schema: { type: 'string', maxLength: 300 },
+          description: 'nextCursor of the previous page. Omit it for the first page.'
+        },
+        {
+          in: 'query',
+          name: 'limit',
+          required: false,
+          schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 }
+        },
+        {
+          in: 'query',
+          name: 'include_total',
+          required: false,
+          schema: { type: 'string', enum: ['true', 'false'], default: 'false' },
+          description:
+            'Adds meta.pagination.total. It costs a second count query, so ask for it on the first page only.'
+        }
+      ],
+      responses: {
+        200: successResponse({
+          description:
+            'One page of history rows, shaped as data.sessions with the paging state in meta.pagination.',
+          data: object(
+            {
+              sessions: {
+                type: 'array',
+                items: object(
+                  {
+                    id: { type: 'integer', example: 1 },
+                    session_name: { type: 'string', example: 'Friday quiz' },
+                    game_mode: { type: 'string', example: 'classic' },
+                    session_status: {
+                      type: 'string',
+                      enum: ['finished', 'cancelled'],
+                      example: 'finished'
+                    },
+                    total_players: { type: 'integer', example: 12 },
+                    total_questions: { type: 'integer', example: 10 },
+                    ended_at: {
+                      type: 'string',
+                      format: 'date-time',
+                      description:
+                        'coalesce(finished_at, created_at). Also the first field of the cursor.',
+                      example: EXAMPLE_TIMESTAMP
+                    },
+                    quiz_id: { type: 'integer', nullable: true, example: 42 },
+                    quiz_name: {
+                      type: 'string',
+                      nullable: true,
+                      description:
+                        'Read from the snapshot, so it stays readable after the quiz is deleted or renamed.',
+                      example: 'World capitals'
+                    },
+                    quiz_image: { type: 'string', nullable: true },
+                    host_name: { type: 'string', nullable: true, example: 'Dung Nguyen' },
+                    host_avatar: { type: 'string', nullable: true },
+                    player_score: {
+                      type: 'integer',
+                      nullable: true,
+                      description: 'null on role=hosted: the host holds no seat.',
+                      example: 4200
+                    },
+                    correct_answers_count: { type: 'integer', nullable: true, example: 7 },
+                    rank: {
+                      type: 'integer',
+                      nullable: true,
+                      description:
+                        'The caller\'s place in that match, counted by score then correct answers. null on role=hosted.',
+                      example: 3
+                    }
+                  },
+                  ['id', 'session_name', 'game_mode', 'session_status', 'ended_at']
+                )
+              }
+            },
+            ['sessions']
+          ),
+          meta: object({ pagination: ref('ListingPagination') }, ['pagination'])
+        }),
+        400: errorResponse('The query or the cursor was refused', [
+          validationError({ limit: 'Expected an integer between 1 and 50' }),
+          'GAME_CURSOR_INVALID'
+        ]),
+        401: errorResponse(
+          'No identity at all, or role=hosted asked for without an account',
+          ['GAME_AUTH_REQUIRED']
+        )
+      }
+    }
+  },
+
+  '/games/{id}/summary': {
+    get: {
+      summary: 'Retrieve one past match',
+      description: `Overview of a closed match: the room row, the quiz as it was played (from the snapshot), the final standings, and perQuestion for the host only, since per-question accuracy describes the room rather than one player. ${OPTIONAL_AUTH_NOTE} Guests are identified by the x-guest-id header. Only the host of that match and the players who held a seat in it may read it: a session id is a small number, so a stranger is refused rather than shown somebody else's match. Unlike GET /{id}/review this needs no socket token, which is what makes a match readable in a new tab or days later.`,
+      tags: [gameTag.name],
+      parameters: [
+        idParam,
+        {
+          in: 'header',
+          name: 'x-guest-id',
+          required: false,
+          schema: { type: 'string', format: 'uuid' },
+          description: 'Guest identity. Read only when there is no session.',
+          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+        }
+      ],
+      responses: {
+        200: successResponse({
+          description: 'The match, shaped as data.summary.',
+          data: object(
+            {
+              summary: object(
+                {
+                  session: ref('GameSession'),
+                  quiz: object({
+                    id: { type: 'integer', nullable: true },
+                    quiz_name: { type: 'string', nullable: true },
+                    quiz_description: { type: 'string', nullable: true },
+                    quiz_image: { type: 'string', nullable: true },
+                    quiz_category: { type: 'string', nullable: true },
+                    quiz_language: { type: 'string', nullable: true }
+                  }),
+                  leaderboard: arrayOf('LeaderboardEntry'),
+                  perQuestion: {
+                    type: 'array',
+                    nullable: true,
+                    description: 'null for a player: this is a host report.',
+                    items: ref('QuestionStat')
+                  },
+                  viewer: object(
+                    {
+                      isHost: { type: 'boolean', example: false },
+                      playerId: {
+                        type: 'integer',
+                        nullable: true,
+                        description:
+                          'The caller\'s player_sessions id in that match, null for the host.',
+                        example: 11
+                      }
+                    },
+                    ['isHost', 'playerId']
+                  )
+                },
+                ['session', 'quiz', 'leaderboard', 'perQuestion', 'viewer']
+              )
+            },
+            ['summary']
+          )
+        }),
+        403: errorResponse('The caller was neither the host nor a player', [
+          'GAME_FORBIDDEN'
+        ]),
+        404: roomNotFound,
+        409: errorResponse('The room is not over yet', ['GAME_STILL_RUNNING']),
+        410: errorResponse('The room was deleted', ['GONE'])
+      }
+    }
+  },
+
+  '/games/{id}/my-answers': {
+    get: {
+      summary: 'Retrieve my answer sheet of a past match',
+      description: `The same payload as GET /games/{id}/review, so one component renders both, with a different identity: the cookie or the x-guest-id header instead of the socket token, which lives in the sessionStorage of the tab that played and is gone in a new one. The room config must still have flow.reviewMode enabled, and a host has no answers of their own. ${OPTIONAL_AUTH_NOTE}`,
+      tags: [gameTag.name],
+      parameters: [
+        idParam,
+        {
+          in: 'header',
+          name: 'x-guest-id',
+          required: false,
+          schema: { type: 'string', format: 'uuid' },
+          description: 'Guest identity. Read only when there is no session.',
+          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+        }
+      ],
+      responses: {
+        200: successResponse({
+          description: 'The answer sheet, shaped as data.review.',
+          data: object({ review: ref('GameReview') }, ['review'])
+        }),
+        403: errorResponse('The caller holds no seat, or review is off', [
+          'GAME_PLAYER_ONLY',
+          'GAME_REVIEW_DISABLED'
+        ]),
+        404: roomNotFound,
+        409: errorResponse('The room is not over yet', ['GAME_STILL_RUNNING']),
+        410: errorResponse('The room was deleted', ['GONE'])
       }
     }
   }

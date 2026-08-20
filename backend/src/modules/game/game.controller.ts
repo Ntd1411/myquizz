@@ -1,9 +1,27 @@
 import type { Response, NextFunction } from 'express'
-import { createGameSchema, joinGameSchema, updateConfigSchema, type JoinGameInput } from './game.schema.js'
+import {
+  createGameSchema, guestIdHeaderSchema, joinGameSchema, updateConfigSchema,
+  type GameIdParams, type HistoryQuery, type JoinGameInput
+} from './game.schema.js'
 import * as gameService from './game.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest } from '../auth/auth.type.js'
+import type { HistoryViewer } from './game.type.js'
 import { success } from '../../shared/utils/response.js'
+
+/**
+ * Identity of a history reader.
+ *
+ * A cookie always wins: a signed-in reader must not be able to read another
+ * browser's guest history by pasting its UUID into the header. The guest id travels
+ * in a header rather than the query string because it is the only secret protecting
+ * that history, and query strings end up in access logs and referrers.
+ */
+const historyViewer = (req: AuthRequest): HistoryViewer => {
+  if (req.user) return { userId: req.user.id, guestId: null }
+  const parsed = guestIdHeaderSchema.safeParse(req.header('x-guest-id'))
+  return { userId: null, guestId: parsed.success ? parsed.data : null }
+}
 
 export const listGameModes = (_req: AuthRequest, res: Response) =>
   success(res, { gameModes: gameService.listGameModes() })
@@ -99,6 +117,47 @@ export const getResults = async (req: AuthRequest, res: Response, next: NextFunc
   try {
     const results = await gameService.getResults(Number(req.params['id']))
     return success(res, { results })
+  } catch (e) {
+    next(e)
+  }
+}
+
+export const getHistory = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const query = req.validatedQuery as HistoryQuery
+    const page = await gameService.getPlayHistory(historyViewer(req), query)
+
+    // Same pagination block as every listing endpoint, so a client can reuse one
+    // handler. total is only present when the caller asked for it.
+    const pagination: {
+      limit: number
+      nextCursor: string | null
+      hasMore: boolean
+      total?: number
+    } = { limit: query.limit, nextCursor: page.nextCursor, hasMore: page.hasMore }
+    if (page.total !== undefined) pagination.total = page.total
+
+    return success(res, { sessions: page.items }, 200, { pagination })
+  } catch (e) {
+    next(e)
+  }
+}
+
+export const getHistorySummary = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.validatedParams as GameIdParams
+    const summary = await gameService.getHistorySummary(id, historyViewer(req))
+    return success(res, { summary })
+  } catch (e) {
+    next(e)
+  }
+}
+
+export const getMyAnswers = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.validatedParams as GameIdParams
+    const review = await gameService.getHistoryAnswers(id, historyViewer(req))
+    return success(res, { review })
   } catch (e) {
     next(e)
   }
