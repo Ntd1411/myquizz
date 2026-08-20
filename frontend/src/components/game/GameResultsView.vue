@@ -239,6 +239,17 @@ async function openReview() {
       <RouterLink class="btn-primary" :to="{ name: 'join-game' }">
         Join another game
       </RouterLink>
+      <!--
+        The same match, minus the socket token: the history page identifies the reader
+        by cookie or guest id, so this link keeps working in a new tab and tomorrow.
+      -->
+      <RouterLink
+        v-if="game.sessionId"
+        class="btn-ghost"
+        :to="{ name: 'history-detail', params: { sessionId: game.sessionId } }"
+      >
+        Review later
+      </RouterLink>
       <RouterLink class="btn-ghost" to="/">
         Back home
       </RouterLink>

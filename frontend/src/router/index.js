@@ -115,6 +115,22 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  // Play history, list and one match. Public on purpose: a guest's matches are tied to
+  // the UUID their browser already carries, sent as a header, so `requiresAuth` would
+  // lock out exactly the readers who need this screen most. Permission is decided by
+  // the API for every row, never by the URL.
+  {
+    path: '/history',
+    name: 'history',
+    component: () => import('@/pages/HistoryPage.vue'),
+  },
+  {
+    path: '/history/:sessionId',
+    name: 'history-detail',
+    component: () => import('@/pages/GameHistoryDetailPage.vue'),
+    props: true,
+  },
+
   // Account settings, backed by the user module: profile fields, avatar, password,
   // and account deactivation.
   {
