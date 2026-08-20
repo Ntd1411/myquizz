@@ -1,5 +1,6 @@
 import { http } from './http'
-import { unwrap } from './envelope'
+import { readPagination, unwrap } from './envelope'
+import { useGuestId } from '@/composables/useGuestId'
 
 /**
  * Game session endpoints (backend module `game`).
@@ -87,5 +88,54 @@ export async function getGameReview(sessionId, socketToken) {
   const res = await http.get(`/games/${sessionId}/review`, {
     headers: { 'x-socket-token': socketToken },
   })
+  return unwrap(res.data).review ?? null
+}
+
+/*
+ * Play history (backend module `game`, cookie or guest id as the identity).
+ *
+ * A guest's history is tied to the UUID in their browser, so these three calls send it
+ * as `x-guest-id`. It is attached per call rather than in the http interceptor: it is
+ * the only secret protecting that history, and there is no reason for it to ride along
+ * with every unrelated request. Callers pass `asGuest` because only they know whether
+ * a session exists; with a cookie present the backend ignores the header anyway.
+ */
+function guestHeaders(asGuest) {
+  // useGuestId() mints a UUID when none exists, so it is only called when it is needed.
+  return asGuest ? { 'x-guest-id': useGuestId() } : undefined
+}
+
+/** One cursor page of the reader's matches (`played`) or rooms (`hosted`). */
+export async function getGameHistory({ role = 'played', cursor, limit, includeTotal, asGuest = false } = {}) {
+  const res = await http.get('/games/history', {
+    params: {
+      role,
+      cursor: cursor || undefined,
+      limit: limit || undefined,
+      // The backend only accepts the literal strings, and omits the count by default.
+      include_total: includeTotal ? 'true' : undefined,
+    },
+    headers: guestHeaders(asGuest),
+  })
+  return { sessions: unwrap(res.data).sessions ?? [], pagination: readPagination(res.data) }
+}
+
+/**
+ * Overview of one closed match: room, quiz as it was played, standings, and
+ * `perQuestion` for the host. Answers by 403 for anyone who was neither the host nor
+ * a player of that match.
+ */
+export async function getGameSummary(sessionId, { asGuest = false } = {}) {
+  const res = await http.get(`/games/${sessionId}/summary`, { headers: guestHeaders(asGuest) })
+  return unwrap(res.data).summary ?? null
+}
+
+/**
+ * The reader's own answer sheet for a past match, in the same shape as getGameReview
+ * so AnswerReviewList renders both. Unlike review it needs no socket token, which is
+ * what makes the history readable in a new tab.
+ */
+export async function getMyAnswers(sessionId, { asGuest = false } = {}) {
+  const res = await http.get(`/games/${sessionId}/my-answers`, { headers: guestHeaders(asGuest) })
   return unwrap(res.data).review ?? null
 }

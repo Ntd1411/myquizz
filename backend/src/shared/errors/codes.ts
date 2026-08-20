@@ -59,6 +59,13 @@ export const ERROR_CODES = [
   'GAME_REVIEW_DISABLED',
   'GAME_STILL_RUNNING',
 
+  // Play history: a reader who is neither the host nor a player of that match, a
+  // reader with no identity at all (no cookie and no guest id), and a cursor that
+  // does not belong to the list being paged.
+  'GAME_FORBIDDEN',
+  'GAME_AUTH_REQUIRED',
+  'GAME_CURSOR_INVALID',
+
   // Realtime gameplay: refusals a socket handler can answer with, where the client
   // reacts to each one differently (re-render, wait, or send the player back)
   'GAME_PLAYER_ONLY',

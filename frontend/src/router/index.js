@@ -11,6 +11,20 @@ const routes = [
     props: true,
   },
 
+  // Preview: the quiz played alone in this tab, with no room, no socket and nothing
+  // written down. Public on purpose, because the API already decides who may read the
+  // quiz - a public one answers with its answer key, a private one answers 404 to
+  // everyone but its owner - so a guard here would only refuse readers the API allows.
+  // `bare` for the same reason the live-room screens are bare: a question is on the
+  // clock, and a stray click into Discover is never what the reader meant.
+  {
+    path: '/quizzes/:id/preview',
+    name: 'quiz-preview',
+    component: () => import('@/pages/QuizPreviewPage.vue'),
+    props: true,
+    meta: { bare: true },
+  },
+
   // Auth. `guestOnly` bounces an already logged-in user back to the home page.
   // Login and register are also `bare`: the split-screen shell owns the whole
   // viewport, so the site header and footer would only crowd it.
@@ -99,6 +113,22 @@ const routes = [
     name: 'library',
     component: () => import('@/pages/LibraryPage.vue'),
     meta: { requiresAuth: true },
+  },
+
+  // Play history, list and one match. Public on purpose: a guest's matches are tied to
+  // the UUID their browser already carries, sent as a header, so `requiresAuth` would
+  // lock out exactly the readers who need this screen most. Permission is decided by
+  // the API for every row, never by the URL.
+  {
+    path: '/history',
+    name: 'history',
+    component: () => import('@/pages/HistoryPage.vue'),
+  },
+  {
+    path: '/history/:sessionId',
+    name: 'history-detail',
+    component: () => import('@/pages/GameHistoryDetailPage.vue'),
+    props: true,
   },
 
   // Account settings, backed by the user module: profile fields, avatar, password,

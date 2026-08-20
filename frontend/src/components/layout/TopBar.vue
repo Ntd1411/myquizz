@@ -269,6 +269,14 @@ async function handleLogout() {
               My library
             </RouterLink>
             <RouterLink
+              :to="{ name: 'history' }"
+              class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
+              role="menuitem"
+              @click="menuOpen = false"
+            >
+              Play history
+            </RouterLink>
+            <RouterLink
               :to="{ name: 'profile' }"
               class="block rounded-md px-sm py-xs text-body-sm text-ink-secondary hover:bg-canvas-soft"
               role="menuitem"
@@ -398,6 +406,10 @@ async function handleLogout() {
         </RouterLink>
 
         <div class="mt-auto flex flex-col gap-xs border-t border-hairline pt-lg">
+          <!-- History is listed for guests too: their matches are kept per browser. -->
+          <RouterLink :to="{ name: 'history' }" class="nav-link nav-link-block" @click="mobileOpen = false">
+            Play history
+          </RouterLink>
           <template v-if="auth.ready && auth.isLoggedIn">
             <RouterLink :to="{ name: 'profile' }" class="nav-link nav-link-block" @click="mobileOpen = false">
               Edit profile

@@ -165,7 +165,18 @@ Every response, success or failure, has the same shape:
 }
 ```
 
-On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }`. Paginated endpoints add `meta.pagination`, cached ones add `meta.cached`.
+On failure `data` is `null` and `error` carries **a code and nothing else**:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": { "code": "GAME_ROOM_NOT_FOUND" },
+  "meta": { "timestamp": "2026-08-12T03:00:00.000Z" }
+}
+```
+
+No message and no field dump: prose written here would be English, would end up on a screen that has to speak another language, and would leak internals. The reason is logged instead, and the client owns the wording. Paginated endpoints add `meta.pagination`, cached ones add `meta.cached`.
 
 ### Endpoint groups
 
@@ -174,12 +185,30 @@ On failure `data` is `null` and `error` is `{ "message": "...", "details": ... }
 | `/v1/auth` | 7 | Register, login, refresh, logout, Google OAuth redirect flow and One Tap |
 | `/v1/users` | 9 | Own profile (the email is immutable), public profile, password change, avatar, forgot / reset password |
 | `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
-| `/v1/games` | 9 | Game modes, create a session, lobby, config patch, host token, join, leaderboard, results, personal answer review |
+| `/v1/games` | 12 | Game modes, play history, create a session, lobby, config patch, host token, join, leaderboard, results, personal answer review, closed-match summary and answer sheet |
 | `/v1/storage` | 1 | Presigned upload URL |
 
 Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
 
 Every read goes through one mapper per shape: `toQuizSummary` for a listing row, `toQuizDetail` for `GET /v1/quizzes/id/:quizId`. The detail response therefore carries the same nested `owner` block (`id`, `fullname`, `avatar`) and the same `question_count` / `play_count` counters as a card, plus its questions ordered by `id`; `hot_score` and `scored_at` stay internal. `POST /v1/quizzes` and `PATCH /v1/quizzes/id/:quizId` re-read the quiz through that same mapper before answering, so a metadata-only patch never comes back with an empty question list.
+
+### Play history
+
+Three endpoints read matches that are already over, where `game_sessions.session_status` is `finished` or `cancelled`:
+
+| Endpoint | Answers with |
+| --- | --- |
+| `GET /v1/games/history` | The reader's own closed rooms. `role=played` or `role=hosted`, `limit` 1..50 (20 by default), optional `include_total` |
+| `GET /v1/games/{id}/summary` | One match: session, the quiz as it was played, standings, per-question accuracy, and `viewer` (`isHost`, `playerId`) |
+| `GET /v1/games/{id}/my-answers` | The reader's own answer sheet for that match |
+
+Three properties are worth knowing:
+
+- **A guest has a history too.** Identity comes from the session cookie when there is one, and otherwise from the `x-guest-id` header the client already carries, which is how a `player_sessions` row without `player_id` is matched. A reader with neither is refused with `GAME_AUTH_REQUIRED`.
+- **Ordering is `coalesce(finished_at, created_at) desc, id desc`.** A room cancelled before it ever ended has no `finished_at`, and sorting on the raw column would bury it. The cursor is an opaque base64url string (`v1|role|endedAt|id`) validated against the role it was issued for, so paging one list with the other list's cursor is rejected as `GAME_CURSOR_INVALID` instead of returning rows from another result set. The same ordering expression is duplicated in `011_game_history_indexes.sql` and must stay identical.
+- **The quiz name and cover come from the snapshot**, never from `quizzes`, so a deleted quiz still has a readable title in a match that already happened.
+
+A summary is readable by the host and by everyone who held a seat (`GAME_FORBIDDEN` for anyone else); the answer sheet needs a seat, so a host asking for it gets `GAME_PLAYER_ONLY`. A match still running answers `409 GAME_STILL_RUNNING`, and a deleted one `410 GONE`.
 
 ## Authentication
 
@@ -224,16 +253,17 @@ Both end in the same place: an account matched by Google id, and the usual cooki
 
 ## Errors and status codes
 
-Errors are thrown, never returned. Services throw `AppError(statusCode, message, details?)` and a single error handler turns anything that reaches it into the standard envelope.
+Errors are thrown, never returned. Services throw `AppError(statusCode, message, code?)`: the message is developer prose that goes to the log, the code is the only part the client ever sees. A single error handler turns anything that reaches it into the standard envelope, and fills in a fallback code from the status when nobody picked one, so a response is never left with nothing to match on.
 
 | Source | Result |
 | --- | --- |
-| `AppError` | Its own status, message and `details` |
-| Zod validation | `400` `Validation error`, `details` maps each field path to its message |
-| Upload too large | `413` `File too large. Maximum size is 20MB` |
-| Unsupported file type | `400` `File type not supported` |
-| `ECONNREFUSED` / `ETIMEDOUT` | `503` `Service unavailable` |
-| Anything else | `500` `Internal server error`, logged with the stack, never leaked to the client |
+| `AppError` with a code | Its own status and that code |
+| `AppError` without one | Its own status and the fallback from `STATUS_FALLBACK_CODES` |
+| Zod validation | `400` `VALIDATION_ERROR` |
+| Upload too large | `413` `FILE_TOO_LARGE` |
+| Unsupported file type | `400` `FILE_TYPE_UNSUPPORTED` |
+| `ECONNREFUSED` / `ETIMEDOUT` | `503` `SERVICE_UNAVAILABLE` |
+| Anything else | `500` `SERVER_ERROR`, logged with the stack, never leaked to the client |
 
 What the status codes mean here:
 
@@ -248,7 +278,7 @@ What the status codes mean here:
 | `429` | Rate limited, with `Retry-After` telling you how long to wait |
 | `503` | A dependency is down; `/health` reports the same |
 
-Messages are stable strings, and the reference at `/v1/docs` lists the exact ones each endpoint can return.
+The whole vocabulary lives in one place, `shared/errors/codes.ts`, and the reference at `/v1/docs` lists the exact codes each endpoint can return. Three rules govern it: name the situation and not the sentence (`GAME_ROOM_FULL`, never `ROOM_IS_FULL_ERROR`); add a code only when a caller could reasonably react differently, so two failures that lead to the same screen share one; and never rename or remove a shipped code, because clients match on it.
 
 ## Realtime API
 
@@ -335,7 +365,7 @@ A mode also declares which config fields a host may change. Anything it locks is
 | `quizzes` | Quiz metadata, owner, language, category, `is_public`, plus the ranking columns |
 | `questions` | Questions of a quiz: type, text, image, `time_limit`, optional `question_hint` and `explanation`, `answer_options` and `correct_answer` as JSONB |
 | `quiz_snapshots` | A frozen copy of a quiz taken when a session is created |
-| `game_sessions` | One match: snapshot, code, host, mode, `config`, status, current phase and deadline |
+| `game_sessions` | One match: snapshot, code, host, mode, `config`, status, current phase and deadline, plus `finished_at` and `deleted_at` |
 | `player_sessions` | One participant of one match: score, answered questions, streak, lives, status |
 | `refresh_sessions` | Live refresh tokens, stored hashed, with device and IP |
 | `blacklist_token` | Access tokens revoked before their natural expiry |
@@ -362,7 +392,7 @@ Deletion is soft almost everywhere: rows carry `deleted_at` and stay queryable, 
 Two folders, applied in this order at boot and by `pnpm db:migrate`:
 
 - `schema/` — the base tables, `001_users.sql` through `006_player_sessions.sql`.
-- `migrations/` — incremental changes: refresh sessions, token blacklist, question hints, Google OAuth columns, quiz ranking, home sections, listing indexes.
+- `migrations/` — incremental changes, `001_refresh_sessions.sql` through `011_game_history_indexes.sql`: refresh sessions, token blacklist, question hints, Google OAuth columns, quiz ranking, home sections and rails, listing indexes, player avatar columns, and the play-history indexes.
 
 Every file that runs is recorded in `schema_migrations` **by filename**, so each one is applied exactly once and a restart is a no-op.
 
@@ -373,6 +403,7 @@ To add a change: create the next numbered file in `migrations/`, never edit a fi
 - **PostgreSQL is the source of truth.** `infrastructure/database/schema/` holds the base tables, `migrations/` the incremental changes; both are applied in order at boot.
 - **Quizzes are snapshotted.** Creating a session copies the questions into a snapshot, so editing or deleting a quiz never rewrites a match that already happened.
 - **`answer_options` has exactly one stored shape**: an array of `{ id, option_text }`, where `id` is the position `correct_answer` points at. Creating and replacing questions share the same INSERT, so no write path can store a second shape.
+- **A choice question carries 2 to 4 options.** The bound is enforced in the Zod schema, on the same cross-field check that verifies `correct_answer` points at an option that exists, so the API and the editor cannot disagree about it.
 - **Sending `questions` in a PATCH replaces the whole list**: the previous rows are soft deleted and the new ones inserted in one transaction. Leaving the field out keeps the existing questions untouched.
 - **Redis holds the running match**: session state, players, per-question answers and the live leaderboard. Postgres is flushed at the end of every question and once more when the match ends, then the Redis keys are cleared.
 - **Home and feed responses are cached**, and the response says so through `meta.cached`.

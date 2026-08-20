@@ -4,8 +4,12 @@ import { mergeConfig, seededShuffle } from './game.util.js'
 import * as repo from './game.repository.js'
 import * as cache from './game.cache.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import type { CreateGameInput, JoinGameInput } from './game.schema.js'
-import type { GameSessionRow, LobbyPlayer, PlayerSessionRow, SnapshotQuestion } from './game.type.js'
+import type { CreateGameInput, HistoryQuery, JoinGameInput } from './game.schema.js'
+import type {
+  GameSessionRow, HistoryEntry, HistoryPage, HistoryViewer,
+  LobbyPlayer, PlayerSessionRow, SnapshotQuestion
+} from './game.type.js'
+import { decodeHistoryCursor, encodeHistoryCursor } from './game.history.cursor.js'
 import { signSocketToken, verifySocketToken, type SocketTokenPayload } from './socket.middleware.js'
 import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rule.js'
 
@@ -241,6 +245,132 @@ export const getPlayerReview = async (gameId: number, token: string | undefined)
     throw new AppError(404, 'Player not found in this room', 'GAME_PLAYER_NOT_FOUND')
 
   return buildReview(session, player, await repo.getSnapshotQuestions(gameId))
+}
+
+// ---------- Play history ----------
+
+/**
+ * A closed room, read straight from Postgres.
+ *
+ * The cache is deliberately not consulted: endGame flushes the final rows and
+ * clears it, so for a finished match the row is the truth and a warm cache entry
+ * would only be a half-played copy of it.
+ */
+const loadClosedSession = async (gameId: number) => {
+  const session = await repo.getSessionByIdIncludingDeleted(gameId)
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  // Deleted is answered separately from missing: the reader had a working link and
+  // deserves "this is gone" rather than "this never was".
+  if (session.deleted_at) throw new AppError(410, 'Room was deleted', 'GONE')
+  if (session.session_status !== 'finished' && session.session_status !== 'cancelled')
+    throw new AppError(409, 'Game is still running', 'GAME_STILL_RUNNING')
+  return session
+}
+
+// The reader's own player row in that match, whichever identity they carry.
+const findViewerSeat = async (gameId: number, viewer: HistoryViewer) => {
+  if (viewer.userId !== null) return repo.getPlayerSessionBySessionAndPlayer(gameId, viewer.userId)
+  if (viewer.guestId !== null) return repo.getPlayerSessionBySessionAndGuest(gameId, viewer.guestId)
+  return null
+}
+
+/**
+ * Quiz identity as the history shows it.
+ *
+ * The snapshot holds every column of the quizzes row, ranking and lifecycle
+ * columns included, so only the fields a reader is allowed to see are copied out.
+ */
+const snapshotQuizView = (quiz: Record<string, unknown> | null) => {
+  if (!quiz) return null
+  return {
+    id: quiz['id'] ?? null,
+    quiz_name: quiz['quiz_name'] ?? null,
+    quiz_description: quiz['quiz_description'] ?? null,
+    quiz_image: quiz['quiz_image'] ?? null,
+    quiz_category: quiz['quiz_category'] ?? null,
+    quiz_language: quiz['quiz_language'] ?? null
+  }
+}
+
+// GET /games/history
+export const getPlayHistory = async (
+  viewer: HistoryViewer, query: HistoryQuery
+): Promise<HistoryPage> => {
+  const cursor = query.cursor ? decodeHistoryCursor(query.cursor, { role: query.role }) : null
+  // One row past the page is read so hasMore costs nothing extra.
+  const window = query.limit + 1
+
+  let rows: HistoryEntry[]
+  let total: number | undefined
+
+  if (query.role === 'hosted') {
+    // Only an account can open a room, so this tab does not exist for a guest.
+    const userId = viewer.userId
+    if (userId === null)
+      throw new AppError(401, 'Only an account can host a room', 'GAME_AUTH_REQUIRED')
+    rows = await repo.listHostedSessions(userId, cursor, window)
+    if (query.include_total) total = await repo.countHostedSessions(userId)
+  } else {
+    if (viewer.userId === null && viewer.guestId === null)
+      throw new AppError(401, 'History needs a session or a guest id', 'GAME_AUTH_REQUIRED')
+    rows = await repo.listPlayedSessions(viewer, cursor, window)
+    if (query.include_total) total = await repo.countPlayedSessions(viewer)
+  }
+
+  const hasMore = rows.length > query.limit
+  const items = hasMore ? rows.slice(0, query.limit) : rows
+  const last = items[items.length - 1]
+
+  const page: HistoryPage = {
+    items,
+    hasMore,
+    nextCursor: hasMore && last
+      ? encodeHistoryCursor({ role: query.role, endedAt: last.ended_at, id: last.id })
+      : null
+  }
+  if (total !== undefined) page.total = total
+  return page
+}
+
+// GET /games/:id/summary — the host of the match, or anyone who played in it
+export const getHistorySummary = async (gameId: number, viewer: HistoryViewer) => {
+  const session = await loadClosedSession(gameId)
+  const isHost = viewer.userId !== null && session.session_host === viewer.userId
+  const seat = isHost ? null : await findViewerSeat(gameId, viewer)
+
+  // A stranger gets a refusal, not the room: a session id is a small number and
+  // guessing one must not hand out somebody else's match.
+  if (!isHost && !seat) throw new AppError(403, 'Not part of this match', 'GAME_FORBIDDEN')
+
+  return {
+    session,
+    quiz: snapshotQuizView(await repo.getSnapshotQuiz(gameId)),
+    // The host always sees the full standings, exactly as in the end-of-game report.
+    leaderboard: await repo.getLeaderboard(gameId),
+    // Per-question accuracy describes the room rather than one player, so it stays
+    // a host report.
+    perQuestion: isHost ? await repo.getQuestionStats(gameId) : null,
+    viewer: { isHost, playerId: seat?.id ?? null }
+  }
+}
+
+/**
+ * GET /games/:id/my-answers — the reader's own answer sheet, same shape as
+ * GET /:id/review so one component can render both.
+ *
+ * The difference is the identity: review authenticates with the socket token, which
+ * lives in the sessionStorage of the tab that played, so it is gone in a new tab.
+ * Here the cookie or the guest id answers instead.
+ */
+export const getHistoryAnswers = async (gameId: number, viewer: HistoryViewer) => {
+  const session = await loadClosedSession(gameId)
+  const seat = await findViewerSeat(gameId, viewer)
+  // A host has no answers of their own; nothing to fall back to.
+  if (!seat) throw new AppError(403, 'Only a player of this match can read its answers', 'GAME_PLAYER_ONLY')
+  if (!session.config.flow.reviewMode)
+    throw new AppError(403, 'Review is disabled in this room', 'GAME_REVIEW_DISABLED')
+
+  return buildReview(session, seat, await repo.getSnapshotQuestions(gameId))
 }
 
 const buildConfig = (mode: string, base: GameConfig, patch: unknown) => {
