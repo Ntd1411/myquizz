@@ -81,8 +81,8 @@ export function encodeListCursor(cursor: ListCursor): string {
 }
 
 /**
- * Parses a client-supplied cursor, throwing AppError(400) on anything that
- * does not match the current request.
+ * Parses a client-supplied cursor, throwing QUIZ_CURSOR_INVALID (400) on anything
+ * that does not match the current request.
  *
  * A cursor is user input that reaches a SQL comparison, so every part is
  * validated rather than trusted. Buffer.from(..., 'base64url') never throws (it
@@ -97,7 +97,7 @@ export function decodeListCursor(
   const parts = decoded.split(FIELD_SEPARATOR)
 
   if (parts.length !== 5) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   const [version, sort, filterHash, encodedPrimary, rawId] = parts
@@ -105,34 +105,34 @@ export function decodeListCursor(
   // Under noUncheckedIndexedAccess these read as string | undefined; one empty
   // check both satisfies the type and rejects a cursor with blank fields.
   if (!version || !sort || !filterHash || !encodedPrimary || !rawId) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   if (version !== CURSOR_VERSION) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   // Must be a real sort and the exact ordering requested now: pairing a cursor
   // with a different sort would walk the wrong column.
   if (!isListSort(sort) || sort !== expected.sort) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   // Must be the same filter set, or it would page through unrelated rows.
   if (filterHash !== expected.filterHash) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   const id = Number(rawId)
 
   if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   const primaryValue = Buffer.from(encodedPrimary, 'base64url').toString('utf8')
 
   if (!isValidPrimaryValue(sort, primaryValue)) {
-    throw new AppError(400, 'Invalid cursor')
+    throw new AppError(400, 'Invalid cursor', 'QUIZ_CURSOR_INVALID')
   }
 
   return { sort, filterHash, primaryValue, id }

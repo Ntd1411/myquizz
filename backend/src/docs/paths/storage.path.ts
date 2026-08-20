@@ -83,26 +83,18 @@ export const storagePaths: PathMap = {
           'Rejected body. validateBody runs before the controller, so a malformed body comes back as a Validation error; the controller sentences below only remain reachable if the schema is bypassed.',
           [
             validationError({ fileSize: 'fileSize must not exceed 2MB' }),
-            validationError({
-              folder:
-                'Invalid option: expected one of "avatars"|"quizzes"|"questions"|"uploads"'
-            }),
-            'contentType, folder and fileSize are required',
-            'Invalid folder. Allowed: avatars, quizzes, questions, uploads',
-            'File size exceeds 2MB limit'
+            'FILE_FIELD_INVALID',
+            'FILE_TOO_LARGE'
           ]
         ),
         401: errorResponse('No usable accessToken cookie', [
-          'Access token missing',
-          'Token is blacklisted',
-          'Invalid access token'
+          'AUTH_TOKEN_MISSING',
+          'AUTH_TOKEN_INVALID'
         ]),
-        403: errorResponse('The account was deactivated', [
-          'Account is deactivated'
-        ]),
+        403: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
         429: errorResponse(
-          'uploadRateLimiter rejected the call: more than 20 successful presigns in 10 minutes for this user and IP. The response carries X-RateLimit-* and Retry-After headers, and the number in the message is the remaining window in seconds.',
-          ['Too many requests. Please try again in 420 seconds']
+          'uploadRateLimiter rejected the call: more than 20 successful presigns in 10 minutes for this user and IP. The response carries X-RateLimit-* and Retry-After headers, and Retry-After tells the client when to try again.',
+          ['RATE_LIMITED']
         )
       }
     }

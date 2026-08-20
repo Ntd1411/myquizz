@@ -22,7 +22,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as { email?: string; password?: string }
     if (!email || !password) {
-      throw new AppError(400, 'Email and password are required')
+      throw new AppError(400, 'Email and password are required', 'VALIDATION_ERROR')
     }
 
     const deviceName = req.headers['user-agent'] || 'Unknown Device'
@@ -55,7 +55,7 @@ export async function register(
     }
 
     if (!email || !password || !fullname) {
-      throw new AppError(400, 'Email, password, and fullname are required')
+      throw new AppError(400, 'Email, password, and fullname are required', 'VALIDATION_ERROR')
     }
 
     const result = await registerService(
@@ -79,7 +79,7 @@ export async function refreshToken(
     const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!refreshToken) {
-      throw new AppError(400, 'Refresh token is required')
+      throw new AppError(400, 'Refresh token is required', 'AUTH_REFRESH_INVALID')
     }
 
     const tokens = await refreshTokenService(refreshToken)
@@ -105,7 +105,7 @@ export async function logout(
     const refreshToken = req.cookies.refreshToken as string | undefined
 
     if (!accessToken || !refreshToken) {
-      throw new AppError(400, 'Access token and refresh token are required')
+      throw new AppError(400, 'Access token and refresh token are required', 'VALIDATION_ERROR')
     }
 
     await logoutService(userId, accessToken, refreshToken)
@@ -142,16 +142,16 @@ export async function googleCallback(
 
     if (error) {
       res.redirect(`${env.FRONTEND_URL}/auth/callback?error=${encodeURIComponent(error)}`)
-      throw new AppError(401, `Google OAuth error: ${error}`)
+      throw new AppError(401, `Google OAuth error: ${error}`, 'AUTH_GOOGLE_FAILED')
     }
     if (!code || !state) {
-      throw new AppError(400, 'Missing authorization code or state')
+      throw new AppError(400, 'Missing authorization code or state', 'AUTH_GOOGLE_FAILED')
     }
 
     // Validate anti-CSRF state against the cookie set in googleRedirect
     const cookieState = req.cookies?.[STATE_COOKIE] as string | undefined
     if (!cookieState || cookieState !== state) {
-      throw new AppError(401, 'Invalid OAuth state')
+      throw new AppError(401, 'Invalid OAuth state', 'AUTH_GOOGLE_FAILED')
     }
     res.clearCookie(STATE_COOKIE, clearCookieOptions)
 
@@ -193,7 +193,7 @@ export async function googleOneTap(
   try {
     const { credential } = req.body as { credential?: string }
     if (!credential) {
-      throw new AppError(400, 'Missing Google credential')
+      throw new AppError(400, 'Missing Google credential', 'AUTH_GOOGLE_FAILED')
     }
 
     const user = await loginWithGoogleCredential(credential)

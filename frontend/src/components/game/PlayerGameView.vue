@@ -5,7 +5,6 @@ import QuestionStage from './QuestionStage.vue'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useCountdown } from '@/composables/useServerClock'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * The player side of a host-paced match: countdown, question, wait, results.
@@ -24,11 +23,14 @@ import { useUiStore } from '@/stores/ui.store'
  */
 const game = useGameStore()
 const socket = useGameSocket()
-const ui = useUiStore()
 
 const picks = ref([])
 const text = ref('')
 const sending = ref(false)
+
+// A refused answer is reported in the footer, next to the question it belongs to,
+// and only for as long as that question is on screen.
+const sendError = ref('')
 
 const question = computed(() => game.question)
 const questionType = computed(() => question.value?.question_type ?? 'multiple_choice')
@@ -127,6 +129,7 @@ watch(
   () => {
     picks.value = []
     text.value = ''
+    sendError.value = ''
     rankBefore.value = rankNow.value
   },
 )
@@ -134,8 +137,13 @@ watch(
 async function send(value) {
   if (!game.canAnswer || sending.value) return
   sending.value = true
-  await socket.answer(value).catch(() => {
-    ui.toast(game.lastError?.message ?? 'Could not send your answer.', 'error')
+  sendError.value = ''
+  await socket.answer(value).catch((error) => {
+    // The refusal is a code, and the store already paired it with a sentence: show that
+    // one so a late or duplicate answer says why, and keep the generic line as fallback.
+    const refusal = game.lastError ?? error
+    if (refusal) console.warn(`answer refused: ${refusal.code}`)
+    sendError.value = refusal?.message || 'Could not send your answer. Try again.'
   })
   sending.value = false
 }
@@ -273,6 +281,10 @@ function submit() {
         </p>
         <p v-else-if="answered" class="text-body-md text-ink-2">
           Answer sent. Waiting for the other players&hellip;
+        </p>
+
+        <p v-if="sendError" class="text-body-sm text-ans-a" role="alert">
+          <span v-text="sendError" />
         </p>
 
         <!-- Between two questions: the rank move first, the standings under it -->

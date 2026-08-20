@@ -538,7 +538,7 @@ watch(
         <div v-else-if="list.errorMessage.value" class="card-surface mt-md">
           <StateBlock
             variant="error"
-            icon="\u{26A0}\u{FE0F}"
+            :icon="'\u{26A0}\u{FE0F}'"
             title="Could not load quizzes"
             :message="list.errorMessage.value"
             action-label="Try again"
@@ -548,7 +548,7 @@ watch(
 
         <div v-else-if="!quizzes.length" class="card-surface mt-md">
           <StateBlock
-            icon="\u{1F50D}"
+            :icon="'\u{1F50D}'"
             title="No quizzes match these filters"
             message="Try another keyword in the bar above, or loosen the filters."
             :action-label="hasFilters ? 'Clear filters' : ''"

@@ -17,7 +17,11 @@ export async function presignUpload(
     const { contentType, folder, fileSize } = req.body as PresignUploadInput
 
     if (!contentType || !folder || !fileSize) {
-      throw new AppError(400, 'contentType, folder and fileSize are required')
+      throw new AppError(
+        400,
+        'contentType, folder and fileSize are required',
+        'VALIDATION_ERROR'
+      )
     }
 
     const result = await createPresignedUploadService(

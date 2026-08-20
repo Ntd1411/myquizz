@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
       <div class="card-surface">
         <StateBlock
           variant="error"
-          icon="\u{26A0}\u{FE0F}"
+          :icon="'\u{26A0}\u{FE0F}'"
           title="Could not load the home sections"
           action-label="Try again"
           @action="home.refetch()"
@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
       <div v-else-if="feed.errorMessage.value" class="card-surface mt-lg">
         <StateBlock
           variant="error"
-          icon="\u{26A0}\u{FE0F}"
+          :icon="'\u{26A0}\u{FE0F}'"
           :message="feed.errorMessage.value"
           title="Could not load the feed"
           action-label="Try again"
@@ -179,7 +179,7 @@ onBeforeUnmount(() => {
 
       <div v-else-if="!feedItems.length" class="card-surface mt-lg">
         <StateBlock
-          icon="\u{1F4ED}"
+          :icon="'\u{1F4ED}'"
           title="Nothing here yet"
           message="New quizzes show up as soon as they are published."
         />

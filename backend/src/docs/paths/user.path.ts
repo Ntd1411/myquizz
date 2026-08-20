@@ -31,13 +31,12 @@ export const userTag: TagObject = {
 
 // Raised by authMiddleware before the controller runs, on every protected route.
 const unauthenticated = errorResponse('No usable accessToken cookie', [
-  'Access token missing',
-  'Token is blacklisted',
-  'Invalid access token'
+  'AUTH_TOKEN_MISSING',
+  'AUTH_TOKEN_INVALID'
 ])
 
 const deactivated = errorResponse('The account was deactivated', [
-  'Account is deactivated'
+  'USER_DEACTIVATED'
 ])
 
 const exampleUser = {
@@ -96,20 +95,14 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'Nothing to write, the body carries a field that cannot be edited, or the new phone belongs to somebody else',
           [
-            'No fields to update',
-            'Phone number is already in use',
-            validationError({ email: 'Unrecognized key: "email"' }),
-            validationError({ phone: 'Phone must be 7-15 digits' }),
-            validationError({
-              description: 'Description must be at most 200 characters'
-            })
+            'USER_NO_FIELDS_TO_UPDATE',
+            'AUTH_PHONE_TAKEN',
+            validationError({ email: 'Unrecognized key: "email"' })
           ]
         ),
         401: unauthenticated,
         403: deactivated,
-        500: errorResponse('The row could not be written', [
-          'Failed to update profile'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     },
     delete: {
@@ -133,22 +126,14 @@ export const userPaths: PathMap = {
         }),
         400: errorResponse(
           'The body is missing a password, or the account has none because it was created through Google',
-          [
-            'Password is required to deactivate account',
-            'Cannot deactivate your account',
-            validationError({
-              password: 'Password must be at least 8 characters'
-            })
-          ]
+          ['VALIDATION_ERROR', 'AUTH_GOOGLE_ONLY']
         ),
         401: unauthenticated,
         403: errorResponse(
           'The password does not match, or the account is already deactivated',
-          ['Invalid credentials', 'Account is deactivated']
+          ['USER_PASSWORD_INCORRECT', 'USER_DEACTIVATED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to deactivate account'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -183,11 +168,11 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('userId is not a positive integer', [
-          'Invalid user ID'
+          'VALIDATION_ERROR'
         ]),
-        404: errorResponse('No account with that id', ['User not found']),
+        404: errorResponse('No account with that id', ['USER_NOT_FOUND']),
         410: errorResponse('The account exists but was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ])
       }
     }
@@ -222,10 +207,9 @@ export const userPaths: PathMap = {
         400: errorResponse(
           'Missing field, wrong old password, unchanged password, or an account that has no password at all',
           [
-            'Old password and new password are required',
-            'Old password is incorrect',
-            'New password must be different from the old password',
-            'User does not have a password set',
+            'USER_PASSWORD_INCORRECT',
+            'RESET_PASSWORD_REUSED',
+            'AUTH_GOOGLE_ONLY',
             validationError({
               newPassword: 'Password must be at least 8 characters'
             })
@@ -234,12 +218,10 @@ export const userPaths: PathMap = {
         401: unauthenticated,
         403: deactivated,
         429: errorResponse(
-          'authRateLimiter: 5 requests per IP per 5 minutes, successful changes excluded.',
-          ['Too many requests. Please try again in 240 seconds']
+          'authRateLimiter: 5 requests per IP per 2 minutes, successful changes excluded.',
+          ['RATE_LIMITED']
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to change password'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -271,16 +253,14 @@ export const userPaths: PathMap = {
           })
         }),
         400: errorResponse('The body carries no fileUrl', [
-          'No file uploaded'
+          'FILE_FIELD_INVALID'
         ]),
         401: unauthenticated,
         403: deactivated,
         404: errorResponse('The session points at a row that is gone', [
-          'User not found'
+          'USER_NOT_FOUND'
         ]),
-        500: errorResponse('The row could not be written', [
-          'Failed to upload avatar'
-        ])
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   },
@@ -289,7 +269,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Send a password reset code',
       description:
-        'Emails a six-digit code and a reset link, both valid for 5 minutes. data.resetTime is the moment the current code expires and a new one may be requested. Accounts created through Google have no password to reset.',
+        'First of the three steps of a reset. Emails a six-digit code and a link, both valid for 2 minutes, and neither of them can set a password on its own: whichever one reaches the user is exchanged for a ticket at POST /users/password-reset/verify, and only that ticket is accepted by POST /users/password-reset/complete. The answer carries two instants: data.resetTime is when the next code may be requested, one minute after the send, and data.expiresAt is when the current code and link stop working. Asking again inside that first minute is not an error and sends nothing, it simply repeats the deadlines of the code already outstanding. Only digests of the code and of the link token are stored, so a dump of the cache cannot be replayed against this API. Accounts created through Google have no password to reset.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object({ email: { type: 'string', format: 'email' } }, ['email']),
@@ -298,121 +278,195 @@ export const userPaths: PathMap = {
       responses: {
         200: successResponse({
           description:
-            'The code was queued for delivery. data.resetTime says when a new request is allowed.',
+            'The code was queued for delivery, or one was already outstanding. data.resetTime says when the next request is allowed, data.expiresAt when the current code dies.',
           data: object(
-            { resetTime: { type: 'string', format: 'date-time' } },
-            ['resetTime']
+            {
+              resetTime: { type: 'string', format: 'date-time' },
+              expiresAt: { type: 'string', format: 'date-time' }
+            },
+            ['resetTime', 'expiresAt']
           ),
           example: successExample({
-            resetTime: '2026-08-12T03:05:00.000Z'
+            resetTime: '2026-08-12T03:01:00.000Z',
+            expiresAt: '2026-08-12T03:02:00.000Z'
           })
         }),
         400: errorResponse('The account signs in with Google', [
-          'Email is required',
-          'Google account cannot reset password'
+          'VALIDATION_ERROR',
+          'AUTH_GOOGLE_ONLY'
         ]),
-        404: errorResponse('No account with that email', ['Email not found']),
-        410: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+        404: errorResponse('No account with that email', [
+          'USER_EMAIL_NOT_FOUND'
         ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
         429: errorResponse(
-          'Either a code is still valid, or the IP hit authRateLimiter (5 requests per 5 minutes, successful sends excluded). Both messages carry the remaining seconds.',
-          [
-            'OTP already sent. Please wait 240 seconds before requesting again.',
-            'Too many requests. Please try again in 240 seconds'
-          ]
+          'The IP hit authRateLimiter (5 requests per 2 minutes, successful sends excluded). A code that is still valid is no longer an error: it answers 200 carrying the deadlines of the outstanding code.',
+          ['RATE_LIMITED']
         )
       }
     }
   },
 
-  '/users/reset-password': {
+  '/users/password-reset/verify': {
     post: {
-      summary: 'Reset the password with a code',
+      summary: 'Verify a reset code or link',
       description:
-        'Completes the reset started by POST /users/forgot-password, using the six-digit code from the email. The code and the matching link token are both dropped afterwards.',
+        'Second step, and the only one that looks at the code. Send either the six-digit code together with the address it was mailed to, or the token from the emailed link on its own; both branches are strict, so a body carrying an otp AND a token is rejected instead of quietly taking one path. The answer is a ticket valid for 10 minutes, and that ticket is the only thing POST /users/password-reset/complete accepts. Verifying spends the proof: the code, the emailed link and the resend cooldown are dropped here, so one email opens exactly one reset page. Five wrong codes delete the outstanding code as well and answer 429. The address comes back masked, which is what lets the reset page name it without printing it.',
       tags: [userTag.name],
       requestBody: jsonBody(
-        object(
-          {
-            email: { type: 'string', format: 'email' },
-            otp: { type: 'string', minLength: 6, maxLength: 6 },
-            newPassword: { type: 'string', minLength: 8 }
-          },
-          ['email', 'otp', 'newPassword']
-        ),
         {
-          example: {
-            email: 'demo@myquizz.com',
-            otp: '482913',
-            newPassword: 'NewPassword456!'
+          oneOf: [
+            object(
+              {
+                email: { type: 'string', format: 'email' },
+                otp: { type: 'string', minLength: 6, maxLength: 6 }
+              },
+              ['email', 'otp']
+            ),
+            object({ token: { type: 'string', minLength: 1 } }, ['token'])
+          ]
+        },
+        {
+          examples: {
+            'With the six-digit code': {
+              summary: 'With the six-digit code',
+              value: { email: 'demo@myquizz.com', otp: '482913' }
+            },
+            'With the emailed link token': {
+              summary: 'With the emailed link token',
+              value: { token: 'a1b2c3d4e5f60718293a4b5c6d7e8f90' }
+            }
           }
         }
       ),
       responses: {
         200: successResponse({
-          description: 'The password was replaced.',
-          data: messageData('Password reset successfully'),
-          example: successExample({ message: 'Password reset successfully' })
+          description:
+            'The proof was accepted. data.ticket opens the reset page, data.expiresAt is when it dies, data.email is masked.',
+          data: object(
+            {
+              ticket: { type: 'string' },
+              expiresAt: { type: 'string', format: 'date-time' },
+              email: { type: 'string', example: 'de**@myquizz.com' }
+            },
+            ['ticket', 'expiresAt', 'email']
+          ),
+          example: successExample({
+            ticket: 'x7Yb1_QpTn4mS0aVw9ZcR2eJhLkGdFuI8oPqNrTvWxY',
+            expiresAt: '2026-08-12T03:10:00.000Z',
+            email: 'de**@myquizz.com'
+          })
         }),
-        400: errorResponse('Missing field, or a code that expired or is wrong', [
-          'Email, OTP and new password are required',
-          'OTP expired or not found',
-          'Invalid OTP',
-          validationError({ otp: 'OTP must be 6 digits' })
-        ]),
-        404: errorResponse('No account with that email', ['User not found']),
-        429: errorResponse(
-          'resetPasswordRateLimiter: 5 requests per IP per 10 minutes. Rejected attempts are not charged, so only completed resets add up.',
-          ['Too many requests. Please try again in 420 seconds']
+        400: errorResponse(
+          'A code or token that expired, was never issued, or does not match',
+          [
+            'RESET_OTP_EXPIRED',
+            'RESET_OTP_INVALID',
+            'RESET_LINK_INVALID',
+            'AUTH_GOOGLE_ONLY',
+            validationError({ otp: 'OTP must be 6 digits' })
+          ]
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to reset password'
-        ])
+        404: errorResponse('No account behind that code or token', [
+          'USER_NOT_FOUND'
+        ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
+        429: errorResponse(
+          'Either the code ran out of attempts (5 wrong tries, after which it is deleted and a new email is required), or the IP hit resetVerifyRateLimiter: 20 requests per 10 minutes, failures included.',
+          ['RESET_OTP_ATTEMPTS', 'RATE_LIMITED']
+        )
       }
     }
   },
 
-  '/users/reset-password-token': {
-    post: {
-      summary: 'Reset the password with a token',
+  '/users/password-reset/ticket': {
+    get: {
+      summary: 'Read a reset ticket',
       description:
-        'Completes the reset using the token embedded in the emailed link instead of the six-digit code. Same 5-minute window, and using it also invalidates the code.',
+        'Reads a ticket without spending it, so the reset page can decide what to render before it shows a form. A ticket that expired answers 400 here rather than after the user has typed a new password twice.',
+      tags: [userTag.name],
+      parameters: [
+        {
+          in: 'query',
+          name: 'ticket',
+          required: true,
+          schema: { type: 'string' },
+          example: 'x7Yb1_QpTn4mS0aVw9ZcR2eJhLkGdFuI8oPqNrTvWxY'
+        }
+      ],
+      responses: {
+        200: successResponse({
+          description: 'The ticket is still alive.',
+          data: object(
+            {
+              email: { type: 'string', example: 'de**@myquizz.com' },
+              expiresAt: { type: 'string', format: 'date-time' }
+            },
+            ['email', 'expiresAt']
+          ),
+          example: successExample({
+            email: 'de**@myquizz.com',
+            expiresAt: '2026-08-12T03:10:00.000Z'
+          })
+        }),
+        400: errorResponse('No ticket in the query, or one that is gone', [
+          'RESET_TICKET_INVALID'
+        ]),
+        429: errorResponse(
+          'resetVerifyRateLimiter: 20 requests per IP per 10 minutes, failures included.',
+          ['RATE_LIMITED']
+        )
+      }
+    }
+  },
+
+  '/users/password-reset/complete': {
+    post: {
+      summary: 'Reset the password with a ticket',
+      description:
+        'Third step, and the only place that writes a password. It takes the ticket handed out by POST /users/password-reset/verify and never the code or the emailed token. The ticket is single use, the new password must differ from the current one, and the account is checked again here because minutes pass between the two steps. Every refresh token of the account is revoked, so a session opened by whoever locked the owner out does not survive the reset; access tokens already issued stay valid until they expire. A notification email is sent afterwards and cannot fail the request.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object(
           {
-            token: { type: 'string', minLength: 1 },
+            ticket: { type: 'string', minLength: 1 },
             newPassword: { type: 'string', minLength: 8 }
           },
-          ['token', 'newPassword']
+          ['ticket', 'newPassword']
         ),
         {
           example: {
-            token: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+            ticket: 'x7Yb1_QpTn4mS0aVw9ZcR2eJhLkGdFuI8oPqNrTvWxY',
             newPassword: 'NewPassword456!'
           }
         }
       ),
       responses: {
         200: successResponse({
-          description: 'The password was replaced.',
+          description: 'The password was replaced and every device signed out.',
           data: messageData('Password reset successfully'),
           example: successExample({ message: 'Password reset successfully' })
         }),
-        400: errorResponse('Missing field, or a token that expired', [
-          'Token and new password are required',
-          'Reset token expired or invalid',
-          validationError({ token: 'Token is required' })
-        ]),
-        404: errorResponse('No account behind that token', ['User not found']),
-        429: errorResponse(
-          'resetPasswordRateLimiter: 5 requests per IP per 10 minutes. Rejected attempts are not charged, so only completed resets add up.',
-          ['Too many requests. Please try again in 420 seconds']
+        400: errorResponse(
+          'Missing field, a ticket that expired or was already spent, or a password that is the current one',
+          [
+            'RESET_TICKET_INVALID',
+            'RESET_PASSWORD_REUSED',
+            'AUTH_GOOGLE_ONLY',
+            validationError({
+              newPassword: 'Password must be at least 8 characters'
+            })
+          ]
         ),
-        500: errorResponse('The row could not be written', [
-          'Failed to reset password'
-        ])
+        404: errorResponse('No account behind that ticket', [
+          'USER_NOT_FOUND'
+        ]),
+        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
+        429: errorResponse(
+          'resetPasswordRateLimiter: 5 requests per IP per 2 minutes. Rejected attempts are not charged, so only completed resets add up.',
+          ['RATE_LIMITED']
+        ),
+        500: errorResponse('The row could not be written', ['SERVER_ERROR'])
       }
     }
   }

@@ -60,7 +60,8 @@ function assertAllowedFolder(folder: string): void {
   if (!ALLOWED_FOLDERS.includes(folder as AllowedFolder)) {
     throw new AppError(
       400,
-      `Invalid folder. Allowed: ${ALLOWED_FOLDERS.join(', ')}`
+      `Invalid folder. Allowed: ${ALLOWED_FOLDERS.join(', ')}`,
+      'FILE_FIELD_INVALID'
     )
   }
 }
@@ -80,7 +81,11 @@ export async function createPresignedUploadService(
   assertAllowedFolder(folder)
 
   if (fileSize > MAX_FILE_SIZE) {
-    throw new AppError(400, `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`)
+    throw new AppError(
+      400,
+      `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
+      'FILE_TOO_LARGE'
+    )
   }
 
   // Create a unique key for the file

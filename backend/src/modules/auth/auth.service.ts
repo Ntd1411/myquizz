@@ -24,11 +24,15 @@ export async function registerService(
   const existingPhone = phone ? await authRepository.phoneExists(phone) : false
 
   if (existingUser) {
-    throw new AppError(409, 'Email already registered')
+    throw new AppError(409, 'Email already registered', 'AUTH_EMAIL_TAKEN')
   }
 
   if (existingPhone) {
-    throw new AppError(409, 'Phone number already registered')
+    throw new AppError(
+      409,
+      'Phone number already registered',
+      'AUTH_PHONE_TAKEN'
+    )
   }
 
   // Hash password
@@ -43,7 +47,7 @@ export async function registerService(
   })
 
   if (!user) {
-    throw new AppError(500, 'Failed to create user')
+    throw new AppError(500, 'Failed to create user', 'SERVER_ERROR')
   }
 
   const { password: _pw, deleted_at: _deletedAt, ...userData } = user
@@ -61,19 +65,27 @@ export async function loginService(
   const user = await userRepository.findByEmail(email)
 
   if (!user) {
-    throw new AppError(401, 'Invalid email or password')
+    throw new AppError(
+      401,
+      'Invalid email or password',
+      'AUTH_INVALID_CREDENTIALS'
+    )
   }
 
   // Check if user is active
   if (user.deleted_at !== null) {
-    throw new AppError(403, 'Account is deactivated')
+    throw new AppError(403, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
   // Verify password
   const isValid = await verifyPassword(password, user.password || '')
 
   if (!isValid) {
-    throw new AppError(401, 'Invalid email or password')
+    throw new AppError(
+      401,
+      'Invalid email or password',
+      'AUTH_INVALID_CREDENTIALS'
+    )
   }
 
   // Generate tokens
@@ -99,16 +111,16 @@ export async function refreshTokenService(refreshToken: string) {
   const decoded = verifyToken(refreshToken, 'refresh')
 
   if (!decoded || decoded.type !== 'refresh') {
-    throw new AppError(401, 'Invalid refresh token')
+    throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
   }
 
   const user = await userRepository.findById(decoded.userId)
   if (!user) {
-    throw new AppError(401, 'User not found')
+    throw new AppError(401, 'User not found', 'USER_NOT_FOUND')
   }
 
   if (user.deleted_at !== null) {
-    throw new AppError(403, 'Account is deactivated')
+    throw new AppError(403, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
   const hashedRefreshToken = hashToken(refreshToken)
@@ -118,7 +130,7 @@ export async function refreshTokenService(refreshToken: string) {
 
   if (!refreshSession) {
     await authRepository.revokeUserSessions(decoded.userId)
-    throw new AppError(401, 'Invalid refresh token')
+    throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
   }
 
   await authRepository.revokeRefreshToken(hashedRefreshToken)
@@ -150,7 +162,7 @@ export async function logoutService(
     decodedAccessToken.type !== 'access' ||
     decodedAccessToken.userId !== userId
   ) {
-    throw new AppError(401, 'Invalid access token')
+    throw new AppError(401, 'Invalid access token', 'AUTH_TOKEN_INVALID')
   }
   const hashedRefreshToken = hashToken(refreshToken)
 
@@ -159,7 +171,7 @@ export async function logoutService(
 
   if (!refreshSession) {
     await authRepository.revokeUserSessions(userId)
-    throw new AppError(401, 'Invalid refresh token')
+    throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
   }
 
   if (
@@ -168,7 +180,7 @@ export async function logoutService(
     decodedRefreshToken.userId !== userId
   ) {
     await authRepository.revokeUserSessions(userId)
-    throw new AppError(401, 'Invalid refresh token')
+    throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
   }
 
   await authRepository.revokeRefreshToken(hashedRefreshToken)
@@ -193,7 +205,11 @@ async function profileFromIdToken(idToken: string): Promise<GoogleProfile> {
   })
   const payload = ticket.getPayload()
   if (!payload?.sub || !payload.email) {
-    throw new AppError(401, 'Cannot read profile from Google account')
+    throw new AppError(
+      401,
+      'Cannot read profile from Google account',
+      'AUTH_GOOGLE_FAILED'
+    )
   }
   return {
     googleId: payload.sub,
@@ -207,7 +223,12 @@ async function profileFromIdToken(idToken: string): Promise<GoogleProfile> {
 // Authorization Code flow: exchange the code, then verify
 async function fetchGoogleProfile(code: string): Promise<GoogleProfile> {
   const { tokens } = await oauthClient.getToken(code)
-  if (!tokens.id_token) throw new AppError(401, 'Google did not return an id_token')
+  if (!tokens.id_token)
+    throw new AppError(
+      401,
+      'Google did not return an id_token',
+      'AUTH_GOOGLE_FAILED'
+    )
   return profileFromIdToken(tokens.id_token)
 }
 
@@ -219,10 +240,14 @@ async function resolveUser(profile: GoogleProfile): Promise<User> {
   const byEmail = await userRepository.findByEmail(profile.email)
   if (byEmail) {
     if (!profile.emailVerified) {
-      throw new AppError(401, 'Google email is not verified, cannot link account')
+      throw new AppError(
+        401,
+        'Google email is not verified, cannot link account',
+        'AUTH_GOOGLE_EMAIL_UNVERIFIED'
+      )
     }
     if (byEmail.deleted_at !== null) {
-      throw new AppError(403, 'Account is deactivated')
+      throw new AppError(403, 'Account is deactivated', 'USER_DEACTIVATED')
     }
     return authRepository.linkGoogleId(byEmail.id, profile.googleId, profile.avatar)
   }

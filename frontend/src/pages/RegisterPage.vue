@@ -6,7 +6,6 @@ import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import PasswordField from '@/components/base/PasswordField.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { startGoogleLogin } from '@/api/auth.api'
 import { uploadImage } from '@/api/storage.api'
@@ -15,7 +14,6 @@ import { createDefaultAvatarFile } from '@/utils/defaultAvatar'
 import { useGoogleOneTap } from '@/composables/useGoogleOneTap'
 
 const auth = useAuthStore()
-const ui = useUiStore()
 const router = useRouter()
 
 // Three steps: identity (name + email), password, then an optional phone number.
@@ -140,7 +138,8 @@ async function submit() {
     // is always signed in by the time this resolves.
     await attachDefaultAvatar(fullname.value || email.value)
 
-    ui.toast('Account created successfully.')
+    // The account is live and signed in, so the home page it lands on is the
+    // confirmation. Anything that went wrong is on formError, under the form.
     router.push({ name: 'home' })
   } catch (error) {
     formError.value = toErrorMessage(error, 'Could not create the account.')
@@ -153,9 +152,8 @@ async function submit() {
 useGoogleOneTap({
   prompt: true,
   enabled: !auth.isLoggedIn,
-  onSuccess: async (user) => {
+  onSuccess: async () => {
     await auth.refresh()
-    ui.toast(`Welcome, ${user?.fullname || user?.email || 'friend'}.`)
     router.push({ name: 'home' })
   },
   onError: (error) => {
@@ -181,7 +179,13 @@ useGoogleOneTap({
 
       <!-- Step 1: identity. Google sign-up lives here only. -->
       <template v-if="step === 1">
-        <BaseField ref="firstFieldRef" v-model="fullname" label="Full name" autocomplete="name" required />
+        <BaseField
+          ref="firstFieldRef"
+          v-model="fullname"
+          label="Full name"
+          autocomplete="name"
+          required
+        />
         <BaseField
           v-model="email"
           label="Email"
@@ -211,7 +215,13 @@ useGoogleOneTap({
 
       <!-- Step 3: optional phone number. -->
       <template v-else>
-        <BaseField ref="firstFieldRef" v-model="phone" label="Phone number (optional)" type="tel" autocomplete="tel" />
+        <BaseField
+          ref="firstFieldRef"
+          v-model="phone"
+          label="Phone number (optional)"
+          type="tel"
+          autocomplete="tel"
+        />
       </template>
 
       <p v-if="formError" class="text-caption text-sticker-orange-deep" role="alert">

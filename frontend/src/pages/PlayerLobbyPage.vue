@@ -10,6 +10,7 @@ import PlayerList from '@/components/game/PlayerList.vue'
 import SelfPacedGameView from '@/components/game/SelfPacedGameView.vue'
 import { getGameByCode, joinGame } from '@/api/games.api'
 import { toErrorMessage } from '@/api/envelope'
+import { socketErrorMessage } from '@/api/errors'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useGuestId } from '@/composables/useGuestId'
 import {
@@ -23,7 +24,6 @@ import { revealOnEnter } from '@/composables/useMotion'
 import { modeLabel } from '@/constants/gameConfig'
 import { useAuthStore } from '@/stores/auth.store'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * Player lobby at /play/:code.
@@ -45,7 +45,6 @@ const props = defineProps({
 
 const router = useRouter()
 const auth = useAuthStore()
-const ui = useUiStore()
 const game = useGameStore()
 const socket = useGameSocket()
 
@@ -161,27 +160,36 @@ onMounted(() => {
   load()
 })
 
-// The status change is the only signal a player gets about the host pressing Start.
+/*
+ * Both outcomes are already on the screen: 'active' swaps the lobby for the question
+ * view, and 'cancelled' turns the room card into `roomMessage`. The seat is the only
+ * thing left to clean up, since a closed room can never be rejoined with it.
+ */
 watch(
   () => game.sessionStatus,
   (status, previous) => {
     if (status === previous) return
-    if (status === 'active') ui.toast('The host started the game.')
-    if (status === 'cancelled') {
-      clearPlayerSession(roomCode.value)
-      ui.toast('The host closed this room.', 'error')
-    }
+    if (status === 'cancelled') clearPlayerSession(roomCode.value)
   },
 )
 
 // A fatal socket error (revoked token, room gone) leaves the player stuck otherwise.
+const FATAL_SEAT_CODES = [
+  'GAME_TOKEN_INVALID',
+  'GAME_TOKEN_WRONG_ROOM',
+  'GAME_ROOM_NOT_FOUND',
+  'GAME_PLAYER_NOT_FOUND',
+  'GAME_GUESTS_NOT_ALLOWED',
+]
+
 watch(
   () => game.lastError,
   (error) => {
     if (!error) return
-    if (['UNAUTHORIZED', 'FORBIDDEN', 'GONE'].includes(error.code)) {
+    if (FATAL_SEAT_CODES.includes(error.code)) {
       clearPlayerSession(roomCode.value)
-      loadError.value = error.message || 'This room is no longer available.'
+      // The server only sends a code; the sentence is written on this side.
+      loadError.value = socketErrorMessage(error.code, 'This room is no longer available.')
     }
   },
 )

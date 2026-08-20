@@ -483,7 +483,7 @@ export const gameChannels: Record<string, OpenApiObject> = {
     audience: 'everyone',
     summary: 'A client event failed',
     description:
-      'Sent only when the failing event carried no acknowledgement callback; otherwise the same message comes back as { error } in the callback.',
+      'Sent only when the failing event carried no acknowledgement callback; otherwise the same code comes back as { error: { code } } in the callback. The payload is a code, never a sentence: the client owns the wording.',
     payload: ref('SocketError')
   })
 }

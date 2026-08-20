@@ -4,7 +4,6 @@ import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import LeaderboardList from '@/components/game/LeaderboardList.vue'
 import { useFinalResults } from '@/composables/useFinalResults'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * Host end screen.
@@ -17,7 +16,6 @@ import { useUiStore } from '@/stores/ui.store'
  * a teacher can act on afterwards.
  */
 const game = useGameStore()
-const ui = useUiStore()
 const { leaderboard, perQuestion, loading, error } = useFinalResults()
 
 const rows = computed(() => leaderboard.value)
@@ -83,7 +81,9 @@ async function copyStandings() {
     ?.writeText(text)
     .then(() => true)
     .catch(() => false)
-  ui.toast(ok ? 'Standings copied.' : 'Copy failed, select the table instead.')
+  // A successful copy needs no announcement - the clipboard is the receipt. A refusal
+  // is a browser permission problem, which only a developer can act on.
+  if (!ok) console.warn('could not copy the standings to the clipboard')
 }
 </script>
 

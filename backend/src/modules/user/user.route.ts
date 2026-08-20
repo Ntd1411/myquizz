@@ -2,29 +2,29 @@ import { Router } from 'express'
 import { authMiddleware } from '../auth/auth.middleware.js'
 import {
   changePassword,
+  completeReset,
   deactivateAccount,
   forgotPassword,
   getMe,
+  getResetTicket,
   getUser,
-  resetPassword,
-  resetPasswordWithToken,
   updateProfile,
-  verifyResetToken,
-  uploadAvatar
+  uploadAvatar,
+  verifyReset
 } from './user.controller.js'
 import { validateBody } from '../../shared/validators/validator.js'
 import {
   changePasswordSchema,
+  completeResetSchema,
   deactivateAccountSchema,
   forgotPasswordSchema,
-  resetPasswordSchema,
-  resetPasswordWithTokenSchema,
   updateProfileSchema,
-  verifyResetTokenSchema
+  verifyResetSchema
 } from './user.schema.js'
 import {
   authRateLimiter,
-  resetPasswordRateLimiter
+  resetPasswordRateLimiter,
+  resetVerifyRateLimiter
 } from '../../shared/middlewares/rate.limit.middleware.js'
 
 export const userRouter: Router = Router()
@@ -43,8 +43,11 @@ userRouter.patch('/me/avatar', authMiddleware, uploadAvatar)
 
 userRouter.post( '/forgot-password', authRateLimiter, validateBody(forgotPasswordSchema), forgotPassword)
 
-userRouter.post( '/reset-password', resetPasswordRateLimiter, validateBody(resetPasswordSchema), resetPassword)
+// The reset runs in three steps: ask for a code, prove the email arrived, then
+// write the password with the ticket that proof handed out. Nothing but the last
+// step touches the password, and it never sees the code or the emailed token.
+userRouter.post( '/password-reset/verify', resetVerifyRateLimiter, validateBody(verifyResetSchema), verifyReset)
 
-userRouter.post( '/reset-password-token', resetPasswordRateLimiter, validateBody(resetPasswordWithTokenSchema), resetPasswordWithToken)
+userRouter.get('/password-reset/ticket', resetVerifyRateLimiter, getResetTicket)
 
-userRouter.post( '/reset-password-token/verify', resetPasswordRateLimiter, validateBody(verifyResetTokenSchema), verifyResetToken)
+userRouter.post( '/password-reset/complete', resetPasswordRateLimiter, validateBody(completeResetSchema), completeReset)

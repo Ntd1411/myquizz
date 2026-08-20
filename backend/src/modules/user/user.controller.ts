@@ -1,17 +1,18 @@
 import type { Response, NextFunction } from 'express'
 import {
   changePasswordService,
+  completeResetService,
   deactivateAccountService,
   forgotPasswordService,
   getUserService,
-  resetPasswordService,
-  resetPasswordWithTokenService,
-  verifyResetTokenService,
+  readResetTicketService,
   updateProfileService,
-  uploadAvatarService
+  uploadAvatarService,
+  verifyResetService
 } from './user.service.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest, User } from '../auth/auth.type.js'
+import type { VerifyResetRequest } from './user.schema.js'
 import { success } from '../../shared/utils/response.js'
 
 export function getMe(
@@ -37,7 +38,7 @@ export async function getUser(
     const userId = Number(req.params.userId)
 
     if (!Number.isInteger(userId) || userId <= 0) {
-      throw new AppError(400, 'Invalid user ID')
+      throw new AppError(400, 'Invalid user ID', 'VALIDATION_ERROR')
     }
 
     const user = await getUserService(userId)
@@ -75,7 +76,7 @@ export async function changePassword(
     }
 
     if (!oldPassword || !newPassword) {
-      throw new AppError(400, 'Old password and new password are required')
+      throw new AppError(400, 'Old password and new password are required', 'VALIDATION_ERROR')
     }
 
     await changePasswordService(user, oldPassword, newPassword)
@@ -94,7 +95,7 @@ export async function uploadAvatar(
   try {
     const { fileUrl } = req.body as { fileUrl?: string }
     if (!fileUrl) {
-      throw new AppError(400, 'No file uploaded')
+      throw new AppError(400, 'No file uploaded', 'FILE_FIELD_INVALID')
     }
 
     const avatarUrl = await uploadAvatarService(req.user?.id as number, fileUrl)
@@ -138,7 +139,7 @@ export async function deactivateAccount(
     const { password } = req.body as { password?: string }
 
     if (!password) {
-      throw new AppError(400, 'Password is required to deactivate account')
+      throw new AppError(400, 'Password is required to deactivate account', 'VALIDATION_ERROR')
     }
 
     await deactivateAccountService(user, password)
@@ -158,54 +159,26 @@ export async function forgotPassword(
     const { email } = req.body as { email?: string }
 
     if (!email) {
-      throw new AppError(400, 'Email is required')
+      throw new AppError(400, 'Email is required', 'VALIDATION_ERROR')
     }
 
-    const resetTime = await forgotPasswordService(email)
+    const { resetTime, expiresAt } = await forgotPasswordService(email)
 
-    return success(res, { resetTime })
+    return success(res, { resetTime, expiresAt })
   } catch (error) {
     next(error)
   }
 }
 
-export async function resetPassword(
+export async function verifyReset(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const { email, otp, newPassword } = req.body as {
-      email?: string
-      otp?: string
-      newPassword?: string
-    }
-
-    if (!email || !otp || !newPassword) {
-      throw new AppError(400, 'Email, OTP and new password are required')
-    }
-
-    await resetPasswordService(email, otp, newPassword)
-
-    return success(res, { message: 'Password reset successfully' })
-  } catch (error) {
-    next(error)
-  }
-}
-
-export async function verifyResetToken(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
-  try {
-    const { token } = req.body as { token?: string }
-
-    if (!token) {
-      throw new AppError(400, 'Token is required')
-    }
-
-    const result = await verifyResetTokenService(token)
+    // The body came through validateBody(verifyResetSchema), so it is already
+    // one of the two accepted shapes: email + otp, or token on its own.
+    const result = await verifyResetService(req.body as VerifyResetRequest)
 
     return success(res, result)
   } catch (error) {
@@ -213,22 +186,42 @@ export async function verifyResetToken(
   }
 }
 
-export async function resetPasswordWithToken(
+export async function getResetTicket(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const { token, newPassword } = req.body as {
-      token?: string
+    const { ticket } = req.query as { ticket?: string }
+
+    if (!ticket) {
+      throw new AppError(400, 'Ticket is required', 'RESET_TICKET_INVALID')
+    }
+
+    const result = await readResetTicketService(ticket)
+
+    return success(res, result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function completeReset(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { ticket, newPassword } = req.body as {
+      ticket?: string
       newPassword?: string
     }
 
-    if (!token || !newPassword) {
-      throw new AppError(400, 'Token and new password are required')
+    if (!ticket || !newPassword) {
+      throw new AppError(400, 'Ticket and new password are required', 'RESET_TICKET_INVALID')
     }
 
-    await resetPasswordWithTokenService(token, newPassword)
+    await completeResetService(ticket, newPassword)
 
     return success(res, { message: 'Password reset successfully' })
   } catch (error) {

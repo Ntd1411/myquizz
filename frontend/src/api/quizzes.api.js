@@ -179,7 +179,7 @@ export async function getFeed({ topic, cursor, limit } = {}) {
 export async function getQuizById(quizId) {
   // The detail and editor pages both turn 403/404 into their own inline explanation,
   // so the central toast would repeat what the screen already says.
-  const res = await http.get(`/quizzes/id/${quizId}`, { skipErrorToast: true })
+  const res = await http.get(`/quizzes/id/${quizId}`)
   return toQuizDetail(unwrap(res.data).quiz)
 }
 

@@ -22,7 +22,7 @@ export const createQuizSnapshot = async (quizId: number) => {
      RETURNING id, total_questions`,
     [quizId]
   )
-  if (!rows[0]) throw new AppError(404, `Quiz #${quizId} not found`)
+  if (!rows[0]) throw new AppError(404, `Quiz #${quizId} not found`, 'QUIZ_NOT_FOUND')
   return rows[0]
 }
 
@@ -256,13 +256,13 @@ export const updateSessionState = async (
   }
   if (sets.length === 0) {
     const current = await getSessionById(id)
-    if (!current) throw new AppError(404, 'Room not found')
+    if (!current) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
     return current
   }
   const sql =
     'UPDATE game_sessions SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1 RETURNING *'
   const { rows } = await pool.query<GameSessionRow>(sql, values)
-  if (!rows[0]) throw new AppError(404, 'Room not found')
+  if (!rows[0]) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   return rows[0]
 }
 

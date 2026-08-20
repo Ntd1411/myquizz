@@ -66,13 +66,12 @@ const socketTokenHeader: OpenApiObject = {
 
 // Raised by authMiddleware before the controller runs, on the host-only routes.
 const unauthenticated = errorResponse('No usable accessToken cookie', [
-  'Access token missing',
-  'Token is blacklisted',
-  'Invalid access token'
+  'AUTH_TOKEN_MISSING',
+  'AUTH_TOKEN_INVALID'
 ])
 
 const roomNotFound = errorResponse('No session behind that code or id', [
-  'Room not found'
+  'GAME_ROOM_NOT_FOUND'
 ])
 
 // Exactly what gameConfigSchema fills in when a host sends nothing.
@@ -223,11 +222,11 @@ export const gamePaths: PathMap = {
         ]),
         401: unauthenticated,
         403: errorResponse('The account was deactivated', [
-          'Account is deactivated'
+          'USER_DEACTIVATED'
         ]),
         404: errorResponse(
           'No quiz behind quiz_id. The snapshot is written before the room, so nothing is created.',
-          ['Quiz #1 not found']
+          ['QUIZ_NOT_FOUND']
         )
       }
     }
@@ -323,11 +322,11 @@ export const gamePaths: PathMap = {
         ]),
         401: unauthenticated,
         403: errorResponse('The caller does not host this room', [
-          'Only host can update config'
+          'GAME_NOT_HOST'
         ]),
         404: roomNotFound,
         409: errorResponse('The match already left the lobby', [
-          'Can only update config in lobby'
+          'GAME_LOBBY_ONLY'
         ])
       }
     }
@@ -359,7 +358,7 @@ export const gamePaths: PathMap = {
         }),
         401: unauthenticated,
         403: errorResponse('The caller does not host this room', [
-          'Only host can request host token'
+          'GAME_NOT_HOST'
         ]),
         404: roomNotFound
       }
@@ -425,13 +424,13 @@ export const gamePaths: PathMap = {
           })
         ]),
         403: errorResponse('The room refuses this player', [
-          'Room does not allow guests',
-          'Host can not join game'
+          'GAME_GUESTS_NOT_ALLOWED',
+          'GAME_HOST_CANNOT_JOIN'
         ]),
         404: roomNotFound,
         409: errorResponse('The room cannot take the player right now', [
-          'Game already started, no late join allowed',
-          'Room is full'
+          'GAME_ALREADY_STARTED',
+          'GAME_ROOM_FULL'
         ])
       }
     }
@@ -498,20 +497,19 @@ export const gamePaths: PathMap = {
           data: object({ review: ref('GameReview') }, ['review'])
         }),
         401: errorResponse('No usable socket token on the request', [
-          'Missing socket token',
-          'Socket token is not valid'
+          'GAME_TOKEN_INVALID'
         ]),
         403: errorResponse('The token cannot ask for this review', [
-          'Token belongs to another room',
-          'Only a player can review their own answers',
-          'Review is disabled in this room'
+          'GAME_TOKEN_WRONG_ROOM',
+          'GAME_PLAYER_ONLY',
+          'GAME_REVIEW_DISABLED'
         ]),
         404: errorResponse('Nothing to review behind that id', [
-          'Room not found',
-          'Player not found in this room'
+          'GAME_ROOM_NOT_FOUND',
+          'GAME_PLAYER_NOT_FOUND'
         ]),
         409: errorResponse('The room is not over yet', [
-          'Game is still running'
+          'GAME_STILL_RUNNING'
         ])
       }
     }

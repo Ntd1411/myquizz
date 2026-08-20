@@ -10,7 +10,7 @@ export const listGameModes = (_req: AuthRequest, res: Response) =>
 
 export const createGame = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) throw new AppError(401, 'Unauthorized')
+    if (!req.user) throw new AppError(401, 'Unauthorized', 'AUTH_TOKEN_MISSING')
     const input = createGameSchema.parse(req.body)
     const { session, ignored } = await gameService.createGame(input, req.user.id)
     return success(res, { data: { session }, ignored }, 201)
@@ -23,7 +23,7 @@ export const getGameByCode = async (req: AuthRequest, res: Response, next: NextF
   try {
     const code = req.params['code'] as string
     if (!code) {
-      throw new AppError(400, 'Missing code')
+      throw new AppError(400, 'Missing code', 'VALIDATION_ERROR')
     }
     const session = await gameService.getLobby(code)
     return success(res, { session })
@@ -34,9 +34,9 @@ export const getGameByCode = async (req: AuthRequest, res: Response, next: NextF
 
 export const updateGameConfig = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) throw new AppError(401, 'Unauthorized')
-    if (Number.isInteger(req.params['id']) === false) {
-      throw new AppError(400, 'Invalid game ID')
+    if (!req.user) throw new AppError(401, 'Unauthorized', 'AUTH_TOKEN_MISSING')
+    if (Number.isInteger(Number(req.params['id'])) === false) {
+      throw new AppError(400, 'Invalid game ID', 'VALIDATION_ERROR')
     }
     const { config } = updateConfigSchema.parse(req.body)
     const { session, ignored, changed } = await gameService.updateGameConfig(
@@ -54,7 +54,7 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
   try {
     const code = req.params['code'] as string
     if (!code) {
-      throw new AppError(400, 'Missing code')
+      throw new AppError(400, 'Missing code', 'VALIDATION_ERROR')
     }
     let input: JoinGameInput
     if (req.user) {
@@ -78,7 +78,7 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
 
 export const getHostToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) throw new AppError(401, 'Unauthorized')
+    if (!req.user) throw new AppError(401, 'Unauthorized', 'AUTH_TOKEN_MISSING')
     const hostToken = await gameService.issueHostToken(Number(req.params['id']), req.user.id)
     return success(res, { hostToken })
   } catch (e) {

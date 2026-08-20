@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { socketErrorMessage } from '@/api/errors'
 import { syncServerClock } from '@/composables/useServerClock'
 
 /**
@@ -17,7 +18,7 @@ import { syncServerClock } from '@/composables/useServerClock'
 export const useGameStore = defineStore('game', () => {
   // connection
   const connection = ref('idle') // idle | connecting | connected | reconnecting | closed
-  const lastError = ref(null) // { code, message }
+  const lastError = ref(null) // { code, message, event? }
 
   // identity, all of it comes from the REST join / host-token calls
   const role = ref(null) // 'player' | 'host'
@@ -86,14 +87,26 @@ export const useGameStore = defineStore('game', () => {
     return currentPhase.value === 'question_active'
   })
 
+  /**
+   * Every failure reaches the store as a bare code, so the readable sentence is
+   * attached here, once, instead of in each screen. A code with no sentence of its
+   * own falls back to the generic one, so `lastError.message` is always safe to
+   * render directly.
+   */
+  function describeError(error) {
+    if (!error) return null
+    const errorCode = error.code || 'SOCKET_ERROR'
+    return { ...error, code: errorCode, message: error.message || socketErrorMessage(errorCode) }
+  }
+
   function setConnection(next, error = null) {
     connection.value = next
-    if (error) lastError.value = error
+    if (error) lastError.value = describeError(error)
     if (next === 'connected') lastError.value = null
   }
 
   function setError(error) {
-    lastError.value = error
+    lastError.value = describeError(error)
   }
 
   function setIdentity({ role: nextRole, code: nextCode, sessionId: nextId, playerId: nextPlayer } = {}) {

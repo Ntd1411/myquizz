@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import LeaderboardList from '@/components/game/LeaderboardList.vue'
 import { useGameSocket } from '@/composables/useGameSocket'
 import { useGameStore } from '@/stores/game.store'
-import { useUiStore } from '@/stores/ui.store'
 
 /**
  * Host screen for the self-paced modes.
@@ -18,9 +17,11 @@ import { useUiStore } from '@/stores/ui.store'
  */
 const game = useGameStore()
 const socket = useGameSocket()
-const ui = useUiStore()
 
 const ending = ref(false)
+
+// A refused control is reported at the top of the board and replaced by the next one.
+const actionError = ref('')
 
 const total = computed(() => game.totalQuestions || 0)
 const rows = computed(() =>
@@ -53,9 +54,14 @@ function statusOf(row) {
 // acting: otherwise an older error would be reported as the result of this click.
 function guard(action, label) {
   game.setError(null)
+  actionError.value = ''
   action()
   window.setTimeout(() => {
-    if (game.lastError) ui.toast(game.lastError.message || `${label} failed.`, 'error')
+    // The store already carries the sentence for the code the server refused with.
+    if (game.lastError) {
+      console.warn(`${label} refused: ${game.lastError.code}`)
+      actionError.value = game.lastError.message || `${label} did not go through. Try again.`
+    }
   }, 600)
 }
 
@@ -74,6 +80,10 @@ function end() {
 
 <template>
   <div class="grid gap-lg">
+    <p v-if="actionError" class="board-error" role="alert">
+      <span v-text="actionError" />
+    </p>
+
     <section v-if="game.isFinished" class="card-surface p-xl text-center">
       <h2 class="text-heading-2 text-ink">
         Game over
@@ -143,5 +153,14 @@ function end() {
   padding: 8px 12px;
   border-radius: var(--r-md);
   border: 1px solid var(--hairline);
+}
+
+.board-error {
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--ans-a);
+  background: var(--ans-a-soft);
+  color: var(--ans-a);
+  font-size: 14px;
 }
 </style>

@@ -177,7 +177,7 @@ export async function searchQuizzesService(input: {
 }): Promise<ListPage> {
   // mine cannot be validated by the schema, which never sees the session.
   if (input.query.mine && input.viewerId === null) {
-    throw new AppError(400, 'mine=true requires an authenticated session')
+    throw new AppError(400, 'mine=true requires an authenticated session', 'QUIZ_AUTH_REQUIRED')
   }
 
   const sort = resolveSearchSort(input.query)
@@ -220,7 +220,7 @@ export async function getPublicQuizzesByOwnerService(input: {
   const ownerExists = await userRepository.existsById(input.ownerId)
 
   if (!ownerExists) {
-    throw new AppError(404, 'User not found')
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND')
   }
 
   const sort: OwnerProfileSort = input.query.sort

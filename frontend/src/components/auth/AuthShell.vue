@@ -19,7 +19,7 @@ defineProps({
     <div class="flex flex-col gap-md p-lg md:p-[40px]">
       <div class="flex justify-center md:justify-start">
         <RouterLink :to="{ name: 'home' }" aria-label="Back to MyQuizz home">
-          <BrandLogo :size="24" />
+          <BrandLogo :size="30" />
         </RouterLink>
       </div>
 
@@ -31,7 +31,7 @@ defineProps({
     </div>
 
     <div class="relative hidden bg-wash lg:block">
-      <img :src="coverSrc" :alt="coverAlt" class="absolute inset-0 h-full w-full object-cover" >
+      <img :src="coverSrc" :alt="coverAlt" class="absolute inset-0 h-full w-full object-cover">
     </div>
   </div>
 </template>

@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client'
+import { socketErrorMessage } from './errors'
 
 export const GAME_NAMESPACE = '/game'
 
@@ -15,17 +16,41 @@ function apiOrigin() {
 let socket = null
 let currentToken = null
 
-// The server prefixes every failure with a code, e.g. 'GONE: game is not active'.
+// A socket failure carries an error code and nothing else: a rejected handshake arrives
+// as an Error whose message is the code, an ack arrives as `{ error: { code } }`.
 // Callers need the code to decide between retry, rejoin and a hard stop.
 export function parseSocketError(error) {
-  const raw = typeof error === 'string' ? error : error?.message || ''
-  const match = /^([A-Z_]+):\s*(.*)$/.exec(raw)
-  if (!match) return { code: 'SOCKET_ERROR', message: raw || 'Socket connection failed' }
-  return { code: match[1], message: match[2] }
+  const raw =
+    (typeof error === 'object' && typeof error?.code === 'string' && error.code) ||
+    (typeof error === 'string' ? error : error?.message || '')
+  const code = raw.trim()
+  return { code: /^[A-Z][A-Z_]*$/.test(code) ? code : 'SOCKET_ERROR' }
+}
+
+/**
+ * The rejection value of every socket failure this module produces.
+ *
+ * `code` is what callers branch on, and it stays the only thing the server sent.
+ * `message` is filled in from the shared code table on the way out, so a screen
+ * that only renders `error.message` shows a sentence instead of leaking a raw
+ * code like GAME_ANSWER_TOO_LATE. A code with no sentence of its own keeps the
+ * generic one, exactly like the REST side.
+ */
+function socketError(code) {
+  const error = new Error(socketErrorMessage(code))
+  error.code = code
+  return error
 }
 
 // Codes the server will keep rejecting: reconnecting with the same token is pointless.
-const FATAL_CODES = ['UNAUTHORIZED', 'FORBIDDEN', 'GONE']
+const FATAL_CODES = [
+  'GAME_TOKEN_INVALID',
+  'GAME_TOKEN_WRONG_ROOM',
+  'GAME_ROOM_NOT_FOUND',
+  'GAME_PLAYER_NOT_FOUND',
+  'GAME_GUESTS_NOT_ALLOWED',
+  'GAME_NOT_HOST',
+]
 
 export function isFatalSocketError(error) {
   return FATAL_CODES.includes(parseSocketError(error).code)
@@ -67,8 +92,8 @@ export function connectGameSocket(token) {
   })
 
   instance.on('connect_error', (error) => {
-    const { code, message } = parseSocketError(error)
-    console.error(`[socket] connect failed: ${code} - ${message}`)
+    const { code } = parseSocketError(error)
+    console.error(`[socket] connect failed: ${code}`)
     // A rejected handshake never becomes valid on its own: stop the retry loop and
     // let the screen decide whether to rejoin the room or leave.
     if (FATAL_CODES.includes(code)) instance.disconnect()
@@ -113,13 +138,14 @@ export function emitGameEvent(event, payload) {
 
 /**
  * Emits an event that the server answers with an ack.
- * A handler that throws acks `{ error }`, so that shape is rejected as an Error
- * and the caller can read the code with parseSocketError.
+ * A handler that throws acks `{ error: { code } }`, so that shape is rejected as an
+ * Error carrying both the code, which the caller reads back with parseSocketError,
+ * and the ready-to-render sentence for that code.
  */
 export function emitGameEventWithAck(event, payload, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     if (!socket) {
-      reject(new Error('SOCKET_CLOSED: no active game socket'))
+      reject(socketError('SOCKET_CLOSED'))
       return
     }
 
@@ -127,14 +153,15 @@ export function emitGameEventWithAck(event, payload, timeoutMs = 8000) {
     const timer = setTimeout(() => {
       if (settled) return
       settled = true
-      reject(new Error(`TIMEOUT: ${event} got no ack`))
+      console.warn(`[socket] ${event} got no ack`)
+      reject(socketError('SOCKET_TIMEOUT'))
     }, timeoutMs)
 
     socket.emit(event, payload ?? {}, (response) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
-      if (response?.error) reject(new Error(response.error))
+      if (response?.error) reject(socketError(response.error.code || 'SERVER_ERROR'))
       else resolve(response ?? {})
     })
   })

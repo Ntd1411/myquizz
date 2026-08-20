@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import UserAvatar from '@/components/base/UserAvatar.vue'
 import ImageCropper from '@/components/quiz/ImageCropper.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { IMAGE_ACCEPT, checkImageFile, uploadImage } from '@/api/storage.api'
 import { AVATAR_SIZE } from '@/utils/imageCrop'
@@ -53,7 +52,6 @@ const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'nume
 const PROFILE_FIELDS = ['fullname', 'phone', 'description']
 
 const auth = useAuthStore()
-const ui = useUiStore()
 const router = useRouter()
 
 const pageEl = ref(null)
@@ -87,6 +85,9 @@ const passwordMode = ref('none')
 const passwords = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const passwordError = ref('')
 const savingPassword = ref(false)
+// A password change leaves nothing on screen to look at - the form closes and the
+// account looks identical - so this one success is worth a line in the panel.
+const passwordChanged = ref(false)
 const sendingReset = ref(false)
 
 const dangerOpen = ref(false)
@@ -259,9 +260,10 @@ async function saveProfile() {
     // The endpoint answers with the whole row, so the store is replaced rather than
     // patched: the header, the nav avatar and this card all read the same object.
     const updated = await updateMe(patch)
+    // The card is the receipt: the inputs collapse back into lines holding the values
+    // that were just stored, so there is nothing left to announce.
     auth.setUser(updated)
     for (const field of PROFILE_FIELDS) open[field] = false
-    ui.toast('Your profile has been updated.', 'success')
   } catch (error) {
     // A duplicate phone comes back as a plain 400 from the backend.
     profileError.value = toErrorMessage(error, 'Could not update your profile.')
@@ -292,7 +294,8 @@ function onAvatarPicked(event) {
 
   const problem = checkImageFile(file)
   if (problem) {
-    ui.toast(problem, 'error')
+    // Reported on the card that owns the avatar, not over the whole page.
+    profileError.value = problem
     return
   }
 
@@ -314,10 +317,12 @@ async function onAvatarCropped({ file }) {
     // Two steps on purpose: presigned upload to storage, then the URL to the user API.
     const publicUrl = await uploadImage(file, 'avatars')
     const avatar = await updateAvatar(publicUrl)
+    // The new picture appears on the card and in the header the moment the store is
+    // patched, which is the only confirmation worth having.
     auth.patchUser({ avatar: avatar || publicUrl })
-    ui.toast('Your avatar has been updated.', 'success')
+    profileError.value = ''
   } catch (error) {
-    ui.toast(toErrorMessage(error, 'Could not upload the image.'), 'error')
+    profileError.value = toErrorMessage(error, 'Could not upload the image.')
   } finally {
     avatarUploading.value = false
     releaseAvatarSource()
@@ -329,6 +334,7 @@ onBeforeUnmount(releaseAvatarSource)
 function openPasswordMode(mode) {
   passwordMode.value = passwordMode.value === mode ? 'none' : mode
   passwordError.value = ''
+  passwordChanged.value = false
   passwords.oldPassword = ''
   passwords.newPassword = ''
   passwords.confirmPassword = ''
@@ -360,7 +366,7 @@ async function savePassword() {
     passwords.oldPassword = ''
     passwords.newPassword = ''
     passwords.confirmPassword = ''
-    ui.toast('Your password has been changed.', 'success')
+    passwordChanged.value = true
   } catch (error) {
     // 400 means the current password is wrong; 429 comes from the auth rate limiter.
     passwordError.value = toErrorMessage(error, 'Could not change your password.')
@@ -371,8 +377,9 @@ async function savePassword() {
 
 /**
  * Reset path for people who cannot recall the current password: it reuses the public
- * forgot-password endpoint and then hands over to the reset screen, which already
- * handles the emailed code and its countdown.
+ * forgot-password endpoint and then hands over to the forgot-password screen, which
+ * already handles the emailed code, its countdown and the exchange for a reset ticket.
+ * The new password is typed on the reset screen that follows, never here.
  */
 async function sendResetCode() {
   passwordError.value = ''
@@ -380,11 +387,17 @@ async function sendResetCode() {
 
   sendingReset.value = true
   try {
-    const resetTime = await forgotPassword(email.value)
-    ui.toast('We emailed you a reset code.', 'success')
+    // The endpoint answers with two deadlines, but only the resend one is passed on:
+    // the code screen reads it off the query string to drive its cooldown, and lets a
+    // failed submit speak for an expired code instead of counting it down. The address
+    // travels with it so that screen opens on the code step instead of asking for an
+    // email this page already knows.
+    // The code screen it lands on names the address the mail went to, so the send
+    // reports itself.
+    const { resetTime } = await forgotPassword(email.value)
     router.push({
-      name: 'reset-password',
-      query: { email: email.value, resetTime: resetTime ?? undefined },
+      name: 'forgot-password',
+      query: { email: email.value, resetTime },
     })
   } catch (error) {
     passwordError.value = toErrorMessage(error, 'Could not send the reset code.')
@@ -406,7 +419,7 @@ async function confirmDeactivate() {
     dangerPassword.value = ''
     // The account is gone for every future request, so drop the local session too.
     await auth.logout()
-    ui.toast('Your account has been deactivated.')
+    // Landing on the home page as a signed-out visitor is the confirmation.
     router.push({ name: 'home' })
   } catch (error) {
     dangerError.value = toErrorMessage(error, 'Could not deactivate your account.')

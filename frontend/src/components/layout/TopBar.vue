@@ -2,11 +2,11 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import { useUiStore } from '@/stores/ui.store'
+
 import BrandLogo from '@/components/base/BrandLogo.vue'
 
 const auth = useAuthStore()
-const ui = useUiStore()
+
 const route = useRoute()
 const router = useRouter()
 
@@ -125,7 +125,7 @@ async function handleLogout() {
   menuOpen.value = false
   mobileOpen.value = false
   await auth.logout()
-  ui.toast('Signed out.')
+
   router.push({ name: 'home' })
 }
 </script>
@@ -135,7 +135,7 @@ async function handleLogout() {
   <header class="sticky top-0 z-50 border-b border-hairline bg-white/[0.86] backdrop-blur-[10px] backdrop-saturate-[180%]">
     <div class="container-page flex h-16 items-center gap-md">
       <RouterLink :to="{ name: 'home' }" class="flex shrink-0 items-center" aria-label="MyQuizz home">
-        <BrandLogo :size="22" />
+        <BrandLogo :size="30" />
       </RouterLink>
 
       <!-- Primary navigation lives on the left, next to the logo. -->
@@ -353,7 +353,7 @@ async function handleLogout() {
       >
         <div class="flex items-center justify-between">
           <RouterLink :to="{ name: 'home' }" class="flex items-center" aria-label="MyQuizz home" @click="mobileOpen = false">
-            <BrandLogo :size="20" />
+            <BrandLogo :size="30" />
           </RouterLink>
           <button
             class="icon-btn"

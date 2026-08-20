@@ -7,7 +7,6 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { createQuiz } from '@/api/quizzes.api'
 import { toErrorMessage } from '@/api/envelope'
-import { useUiStore } from '@/stores/ui.store'
 import {
   clearAutoDraft,
   draftKey,
@@ -18,7 +17,6 @@ import QuizEditor from '@/components/quiz/QuizEditor.vue'
 import { makeQuestion, makeQuizMeta } from '@/utils/quizImport'
 
 const router = useRouter()
-const ui = useUiStore()
 
 const AUTOSAVE_KEY = draftKey()
 
@@ -88,14 +86,14 @@ async function submit(payload) {
     clearAutoDraft(AUTOSAVE_KEY)
     dirty.value = false
     editor.value?.markSaved()
-    ui.toast('Your quiz has been created.', 'success')
+    // The quiz page it opens on is the confirmation, and it shows the real thing.
     router.push(
       created?.id ? { name: 'quiz-detail', params: { id: created.id } } : { name: 'library' },
     )
   } catch (error) {
-    const message = toErrorMessage(error, 'Could not create the quiz.')
-    editor.value?.setError(message)
-    ui.toast(message, 'error')
+    // The editor keeps the message next to the form the author is still looking at,
+    // which is where the work that failed to save still is.
+    editor.value?.setError(toErrorMessage(error, 'Could not create the quiz.'))
   } finally {
     saving.value = false
   }

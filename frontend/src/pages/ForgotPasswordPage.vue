@@ -1,44 +1,69 @@
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AuthShell from '@/components/auth/AuthShell.vue'
 import BaseField from '@/components/base/BaseField.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
-import PasswordField from '@/components/base/PasswordField.vue'
-import { useUiStore } from '@/stores/ui.store'
-import { forgotPassword, resetPassword } from '@/api/users.api'
-import { toErrorMessage } from '@/api/envelope'
+import PinInput from '@/components/base/PinInput.vue'
+import { forgotPassword, verifyResetCode } from '@/api/users.api'
+import { saveResetTicket } from '@/utils/resetTicket'
+import { toErrorCode, toErrorMessage } from '@/api/envelope'
 
-const ui = useUiStore()
+/**
+ * Steps one and two of a reset: ask for the code, then prove the email arrived.
+ * The new password is NOT typed here.
+ *
+ * That split follows the backend: the six-digit code is exchanged at
+ * POST /users/password-reset/verify for a ticket, and only that ticket can write a
+ * password. So the code is spent while it is still fresh - it only has two minutes -
+ * and the reader then gets ten calm minutes on the next screen to think of a password,
+ * instead of racing a dying code with a form half filled in.
+ *
+ * ProfilePage can also land here already on the code step: it has an address and has
+ * just asked for a code, so it hands both over through the query string.
+ */
+const route = useRoute()
 const router = useRouter()
 
-// "request" asks for the email, "verify" holds the OTP + new password form.
-// Both live on this single page: sending the code only swaps the step.
+// 'request' asks for the email, 'verify' holds the 6-digit code.
 const step = ref('request')
 
-const email = ref('')
+const email = ref(typeof route.query.email === 'string' ? route.query.email : '')
 const otp = ref('')
-const newPassword = ref('')
-const confirmPassword = ref('')
 
 const sending = ref(false)
-const resetting = ref(false)
+const verifying = ref(false)
 const formError = ref('')
 
-// The backend answers POST /users/forgot-password with { resetTime }: the instant
-// the current OTP expires. Re-sending to the same email while it is still valid
-// does not send a new email or throw - it just echoes back this same expiry, so
-// the countdown here always reflects the one real OTP outstanding.
-const secondsLeft = ref(0)
+/*
+ * POST /users/forgot-password answers with two instants, but only resetTime is used
+ * here: it says when a new code may be requested, a minute after the send. The code
+ * stays valid longer (expiresAt) and that deadline is deliberately not shown - a dead
+ * code already fails with a clear error on submit, so a second countdown would only
+ * add noise and pressure. The deadline is kept absolute and re-read from a ticking
+ * clock, which keeps the label honest when a backgrounded tab throttles the interval.
+ */
+const now = ref(Date.now())
+const resendAt = ref(0)
 let timerId = null
 
-const canResend = computed(() => secondsLeft.value === 0 && !sending.value)
+function remainingSeconds(deadline) {
+  if (!deadline) return 0
+  return Math.max(0, Math.ceil((deadline - now.value) / 1000))
+}
 
-const countdownLabel = computed(() => {
-  const minutes = Math.floor(secondsLeft.value / 60)
-  const seconds = secondsLeft.value % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-})
+const resendIn = computed(() => remainingSeconds(resendAt.value))
+
+const canResend = computed(() => resendIn.value === 0 && !sending.value)
+
+function formatCountdown(seconds) {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+const resendLabel = computed(() =>
+  resendIn.value > 0 ? `Resend in ${formatCountdown(resendIn.value)}` : 'Resend code',
+)
 
 function stopCountdown() {
   if (timerId) {
@@ -47,49 +72,75 @@ function stopCountdown() {
   }
 }
 
-/** Ticks once per second down to zero, then re-enables the resend button. */
-function startCountdown(seconds) {
-  stopCountdown()
-  secondsLeft.value = Math.max(0, Math.floor(seconds))
-  if (secondsLeft.value === 0) return
+/** The interval only has to outlive the resend cooldown, so it stops right after it. */
+function startCountdown() {
+  now.value = Date.now()
+  if (timerId) return
 
   timerId = setInterval(() => {
-    secondsLeft.value -= 1
-    if (secondsLeft.value <= 0) stopCountdown()
+    now.value = Date.now()
+    if (resendIn.value === 0) stopCountdown()
   }, 1000)
 }
 
-function startCountdownFromResetTime(resetTime) {
-  const expiresAt = new Date(resetTime).getTime()
-  if (Number.isNaN(expiresAt)) return
-  startCountdown((expiresAt - Date.now()) / 1000)
+function toDeadline(value) {
+  if (!value) return 0
+  const at = new Date(value).getTime()
+  return Number.isNaN(at) ? 0 : at
 }
 
+/** Takes the resend deadline the endpoint returns and restarts the clock on it. */
+function applySchedule({ resetTime }) {
+  resendAt.value = toDeadline(resetTime)
+  if (resendAt.value) startCountdown()
+}
+
+// ProfilePage already sent the code, so this opens straight on the code step and
+// keeps its cooldown rather than sending a second mail on arrival.
+onMounted(() => {
+  if (email.value && route.query.resetTime) {
+    applySchedule({ resetTime: route.query.resetTime })
+    step.value = 'verify'
+  }
+})
+
+onBeforeUnmount(stopCountdown)
+
 /**
- * Maps a failed send/resend into a fixed, user-facing message. The backend's own
- * error text is never shown here - it may describe internal rate-limit windows or
- * other details that are not meant for the reader.
+ * Maps a failed send/resend into a fixed, user-facing message. The match is on
+ * error.code, the only part of a failure the API promises: the status alone
+ * cannot tell a Google-only account from a rejected body, since both are 400.
+ * Anything else falls through to the shared table, which also covers the
+ * network and server cases.
  */
 function sendCodeErrorMessage(error) {
-  const status = error?.response?.status
-  if (status === 404) return 'No account uses this email address.'
-  if (status === 410) return 'This account has been deactivated.'
-  if (status === 400) return 'This account cannot reset its password this way.'
-  if (error?.code === 'ERR_NETWORK') return 'Could not connect to the server.'
-  return 'Could not send the verification code. Please try again.'
+  const fallback = 'Could not send the verification code. Please try again.'
+  const code = toErrorCode(error)
+
+  if (code === 'USER_EMAIL_NOT_FOUND') return 'No account uses this email address.'
+  if (code === 'USER_DEACTIVATED') return 'This account has been deactivated.'
+  if (code === 'AUTH_GOOGLE_ONLY') {
+    return 'This account cannot reset its password this way.'
+  }
+  if (code === 'RATE_LIMITED') {
+    return 'Too many attempts. Please try again in a few minutes.'
+  }
+
+  return toErrorMessage(error, fallback)
 }
 
 async function sendCode() {
   formError.value = ''
   sending.value = true
   try {
-    // Re-requesting a code for an email that already has one outstanding is not an
-    // error: the backend just hands back the same expiry instead of resending the
-    // email, so this always lands here rather than in the catch block.
-    const { resetTime } = await forgotPassword(email.value)
-    startCountdownFromResetTime(resetTime)
+    // Asking again during the cooldown is not an error: the backend then sends nothing
+    // and answers with the deadlines of the code already outstanding, so this always
+    // lands here rather than in the catch block.
+    // Moving to the code step is the receipt: that screen names the address the mail
+    // went to, which says more than a notice that fades after three seconds.
+    applySchedule(await forgotPassword(email.value))
+    otp.value = ''
     step.value = 'verify'
-    ui.toast('A verification code has been sent to your email.')
   } catch (error) {
     formError.value = sendCodeErrorMessage(error)
   } finally {
@@ -97,33 +148,42 @@ async function sendCode() {
   }
 }
 
-async function submitReset() {
+/**
+ * Exchanges the code for a ticket and hands that ticket to the reset screen through
+ * sessionStorage, never through the URL: a credential in a link ends up in history and
+ * in referrers, which is the very thing the ticket step exists to avoid.
+ */
+async function submitCode() {
   formError.value = ''
 
-  if (newPassword.value !== confirmPassword.value) {
-    formError.value = 'Password confirmation does not match.'
+  if (otp.value.length !== 6) {
+    formError.value = 'Enter the 6-digit verification code.'
     return
   }
 
-  resetting.value = true
+  verifying.value = true
   try {
-    await resetPassword({ email: email.value, otp: otp.value, newPassword: newPassword.value })
+    saveResetTicket(await verifyResetCode({ email: email.value, otp: otp.value }))
     stopCountdown()
-    ui.toast('Your password has been reset.')
-    router.push({ name: 'login' })
+    router.push({ name: 'reset-password' })
   } catch (error) {
-    formError.value = toErrorMessage(error, 'The verification code is invalid or has expired.')
+    // A wrong code is worth clearing: the next attempt starts from an empty row, and
+    // five wrong ones kill the code server side anyway.
+    otp.value = ''
+    formError.value = toErrorMessage(
+      error,
+      'The verification code is invalid or has expired.',
+    )
   } finally {
-    resetting.value = false
+    verifying.value = false
   }
 }
 
 function backToEmail() {
   step.value = 'request'
+  otp.value = ''
   formError.value = ''
 }
-
-onBeforeUnmount(stopCountdown)
 </script>
 
 <template>
@@ -137,8 +197,9 @@ onBeforeUnmount(stopCountdown)
           Enter your account email and we will send you a verification code.
         </p>
         <p v-else class="text-body-sm text-ink-muted">
-          We sent a 6-digit code to <span class="font-medium text-ink">{{ email }}</span>.
-          Enter it below with your new password.
+          We sent a 6-digit code to
+          <span class="font-medium text-ink" v-text="email" />.
+          You can also open the link in that email instead.
         </p>
       </div>
 
@@ -154,7 +215,7 @@ onBeforeUnmount(stopCountdown)
         />
 
         <p v-if="formError" class="text-caption text-sticker-orange-deep" role="alert">
-          {{ formError }}
+          <span v-text="formError" />
         </p>
 
         <button class="btn-auth-primary w-full" type="submit" :disabled="sending">
@@ -163,57 +224,48 @@ onBeforeUnmount(stopCountdown)
         </button>
       </form>
 
-      <!-- Step 2: the code arrived, so the reset form takes over. -->
-      <form v-else class="flex flex-col gap-md" @submit.prevent="submitReset">
-        <BaseField
-          v-model="otp"
-          label="Verification code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          maxlength="6"
-          required
-        />
-        <PasswordField
-          v-model="newPassword"
-          label="New password"
-          autocomplete="new-password"
-          required
-        />
-        <PasswordField
-          v-model="confirmPassword"
-          label="Confirm new password"
-          autocomplete="new-password"
-          required
-        />
+      <!--
+        Step 2: the code only. Filling the last cell submits on its own, because a full
+        code has nothing left to confirm.
+      -->
+      <form v-else class="flex flex-col gap-md" @submit.prevent="submitCode">
+        <div class="flex flex-col items-center gap-xs">
+          <PinInput
+            v-model="otp"
+            :length="6"
+            autofocus
+            label="Verification code"
+            @complete="submitCode"
+          />
+        </div>
 
-        <div class="flex items-center justify-between text-caption">
-          <span v-if="secondsLeft > 0" class="text-ink-muted">
-            Code expires in <span class="font-semibold text-ink tabular-nums">{{ countdownLabel }}</span>
-          </span>
-          <span v-else class="text-sticker-orange-deep">The code has expired.</span>
-
-          <!-- Resend stays disabled while the current code is still valid. Clicking it
-               early would just re-fetch the same expiry without sending a new email. -->
+        <div class="flex items-center justify-end text-caption">
+          <!-- Resend waits out the cooldown only, not the whole life of the code: a mail
+               that never arrived should not cost the reader the full two minutes. -->
           <button
             class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
             type="button"
             :disabled="!canResend"
             @click="sendCode"
           >
-            Resend code
+            <span v-text="resendLabel" />
           </button>
         </div>
 
         <p v-if="formError" class="text-caption text-sticker-orange-deep" role="alert">
-          {{ formError }}
+          <span v-text="formError" />
         </p>
 
-        <button class="btn-auth-primary w-full" type="submit" :disabled="resetting">
-          <BaseSpinner v-if="resetting" />
-          <span>Reset password</span>
+        <button class="btn-auth-primary w-full" type="submit" :disabled="verifying">
+          <BaseSpinner v-if="verifying" />
+          <span>Verify code</span>
         </button>
 
-        <button class="w-full text-center text-caption text-ink-muted hover:text-ink" type="button" @click="backToEmail">
+        <button
+          class="w-full text-center text-caption text-ink-muted hover:text-ink"
+          type="button"
+          @click="backToEmail"
+        >
           Use another email
         </button>
       </form>

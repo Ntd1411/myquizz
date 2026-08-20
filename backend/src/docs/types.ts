@@ -12,6 +12,8 @@
  * render an editable Cookie field and send an empty one next to the real one.
  */
 
+import type { ErrorCode } from '../shared/errors/codes.js'
+
 export type OpenApiObject = Record<string, unknown>
 
 export type SchemaMap = Record<string, OpenApiObject>
@@ -112,14 +114,24 @@ export const successResponse = (args: {
   }
 }
 
-/** One failure the API can actually produce, with the message from the code. */
-export type ErrorCase = string | { message: string; details: unknown }
+/**
+ * One failure the API can actually produce, named by its code.
+ *
+ * A case is the code the endpoint answers with, not a sentence: responses carry
+ * no prose, so documenting an English message here would document something the
+ * API never sends.
+ *
+ * It is the real ErrorCode union, so a code that does not exist in
+ * shared/errors/codes.ts fails the build instead of shipping a reference that
+ * promises something the API cannot answer with.
+ */
+export type ErrorCase = ErrorCode
 
 /**
  * Failure responses all share the error envelope, so the only interesting part
- * is the message. Every case listed at a call site is copied verbatim from the
- * controller or service that throws it, and the reference renders one
- * selectable example per message rather than an empty generic string.
+ * is which code came back. Every case listed at a call site is copied from the
+ * throw site in the controller or service, and the reference renders one
+ * selectable example per code rather than an empty generic string.
  */
 export const errorResponse = (
   description: string,
@@ -127,16 +139,13 @@ export const errorResponse = (
 ): OpenApiObject => {
   const examples: OpenApiObject = {}
 
-  for (const entry of cases) {
-    const message = typeof entry === 'string' ? entry : entry.message
-    const details = typeof entry === 'string' ? null : entry.details
-
-    examples[message] = {
-      summary: message,
+  for (const code of cases) {
+    examples[code] = {
+      summary: code,
       value: {
         success: false,
         data: null,
-        error: { message, details },
+        error: { code },
         meta: { timestamp: EXAMPLE_TIMESTAMP }
       }
     }
@@ -150,11 +159,21 @@ export const errorResponse = (
   }
 }
 
-/** Body rejected by a Zod schema before the controller ever runs. */
-export const validationError = (details: Record<string, string>): ErrorCase => ({
-  message: 'Validation error',
-  details
-})
+/**
+ * Body rejected by a Zod schema before the controller ever runs.
+ *
+ * The per-field reasons are not documented because they are not returned: the
+ * client validates the same shapes before sending, so a body that fails here is
+ * a client defect, and the field map is written to the server log instead.
+ *
+ * `fields` is still accepted, and ignored, so a call site can keep naming the
+ * rule it is illustrating next to the endpoint it belongs to. Several calls on
+ * one operation collapse into the single VALIDATION_ERROR example, which is
+ * exactly what the endpoint answers.
+ */
+export const validationError = (
+  _fields?: Record<string, string>
+): ErrorCase => 'VALIDATION_ERROR'
 
 /**
  * JSON request body, required unless stated otherwise.

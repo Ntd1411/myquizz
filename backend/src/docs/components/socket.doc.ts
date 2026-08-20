@@ -174,8 +174,8 @@ export const socketSchemas: SchemaMap = {
   SocketError: object(
     {
       event: str('The client event that failed.'),
-      message: str('CODE: sentence, for example "FORBIDDEN: host only". UNAUTHORIZED, FORBIDDEN and GONE are fatal: reconnecting with the same token will fail again.')
+      code: str('Error code, the same vocabulary as the REST envelope, for example GAME_NOT_HOST or GAME_LOBBY_ONLY. The client turns the code into a sentence; the server never sends prose. GAME_TOKEN_INVALID, GAME_TOKEN_WRONG_ROOM, GAME_ROOM_NOT_FOUND and GAME_PLAYER_NOT_FOUND are fatal: reconnecting with the same token will fail again.')
     },
-    ['event', 'message']
+    ['event', 'code']
   )
 }

@@ -11,7 +11,7 @@ const year = new Date().getFullYear()
     <div class="container-page pb-lg pt-[48px]">
       <div class="grid grid-cols-2 gap-xxl md:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
         <div class="col-span-2 lg:col-span-1">
-          <BrandLogo :size="20" />
+          <BrandLogo :size="30" />
           <p class="mt-sm max-w-[280px] text-caption text-ink-muted">
             A calmer place to learn and play quizzes together — real-time or solo, at your own pace.
           </p>
