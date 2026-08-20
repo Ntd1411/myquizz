@@ -4,3 +4,4 @@
 .env
 .vscode/tasks.json
 design
+.env.prod

@@ -4,23 +4,29 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import AuthShell from '@/components/auth/AuthShell.vue'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import PasswordField from '@/components/base/PasswordField.vue'
-import PinInput from '@/components/base/PinInput.vue'
 import StateBlock from '@/components/base/StateBlock.vue'
-import { resetPassword, resetPasswordWithToken, forgotPassword, verifyResetToken } from '@/api/users.api'
+import { verifyResetLink, getResetTicket, completeReset } from '@/api/users.api'
+import { saveResetTicket, loadResetTicket, clearResetTicket } from '@/utils/resetTicket'
 import { useUiStore } from '@/stores/ui.store'
 import { toErrorMessage } from '@/api/envelope'
 import { revealOnEnter } from '@/composables/useMotion'
 
 /**
- * One route, two ways in:
- *   - The emailed link carries ?token=...: the token is verified against the
- *     backend first, then POST /users/reset-password-token finishes the job.
- *   - Resending a code from the forgot-password page or ProfilePage carries
- *     ?email=...&resetTime=...: POST /users/reset-password with the 6-digit OTP,
- *     that single timestamp driving the resend cooldown below.
+ * Last step of a reset: the new password, and nothing else. No code and no emailed
+ * token reach this screen - it works purely with the ticket handed out by
+ * POST /users/password-reset/verify, which is also the only thing
+ * POST /users/password-reset/complete accepts.
  *
- * Neither query param means the page was opened directly, which is not a flow this
- * screen can recover: it sends the reader back to request a fresh link or code.
+ * Two ways in, and both end up holding a ticket:
+ *   - /reset-password       the code was verified on the forgot-password screen, which
+ *                           left the ticket in sessionStorage for this tab.
+ *   - /reset-password/link  the emailed link, carrying ?token=...: the token is
+ *                           exchanged for a ticket here and then dropped from the URL,
+ *                           because it is spent and a bookmark of it would only ever
+ *                           land on the error state below.
+ *
+ * The ticket is read back from the server before the form appears, so a session that
+ * expired says so instead of failing after the password has been typed twice.
  */
 const ui = useUiStore()
 const route = useRoute()
@@ -28,48 +34,38 @@ const router = useRouter()
 
 const pageEl = ref(null)
 
-const token = computed(() => (typeof route.query.token === 'string' ? route.query.token : ''))
-const email = ref(typeof route.query.email === 'string' ? route.query.email : '')
-const mode = computed(() => (token.value ? 'token' : email.value ? 'otp' : 'invalid'))
+// 'checking' | 'ready' | 'invalid'
+const state = ref('checking')
 
-const otp = ref('')
+// Masked by the backend (de**@myquizz.com), so it can be shown without printing the
+// address to whoever opened the link.
+const maskedEmail = ref('')
+
 const newPassword = ref('')
 const confirmPassword = ref('')
 const pending = ref(false)
 const formError = ref('')
-const resending = ref(false)
-
-// Token links are checked with the backend BEFORE the form is shown: an expired
-// or already-used link lands on the error state instead of failing at submit
-// time. The check does not consume the token - the real reset re-validates it.
-const tokenState = ref('idle')
 
 /*
- * Same countdown behaviour as ForgotPasswordPage: only the resend cooldown is tracked.
- * The backend also answers with the moment the code dies, but that deadline is not
- * surfaced - submitting a dead code fails with a plain error, which says it better than
- * a ticking clock the reader has to race. The cooldown is kept as an absolute deadline
- * read off one ticking clock, which also survives a backgrounded tab throttling it.
+ * A ticket lives ten minutes, which is long enough to be worth showing: unlike the
+ * two-minute code it is not something to race, and knowing there is a deadline is
+ * better than being logged out of a half-typed form without warning. It is kept as an
+ * absolute instant and read off one ticking clock, so a throttled background tab does
+ * not drift.
  */
 const now = ref(Date.now())
-const resendAt = ref(0)
+const expiresAt = ref(0)
 let timerId = null
 
-function remainingSeconds(deadline) {
-  if (!deadline) return 0
-  return Math.max(0, Math.ceil((deadline - now.value) / 1000))
-}
+const remaining = computed(() => {
+  if (!expiresAt.value) return 0
+  return Math.max(0, Math.ceil((expiresAt.value - now.value) / 1000))
+})
 
-const resendIn = computed(() => remainingSeconds(resendAt.value))
-
-const canResend = computed(() => resendIn.value === 0 && !resending.value)
-
-function formatCountdown(seconds) {
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
-}
-
-const resendLabel = computed(() => formatCountdown(resendIn.value))
+const remainingLabel = computed(() => {
+  const minutes = Math.floor(remaining.value / 60)
+  return `${minutes}:${String(remaining.value % 60).padStart(2, '0')}`
+})
 
 function stopCountdown() {
   if (timerId) {
@@ -78,14 +74,20 @@ function stopCountdown() {
   }
 }
 
-/** The interval only has to outlive the resend cooldown, so it stops right after it. */
+function expire() {
+  stopCountdown()
+  clearResetTicket()
+  state.value = 'invalid'
+}
+
+/** Runs only while the ticket is alive, and turns into the error state when it dies. */
 function startCountdown() {
   now.value = Date.now()
   if (timerId) return
 
   timerId = setInterval(() => {
     now.value = Date.now()
-    if (resendIn.value === 0) stopCountdown()
+    if (remaining.value === 0) expire()
   }, 1000)
 }
 
@@ -95,48 +97,50 @@ function toDeadline(value) {
   return Number.isNaN(at) ? 0 : at
 }
 
-/** Takes the deadline the endpoint (or the query string) carries and restarts the clock. */
-function applySchedule({ resetTime }) {
-  resendAt.value = toDeadline(resetTime)
-  if (resendAt.value) startCountdown()
-}
+const isLinkMode = computed(() => route.name === 'reset-password-link')
 
 onMounted(async () => {
-  if (mode.value === 'otp') {
-    applySchedule({ resetTime: route.query.resetTime })
-  }
-
-  if (mode.value === 'token') {
-    tokenState.value = 'verifying'
-    try {
-      await verifyResetToken(token.value)
-      tokenState.value = 'valid'
-    } catch {
-      tokenState.value = 'invalid'
-    }
-  }
-
   revealOnEnter(pageEl.value)
+
+  if (isLinkMode.value) {
+    const token = typeof route.query.token === 'string' ? route.query.token : ''
+    if (!token) {
+      state.value = 'invalid'
+      return
+    }
+
+    try {
+      saveResetTicket(await verifyResetLink(token))
+      // The token is spent now, so it leaves the address bar and the plain reset route
+      // takes over from the stored ticket.
+      router.replace({ name: 'reset-password' })
+    } catch {
+      state.value = 'invalid'
+    }
+    return
+  }
+
+  const stored = loadResetTicket()
+  if (!stored) {
+    state.value = 'invalid'
+    return
+  }
+
+  try {
+    // Reading the ticket does not spend it; it only says whether it is still alive and
+    // which address it belongs to.
+    const status = await getResetTicket(stored.ticket)
+    maskedEmail.value = status.email || stored.email
+    expiresAt.value = toDeadline(status.expiresAt)
+    state.value = 'ready'
+    if (expiresAt.value) startCountdown()
+  } catch {
+    clearResetTicket()
+    state.value = 'invalid'
+  }
 })
 
 onBeforeUnmount(stopCountdown)
-
-async function resendCode() {
-  if (!canResend.value) return
-  formError.value = ''
-  resending.value = true
-  try {
-    // Only the cooldown deadline is read from the answer; the expiry it also reports
-    // stays hidden on purpose.
-    applySchedule(await forgotPassword(email.value))
-    otp.value = ''
-    ui.toast('A new verification code has been sent.')
-  } catch (error) {
-    formError.value = toErrorMessage(error, 'Could not resend the verification code.')
-  } finally {
-    resending.value = false
-  }
-}
 
 async function submit() {
   formError.value = ''
@@ -149,28 +153,27 @@ async function submit() {
     formError.value = 'Password confirmation does not match.'
     return
   }
-  if (mode.value === 'otp' && otp.value.length !== 6) {
-    formError.value = 'Enter the 6-digit verification code.'
+
+  const stored = loadResetTicket()
+  if (!stored) {
+    expire()
     return
   }
 
   pending.value = true
   try {
-    if (mode.value === 'token') {
-      await resetPasswordWithToken({ token: token.value, newPassword: newPassword.value })
-    } else {
-      await resetPassword({ email: email.value, otp: otp.value, newPassword: newPassword.value })
-    }
+    await completeReset({ ticket: stored.ticket, newPassword: newPassword.value })
+    // The ticket is single use, so nothing is left to keep, and every device was signed
+    // out server side: logging in again is the only way on from here.
+    clearResetTicket()
     stopCountdown()
-    ui.toast('Your password has been reset.', 'success')
+    ui.toast('Your password has been reset. Please log in again.', 'success')
     router.push({ name: 'login' })
   } catch (error) {
-    formError.value = toErrorMessage(
-      error,
-      mode.value === 'token'
-        ? 'This reset link is invalid or has expired.'
-        : 'The verification code is invalid or has expired.',
-    )
+    // The backend text is worth showing here: it is written for the reader and says
+    // which of the three refusals happened - a spent ticket, a password identical to
+    // the current one, or a deactivated account.
+    formError.value = toErrorMessage(error, 'Could not reset your password.')
   } finally {
     pending.value = false
   }
@@ -181,48 +184,42 @@ async function submit() {
   <AuthShell>
     <div ref="pageEl" class="flex flex-col gap-md" data-enter>
       <StateBlock
-        v-if="mode === 'invalid' || (mode === 'token' && tokenState === 'invalid')"
+        v-if="state === 'invalid'"
         variant="error"
         icon="🔗"
-        :title="mode === 'invalid'
-          ? 'This reset link is missing its details'
-          : 'This reset link is invalid or has expired'"
-        message="Request a new reset email or code and open the link on this device."
+        title="This reset session has expired"
+        message="Reset links and codes are single use and short lived. Request a new one and finish the reset in the tab you started it in."
       >
         <RouterLink :to="{ name: 'forgot-password' }" class="btn-auth-primary mt-xs">
-          Request a new link
+          Request a new code
         </RouterLink>
       </StateBlock>
 
-      <!-- Token links verify against the backend before the form appears. -->
+      <!-- The ticket is checked with the backend before any field is shown. -->
       <div
-        v-else-if="mode === 'token' && tokenState !== 'valid'"
+        v-else-if="state === 'checking'"
         class="flex flex-col items-center gap-sm py-lg text-body-sm text-ink-muted"
       >
         <BaseSpinner />
-        <p>Checking your reset link…</p>
+        <p>Checking your reset session…</p>
       </div>
 
       <template v-else>
         <div class="flex flex-col items-center gap-xxs text-center">
           <h1 class="text-heading-2 text-ink">
-            Reset password
+            Choose a new password
           </h1>
-          <p v-if="mode === 'otp'" class="text-body-sm text-ink-muted">
-            Enter the 6-digit code sent to <span class="font-medium text-ink">{{ email }}</span>
-            with your new password.
+          <p class="text-body-sm text-ink-muted">
+            For the account
+            <span class="font-medium text-ink" v-text="maskedEmail" />.
+            Every device will be signed out.
           </p>
-          <p v-else class="text-body-sm text-ink-muted">
-            Choose a new password for your account.
+          <p v-if="remaining > 0" class="text-caption text-ink-faint">
+            Finish within <span v-text="remainingLabel" />
           </p>
         </div>
 
         <form class="flex flex-col gap-md" @submit.prevent="submit">
-          <div v-if="mode === 'otp'" class="flex flex-col gap-xxs">
-            <span class="text-caption font-medium text-ink-2">Verification code</span>
-            <PinInput v-model="otp" :length="6" autofocus label="Verification code" />
-          </div>
-
           <PasswordField
             v-model="newPassword"
             label="New password"
@@ -236,20 +233,8 @@ async function submit() {
             required
           />
 
-          <div v-if="mode === 'otp'" class="flex items-center justify-end text-caption">
-            <!-- Unlocked by the shorter cooldown, not by the death of the code. -->
-            <button
-              class="font-medium text-ink underline-offset-4 transition-opacity duration-150 hover:underline disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline"
-              type="button"
-              :disabled="!canResend"
-              @click="resendCode"
-            >
-              {{ resendIn > 0 ? `Resend in ${resendLabel}` : 'Resend code' }}
-            </button>
-          </div>
-
           <p v-if="formError" class="text-caption text-ans-a" role="alert">
-            {{ formError }}
+            <span v-text="formError" />
           </p>
 
           <button class="btn-auth-primary w-full" type="submit" :disabled="pending">

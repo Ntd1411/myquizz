@@ -371,8 +371,9 @@ async function savePassword() {
 
 /**
  * Reset path for people who cannot recall the current password: it reuses the public
- * forgot-password endpoint and then hands over to the reset screen, which already
- * handles the emailed code and its countdown.
+ * forgot-password endpoint and then hands over to the forgot-password screen, which
+ * already handles the emailed code, its countdown and the exchange for a reset ticket.
+ * The new password is typed on the reset screen that follows, never here.
  */
 async function sendResetCode() {
   passwordError.value = ''
@@ -381,12 +382,14 @@ async function sendResetCode() {
   sendingReset.value = true
   try {
     // The endpoint answers with two deadlines, but only the resend one is passed on:
-    // the reset screen reads it off the query string to drive its cooldown, and lets a
-    // failed submit speak for an expired code instead of counting it down.
+    // the code screen reads it off the query string to drive its cooldown, and lets a
+    // failed submit speak for an expired code instead of counting it down. The address
+    // travels with it so that screen opens on the code step instead of asking for an
+    // email this page already knows.
     const { resetTime } = await forgotPassword(email.value)
     ui.toast('We emailed you a reset code.', 'success')
     router.push({
-      name: 'reset-password',
+      name: 'forgot-password',
       query: { email: email.value, resetTime },
     })
   } catch (error) {

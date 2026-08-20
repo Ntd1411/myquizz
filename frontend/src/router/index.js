@@ -16,17 +16,29 @@ const routes = [
   // viewport, so the site header and footer would only crowd it.
   { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { guestOnly: true, bare: true } },
   { path: '/register', name: 'register', component: () => import('@/pages/RegisterPage.vue'), meta: { guestOnly: true, bare: true } },
+  // The reset itself is three steps and two screens: /forgot-password asks for the
+  // code and verifies it, /reset-password writes the password with the ticket that
+  // verification handed out, and /reset-password/link is where the emailed link lands
+  // with its token. None of them is `guestOnly`: a signed-in reader who cannot recall
+  // the current password starts the same flow from account settings, and bouncing them
+  // home would leave the reset half done.
   {
     path: '/forgot-password',
     name: 'forgot-password',
     component: () => import('@/pages/ForgotPasswordPage.vue'),
-    meta: { guestOnly: true, bare: true },
+    meta: { bare: true },
   },
   {
     path: '/reset-password',
     name: 'reset-password',
     component: () => import('@/pages/ResetPasswordPage.vue'),
-    meta: { guestOnly: true, bare: true },
+    meta: { bare: true },
+  },
+  {
+    path: '/reset-password/link',
+    name: 'reset-password-link',
+    component: () => import('@/pages/ResetPasswordPage.vue'),
+    meta: { bare: true },
   },
 
   // Landing route the backend redirects to after Google OAuth sets the cookies.

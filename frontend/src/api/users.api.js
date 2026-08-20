@@ -61,26 +61,58 @@ export async function forgotPassword(email) {
   return unwrap(res.data)
 }
 
-export async function resetPassword({ email, otp, newPassword }) {
-  const res = await http.post('/users/reset-password', { email, otp, newPassword })
+/**
+ * A reset runs in three steps, and the password is only written by the last one:
+ *   1. forgotPassword(email)                emails a 6-digit code AND a link
+ *   2. verifyResetCode / verifyResetLink    exchanges either one for a ticket
+ *   3. completeReset({ ticket, ... })       writes the new password
+ *
+ * Neither the code nor the emailed token can set a password on its own, so the reset
+ * form is reachable only with a ticket, and a replayed URL no longer opens it.
+ */
+
+/**
+ * Step two with the six-digit code. The address is required next to it: the code alone
+ * does not name the account it belongs to. Five wrong codes delete the outstanding one
+ * and answer 429, which means a new email is needed rather than another guess.
+ *
+ * Answers { ticket, expiresAt, email }, where the address comes back masked so the
+ * reset screen can name it without printing it.
+ */
+export async function verifyResetCode({ email, otp }) {
+  const res = await http.post('/users/password-reset/verify', { email, otp })
   return unwrap(res.data)
 }
 
 /**
- * The emailed reset link opens the app with ?token=...; the page calls this first
- * and only shows the password form while the token is still alive. The token is
- * NOT consumed here - the actual reset re-validates the same key.
+ * Step two with the emailed link, which carries its own address, so nothing has to be
+ * typed. The body is strict: a token must travel alone, never beside an otp.
+ *
+ * Verifying SPENDS the proof - the code, the link and the resend cooldown are dropped
+ * server side - so this runs exactly once per email.
  */
-export async function verifyResetToken(token) {
-  const res = await http.post('/users/reset-password-token/verify', { token })
+export async function verifyResetLink(token) {
+  const res = await http.post('/users/password-reset/verify', { token })
   return unwrap(res.data)
 }
 
 /**
- * Token variant of the same flow: the link mailed by /users/forgot-password carries
- * this token as a query param instead of a 6-digit code the reader has to type.
+ * Reads a ticket WITHOUT spending it, so the reset screen can decide what to render
+ * before it shows a form: a dead ticket then explains itself instead of failing after
+ * the password has been typed twice. Answers { email, expiresAt }.
  */
-export async function resetPasswordWithToken({ token, newPassword }) {
-  const res = await http.post('/users/reset-password-token', { token, newPassword })
+export async function getResetTicket(ticket) {
+  const res = await http.get('/users/password-reset/ticket', { params: { ticket } })
+  return unwrap(res.data)
+}
+
+/**
+ * Step three, the only place that writes a password. It accepts the ticket and never
+ * the code or the emailed token, the ticket is single use, and the new password must
+ * differ from the current one. Every refresh token of the account is revoked, so any
+ * session opened by whoever locked the owner out does not survive the reset.
+ */
+export async function completeReset({ ticket, newPassword }) {
+  const res = await http.post('/users/password-reset/complete', { ticket, newPassword })
   return unwrap(res.data)
 }

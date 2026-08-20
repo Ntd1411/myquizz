@@ -4,7 +4,7 @@ dist
 .env.local
 .DS_Store
 *.log
-.env.production
+.env.prod
 coverage
 test-results
 tests
