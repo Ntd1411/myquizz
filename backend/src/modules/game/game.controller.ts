@@ -35,7 +35,7 @@ export const getGameByCode = async (req: AuthRequest, res: Response, next: NextF
 export const updateGameConfig = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (!req.user) throw new AppError(401, 'Unauthorized', 'AUTH_TOKEN_MISSING')
-    if (Number.isInteger(req.params['id']) === false) {
+    if (Number.isInteger(Number(req.params['id'])) === false) {
       throw new AppError(400, 'Invalid game ID', 'VALIDATION_ERROR')
     }
     const { config } = updateConfigSchema.parse(req.body)

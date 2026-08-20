@@ -226,7 +226,7 @@ export const getPlayerReview = async (gameId: number, token: string | undefined)
   if (payload.gsid !== gameId)
     throw new AppError(403, 'Token belongs to another room', 'GAME_TOKEN_WRONG_ROOM')
   if (payload.role !== 'player' || payload.psid === null)
-    throw new AppError(403, 'Only a player can review their own answers', 'GAME_TOKEN_INVALID')
+    throw new AppError(403, 'Only a player can review their own answers', 'GAME_PLAYER_ONLY')
 
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
