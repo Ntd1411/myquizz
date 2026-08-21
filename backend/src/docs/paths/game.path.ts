@@ -9,6 +9,13 @@
  * of the accessToken cookie: it answers with the caller's own answer sheet, and
  * the token is the only proof the caller is that player.
  *
+ * The three play-history routes read a match that is already over rather than a
+ * live room, so they authenticate differently again: GET /games/history,
+ * GET /games/{id}/summary and GET /games/{id}/my-answers take the cookie when
+ * there is one and the x-guest-id header otherwise. That is what makes a match
+ * readable in a new tab or days later, when the socket token of the tab that
+ * played is long gone.
+ *
  * Status codes and error messages are the ones game.controller.ts and
  * game.service.ts actually produce.
  */
@@ -31,7 +38,7 @@ import {
 export const gameTag: TagObject = {
   name: 'Game',
   description:
-    'The session lifecycle: read the modes, create a room, configure it, let players join, and read the results.'
+    'The session lifecycle: read the modes, create a room, configure it, let players join, read the results, and come back to a closed match later through the play history.'
 }
 
 const codeParam: OpenApiObject = {

@@ -6,9 +6,9 @@
  * again on each route.
  *
  * There are exactly two pagination shapes in the codebase, both keyset-based:
- * ListingPagination for search, /quizzes/me and the public profile, and
- * CursorPagination for the discovery feed. No endpoint returns page/offset
- * paging, so no such schema is documented.
+ * ListingPagination for search, /quizzes/me, the public profile and the play
+ * history, and CursorPagination for the discovery feed. No endpoint returns
+ * page/offset paging, so no such schema is documented.
  */
 
 import { ERROR_CODES } from '../../shared/errors/codes.js'
@@ -59,7 +59,7 @@ export const envelopeSchemas: SchemaMap = {
   ListingPagination: {
     type: 'object',
     description:
-      'Keyset paging state of the listing endpoints (search, /quizzes/me, public profile). total is present only when the request asked for it with include_total=true.',
+      'Keyset paging state of the listing endpoints (search, /quizzes/me, public profile, /games/history). total is present only when the request asked for it with include_total=true.',
     required: ['limit', 'nextCursor', 'hasMore'],
     properties: {
       limit: { type: 'integer', example: 12 },
