@@ -52,7 +52,7 @@ Live at [myquizz.dpdns.org](https://myquizz.dpdns.org), talking to [api.myquizz.
 | HTTP | axios instance with `withCredentials: true` and a single-flight refresh interceptor |
 | Realtime | `socket.io-client`, namespace `/game`, one socket per tab |
 | Style | Tailwind 3 over a `:root` token layer (design v2.1 "Daylight Studio") |
-| Motion | GSAP (Flip, ScrollTrigger) + Lenis smooth scroll |
+| Motion | GSAP (Flip, ScrollTrigger) over native scrolling |
 | Spreadsheet import | `xlsx`, used by the create flow |
 | Tests | Vitest + `@vue/test-utils` + happy-dom |
 
@@ -123,7 +123,7 @@ src/
                           GameResultsView, PreviewSummaryView, AnswerReviewList,
                           LeaderboardList, PlayerList, GameConfigForm, RoomSettingsDialog
   pages/                One component per route
-  router/index.js       Route table, auth guard, Lenis-aware scroll behaviour
+  router/index.js       Route table, auth guard, scroll behaviour
   assets/main.css       Tailwind entry + design tokens + shared utility classes
 tests/                  Vitest specs, mirroring the src/ tree
 ```
@@ -236,12 +236,12 @@ Every number the user reads — PIN, timer, score, counts — is set in the nume
 
 ## Motion
 
-`composables/useMotion.js` owns GSAP and Lenis so no component talks to either directly.
+`composables/useMotion.js` owns GSAP so no component talks to it directly.
 
 - `revealOnEnter(root)` reveals the `[data-enter]` blocks of a page once it mounts; `revealAppended(elements)` does the same for rows added by pagination.
-- Lenis drives the window from its own RAF loop, which is why the router's `scrollBehavior` delegates to `window.__lenis` instead of scrolling itself.
+- The window scrolls natively, and `html` deliberately carries no `scroll-behavior: smooth`: it would animate the jump the router makes on every navigation. The router's `scrollBehavior` calls `ScrollTrigger.clearScrollMemory()` first, because ScrollTrigger otherwise restores the offset of the page just left on its next refresh.
 - `main.js` sets `history.scrollRestoration = 'manual'`, so a reload always starts at the top while back and forward still restore their position.
-- **`prefers-reduced-motion` is respected everywhere**: Lenis is never started, reveals resolve to their final state, and every scoped stylesheet ends with a `@media (prefers-reduced-motion: reduce)` block that switches its transitions off.
+- **`prefers-reduced-motion` is respected everywhere**: reveals resolve to their final state, and every scoped stylesheet ends with a `@media (prefers-reduced-motion: reduce)` block that switches its transitions off.
 
 ## Notable components
 

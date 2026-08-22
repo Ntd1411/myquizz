@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
-import { getQuizById } from '@/api/quizzes.api'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { deleteQuiz, getQuizById } from '@/api/quizzes.api'
 import BaseSpinner from '@/components/base/BaseSpinner.vue'
 import UserAvatar from '@/components/base/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth.store'
@@ -25,11 +25,18 @@ const props = defineProps({
 
 const auth = useAuthStore()
 const router = useRouter()
+const queryClient = useQueryClient()
 
 const pageEl = ref(null)
 const listEl = ref(null)
 // Answers stay hidden until they are asked for, and then for the whole quiz.
 const showAnswers = ref(false)
+
+// The delete confirmation: whether it is open, whether the request is in flight, and
+// the reason a refused delete gives, which is reported inside the dialog that asked.
+const confirmingDelete = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
 
 const query = useQuery({
   queryKey: computed(() => ['quiz', props.id]),
@@ -142,10 +149,6 @@ function hostGame() {
   router.push({ name: 'host-setup', params: { quizId: props.id } })
 }
 
-function goPlay() {
-  router.push({ name: 'join-game' })
-}
-
 function goPreview() {
   // Playing it alone opens no room and writes nothing down, so it needs no setup step
   // and no account: it is the cheapest way to find out how the quiz actually reads.
@@ -159,15 +162,86 @@ function goPreview() {
   window.open(target.href, '_blank', 'noopener')
 }
 
-onMounted(() => revealOnEnter(pageEl.value))
+/**
+ * Deleting is a soft delete on the server, but it takes the quiz out of every listing
+ * and out of this page, so it is asked for rather than done on the click. The dialog is
+ * the page's own rather than window.confirm, which cannot be styled and blocks the tab.
+ */
+function askDelete() {
+  deleteError.value = ''
+  confirmingDelete.value = true
+}
+
+function cancelDelete() {
+  if (deleting.value) return
+  deleteError.value = ''
+  confirmingDelete.value = false
+}
+
+async function confirmDelete() {
+  if (deleting.value) return
+
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await deleteQuiz(props.id)
+    // This page now describes a quiz that is gone, so its cached row goes with it and
+    // the reader lands in the library, where the quiz missing is the confirmation.
+    // replace, not push: Back must not return to a detail page that can only 404.
+    queryClient.removeQueries({ queryKey: ['quiz', props.id] })
+    confirmingDelete.value = false
+    router.replace({ name: 'library' })
+  } catch (error) {
+    // The dialog stays open with the reason in it: the quiz is still there, so the
+    // reader can read what happened and try again or back out.
+    deleteError.value = toErrorMessage(error, 'Could not delete this quiz.')
+  } finally {
+    deleting.value = false
+  }
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape') cancelDelete()
+}
+
+// The dialog covers the page, so the page behind it must not scroll.
+watch(confirmingDelete, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+onMounted(() => {
+  revealOnEnter(pageEl.value)
+  window.addEventListener('keydown', onKeydown)
+})
+
+/*
+ * revealOnScroll returns the ScrollTrigger instances it created, one per question row.
+ * They must be killed on both counts: the watcher re-runs whenever the questions change,
+ * and nothing ever unmounts App. Left alone, a few visits to a long quiz stacked up
+ * hundreds of live triggers on detached rows, and every ScrollTrigger.refresh() anywhere
+ * in the app - the library grid fires one per listing change - then had to walk them all.
+ */
+let listReveal = null
+
+function killListReveal() {
+  listReveal?.forEach((trigger) => trigger.kill())
+  listReveal = null
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = ''
+  killListReveal()
+})
 
 // Questions arrive with the query, so the scroll reveals can only be wired afterwards.
 watch(
   questions,
   async (list) => {
+    killListReveal()
     if (!list.length) return
     await nextTick()
-    revealOnScroll(listEl.value, '[data-reveal]', { y: 18, stagger: 0.04 })
+    listReveal = revealOnScroll(listEl.value, '[data-reveal]', { y: 18, stagger: 0.04 })
   },
   { immediate: true },
 )
@@ -266,11 +340,11 @@ watch(
             >
               Try it yourself
             </button>
-            <button class="btn btn-utility" type="button" @click="goPlay">
-              Join with a code
-            </button>
             <button v-if="isOwner" class="btn btn-ghost" type="button" @click="goEdit">
               Edit this quiz
+            </button>
+            <button v-if="isOwner" class="btn btn-danger" type="button" @click="askDelete">
+              Delete quiz
             </button>
           </div>
 
@@ -381,6 +455,40 @@ watch(
         </ol>
       </section>
     </template>
+
+    <!--
+      Teleported to body: the page root is a transformed element while a reveal runs, and
+      a fixed child of a transformed ancestor is positioned against that ancestor instead
+      of the viewport.
+    -->
+    <Teleport to="body">
+      <div v-if="confirmingDelete" class="dialog-backdrop" @click.self="cancelDelete">
+        <div
+          class="dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-quiz-title"
+        >
+          <p id="delete-quiz-title" class="text-heading-3 text-ink">
+            Delete this quiz?
+          </p>
+          <p class="mt-xs text-body-sm text-ink-2">
+            “{{ quiz?.title }}” and its questions go away for everyone. This cannot be undone.
+          </p>
+          <div class="mt-lg flex justify-end gap-xs">
+            <button class="btn-utility" type="button" :disabled="deleting" @click="cancelDelete">
+              Keep it
+            </button>
+            <p v-if="deleteError" class="dialog-error" role="alert">
+              <span v-text="deleteError" />
+            </p>
+            <button class="btn-danger" type="button" :disabled="deleting" @click="confirmDelete">
+              {{ deleting ? 'Deleting…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -439,6 +547,34 @@ watch(
   color: var(--ink-muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background-color: rgba(35, 36, 43, 0.32);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  background-color: var(--paper);
+  box-shadow: var(--sh-2);
+}
+
+/* Spans the action row it sits in, so the buttons keep their own line below it. */
+.dialog-error {
+  flex-basis: 100%;
+  color: var(--ans-a);
+  font-size: 13.5px;
+  line-height: 1.45;
 }
 
 @media (max-width: 620px) {

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { ScrollTrigger } from '@/composables/useMotion'
 
 const routes = [
   { path: '/', name: 'home', component: () => import('@/pages/HomePage.vue') },
@@ -168,23 +169,17 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
   /**
-   * Lenis owns the scroll position: it keeps driving the window from its own RAF
-   * loop, so the offset the router returns here is overwritten on the next frame and
-   * the new page opens exactly where the previous one was left. Scrolling through
-   * Lenis with `immediate` jumps without easing and keeps its internal position in
-   * sync, then `false` tells the router not to scroll again on its own.
+   * A new page opens at the top; back and forward restore the offset they saved.
+   *
+   * ScrollTrigger remembers the scroll position of every scroller it manages and puts
+   * it back whenever it refreshes. The reveals of the page being opened refresh as its
+   * data arrives, which is what dragged a freshly opened page back down to the offset
+   * of the page the reader just left. Clearing that memory on every navigation is what
+   * GSAP exposes it for.
    */
   scrollBehavior(to, from, savedPosition) {
-    const top = savedPosition ? savedPosition.top : 0
-    const lenis = window.__lenis
-
-    if (lenis) {
-      lenis.scrollTo(top, { immediate: true, force: true })
-      return false
-    }
-
-    // Reduced motion: Lenis is never started, so native scrolling applies.
-    return { top }
+    ScrollTrigger.clearScrollMemory()
+    return { top: savedPosition ? savedPosition.top : 0 }
   },
 })
 
@@ -204,6 +199,24 @@ router.beforeEach(async (to) => {
   }
 
   return true
+})
+
+/*
+ * Safety net for the scroll reveals. Each page kills the triggers it creates, but a
+ * trigger that slips through lives forever: App never unmounts, so nothing collects it,
+ * and every ScrollTrigger.refresh() anywhere in the app then has to walk it again. That
+ * is how a page ends up feeling heavy for reasons that live on a page the reader already
+ * left. A trigger whose element is no longer in the document can never fire again, so
+ * dropping it is always safe. The sweep waits a tick: the outgoing page is torn down
+ * after this hook runs, and its nodes are only detached by then.
+ */
+router.afterEach(() => {
+  setTimeout(() => {
+    ScrollTrigger.getAll().forEach((trigger) => {
+      const el = trigger.trigger
+      if (el instanceof Element && !el.isConnected) trigger.kill()
+    })
+  }, 0)
 })
 
 export default router

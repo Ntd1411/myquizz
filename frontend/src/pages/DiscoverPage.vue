@@ -225,22 +225,9 @@ function onKeydown(event) {
   if (event.key === 'Escape') closeFilters()
 }
 
-/**
- * The sheet covers the page on small screens, so the page behind it must not scroll.
- * Lenis drives the scroll itself, so pausing it is what actually freezes the page; the
- * inline overflow lock is the fallback for the reduced-motion path where Lenis is off.
- */
+/** The sheet covers the page on small screens, so the page behind it must not scroll. */
 watch(filtersOpen, (open) => {
-  const lenis = window.__lenis
-
-  if (open) {
-    lenis?.stop()
-    document.body.style.overflow = 'hidden'
-    return
-  }
-
-  lenis?.start()
-  document.body.style.overflow = ''
+  document.body.style.overflow = open ? 'hidden' : ''
 })
 
 onMounted(() => {
@@ -251,7 +238,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   gridReveals.forEach((kill) => kill())
-  window.__lenis?.start()
   document.body.style.overflow = ''
 })
 
@@ -338,10 +324,9 @@ watch(
       <div v-if="filtersOpen" class="filter-backdrop lg:hidden" @click="closeFilters" />
 
       <aside
-        class="filter-panel scroll-slim"
+        class="filter-panel scroll-slim overscroll-contain"
         :class="filtersOpen ? 'is-open' : ''"
         aria-label="Filters"
-        data-lenis-prevent
       >
         <div class="filter-head">
           <p class="text-title text-ink">

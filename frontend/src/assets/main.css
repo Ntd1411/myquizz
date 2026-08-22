@@ -83,7 +83,12 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    scroll-behavior: smooth;
+    /*
+      No `scroll-behavior: smooth` here on purpose. It also animates the jump the
+      router makes on every navigation, and that animation is interrupted by the
+      layout growing as the new page loads: the reader lands parked somewhere near
+      the offset of the page they just left.
+    */
     /* Firefox exposes no pseudo-elements for the bar, only these two properties. */
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) transparent;
@@ -92,7 +97,7 @@
       shrinks around the height of the viewport would otherwise gain and lose the bar,
       and each change resizes the viewport by the width of the bar: card grids re-wrap,
       that changes the height again, and the bar flickers on and off. Reserving the
-      gutter also stops the sideways jump when Lenis clips the page for a modal.
+      gutter also stops the sideways jump when a dialog locks the page behind it.
     */
     scrollbar-gutter: stable;
   }
@@ -440,22 +445,4 @@
   .scroll-slim::-webkit-scrollbar-thumb {
     border-width: 2px;
   }
-}
-
-/* Lenis recommended CSS (vertical page smoothing only). */
-html.lenis,
-html.lenis body {
-  height: auto;
-}
-
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-
-.lenis.lenis-stopped {
-  overflow: clip;
 }

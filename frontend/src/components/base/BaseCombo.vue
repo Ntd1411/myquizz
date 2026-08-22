@@ -269,9 +269,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown)
     <ul
       v-if="open"
       :id="listboxId"
-      class="absolute inset-x-0 top-[calc(100%+4px)] z-30 max-h-[240px] overflow-auto rounded-md border border-hairline bg-paper py-xxs shadow-[0_12px_32px_rgba(35,36,43,0.14)]"
+      class="absolute inset-x-0 top-[calc(100%+4px)] z-30 max-h-[240px] overflow-auto overscroll-contain rounded-md border border-hairline bg-paper py-xxs shadow-[0_12px_32px_rgba(35,36,43,0.14)]"
       role="listbox"
-      data-lenis-prevent
     >
       <!--
         The option is the <li> itself. A role="option" on a <button> inside the list is a

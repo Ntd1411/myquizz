@@ -225,13 +225,25 @@ const cardAuthor = computed(() => {
  * missing, the author fetched above is filled in: on this page the owner is known for
  * certain, which is what turns the face on every card into a working profile link.
  */
+const cardCache = new WeakMap()
+
 const cards = computed(() => {
   const owner = cardAuthor.value
   if (!owner) return quizzes.value
 
-  return quizzes.value.map((quiz) =>
-    quiz.owner ? quiz : { ...quiz, owner, ownerId: quiz.ownerId ?? owner.id },
-  )
+  return quizzes.value.map((quiz) => {
+    if (quiz.owner) return quiz
+
+    // The merged row is cached against the raw row: a plain map would hand every card a
+    // brand new object on each recompute, and re-rendering a full page of cards, each
+    // one carrying four action controls, is not free.
+    const cached = cardCache.get(quiz)
+    if (cached && cached.owner === owner) return cached
+
+    const merged = { ...quiz, owner, ownerId: quiz.ownerId ?? owner.id }
+    cardCache.set(quiz, merged)
+    return merged
+  })
 })
 
 /*
@@ -337,22 +349,9 @@ function onKeydown(event) {
   if (event.key === 'Escape') cancelDelete()
 }
 
-/**
- * The dialog covers the page, so the page behind it must not scroll. Lenis drives the
- * scroll itself, so pausing it is what actually freezes the page; the inline overflow
- * lock is the fallback for the reduced-motion path where Lenis is off.
- */
+/** The dialog covers the page, so the page behind it must not scroll. */
 watch(pendingDelete, (quiz) => {
-  const lenis = window.__lenis
-
-  if (quiz) {
-    lenis?.stop()
-    document.body.style.overflow = 'hidden'
-    return
-  }
-
-  lenis?.start()
-  document.body.style.overflow = ''
+  document.body.style.overflow = quiz ? 'hidden' : ''
 })
 
 onMounted(() => {
@@ -363,7 +362,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   gridReveals.forEach((kill) => kill())
-  window.__lenis?.start()
   document.body.style.overflow = ''
 })
 
@@ -382,8 +380,14 @@ watch(
 
     await nextTick()
     gridReveals.push(revealAppended(gridEl.value, '[data-reveal-card]', { y: 16, stagger: 0.04 }))
-    // Layout height changed with the new row count.
-    ScrollTrigger.refresh()
+    /*
+     * The layout height changed with the new row count, so triggers further down need
+     * their start recomputed. refresh() is a full layout read of every live trigger, and
+     * running it here put that read straight between the reveal's writes and the frame
+     * that paints them, forcing the whole grid to be laid out twice. It waits for the
+     * next frame instead: nothing on screen depends on it any sooner.
+     */
+    requestAnimationFrame(() => ScrollTrigger.refresh())
   },
   { immediate: true },
 )
@@ -1149,10 +1153,16 @@ watch(
   height: 32px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-full);
-  background-color: rgba(255, 255, 255, 0.94);
+  /*
+    Opaque on purpose, and no backdrop-filter. Every card carries four of these, so a
+    full page of them asked the compositor for ~100 separate blur passes over their
+    backdrop - which is a card cover, an image - and that is what made this page, and
+    only this page, stutter on entry and on scroll. At 94% white over a cover the blur
+    was invisible anyway, so the whole effect cost frames and bought nothing.
+  */
+  background-color: #ffffff;
   color: var(--ink-2);
   box-shadow: var(--sh-1);
-  backdrop-filter: blur(6px);
   transition:
     color var(--t-ui) var(--ease),
     border-color var(--t-ui) var(--ease),

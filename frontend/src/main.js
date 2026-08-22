@@ -6,7 +6,7 @@ import router from './router'
 import './assets/main.css'
 
 // The browser restores the previous scroll offset on reload, which fights with the
-// smooth-scroll layer and the scroll-progress bar. Every fresh load starts at the top;
+// scroll-linked reveals and the scroll-progress bar. Every fresh load starts at the top;
 // back/forward navigation still restores its position through the router's scrollBehavior.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
 window.scrollTo(0, 0)

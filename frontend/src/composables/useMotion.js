@@ -1,8 +1,6 @@
-import { onMounted, onBeforeUnmount } from 'vue'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Flip } from 'gsap/Flip'
-import Lenis from 'lenis'
 
 gsap.registerPlugin(ScrollTrigger, Flip)
 
@@ -24,50 +22,6 @@ export const EASE_UI = 'power3.out'
 export const EASE_SPRING = 'back.out(1.4)'
 
 export { gsap, ScrollTrigger, Flip }
-
-/**
- * Boots Lenis smooth scrolling and keeps ScrollTrigger in sync with it.
- * Mount this ONCE, at the app root.
- */
-export function useLenis() {
-  let lenis = null
-  let tickerCallback = null
-
-  onMounted(() => {
-    if (prefersReducedMotion()) return
-
-    // Duration + exponential easing is the feel used by the static demo: a long,
-    // decelerating glide. A plain lerp settles too early and reads as "sticky".
-    lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-      wheelMultiplier: 1,
-      touchMultiplier: 1.8,
-      // Touch devices keep their native scrolling; only the wheel is smoothed.
-      syncTouch: false,
-      anchors: true,
-    })
-    window.__lenis = lenis
-    document.documentElement.classList.add('lenis')
-
-    // Drive Lenis from GSAP's ticker so both share a single RAF loop.
-    tickerCallback = (time) => lenis.raf(time * 1000)
-    gsap.ticker.add(tickerCallback)
-    gsap.ticker.lagSmoothing(0)
-
-    // Lenis scrolls the window itself, so triggers only need an update per frame.
-    lenis.on('scroll', ScrollTrigger.update)
-    ScrollTrigger.refresh()
-  })
-
-  onBeforeUnmount(() => {
-    if (tickerCallback) gsap.ticker.remove(tickerCallback)
-    if (lenis) lenis.destroy()
-    document.documentElement.classList.remove('lenis')
-    window.__lenis = null
-  })
-}
 
 /**
  * Shared page-entrance animation. Every routed page calls this with its root element,
@@ -161,9 +115,20 @@ export function revealAppended(container, selector = '[data-reveal-item]', optio
 
   // A node appended above the trigger line would wait for a scroll that never comes,
   // so it plays straight away; only nodes still below the line get a trigger.
+  /*
+   * One measurement pass, before any write below. Two filter passes measured every fresh
+   * node twice, so a grid of 24 cards asked the browser for 48 layouts in a row - the
+   * forced reflow DevTools flags on entry. Splitting in a single loop halves that, and
+   * keeping every read ahead of the gsap.set below keeps reads and writes from
+   * interleaving, which is what turns each read into a fresh layout.
+   */
   const line = window.innerHeight * (options.threshold ?? 0.92)
-  const visible = fresh.filter((el) => el.getBoundingClientRect().top <= line)
-  const pending = fresh.filter((el) => el.getBoundingClientRect().top > line)
+  const visible = []
+  const pending = []
+  fresh.forEach((el) => {
+    if (el.getBoundingClientRect().top <= line) visible.push(el)
+    else pending.push(el)
+  })
 
   gsap.set(fresh, { opacity: 0, y: options.y ?? 16 })
 

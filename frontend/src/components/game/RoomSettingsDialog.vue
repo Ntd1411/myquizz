@@ -83,7 +83,7 @@ function update(values) {
           </button>
         </header>
 
-        <div class="grow overflow-y-auto px-xl py-lg" data-lenis-prevent>
+        <div class="grow overflow-y-auto overscroll-contain px-xl py-lg">
           <GameConfigForm
             :editable="editable"
             :model-value="modelValue"

@@ -79,7 +79,7 @@ function onMenuFocusOut(event) {
 function bindMenuDismissers() {
   // Capture phase, so the menu still closes if an inner handler stops propagation.
   document.addEventListener('pointerdown', onDocumentPointerDown, true)
-  // Lenis scrolls the window itself, so the plain scroll event still fires here.
+  // The window is the scroller, so the plain scroll event fires here.
   window.addEventListener('scroll', closeMenu, { passive: true })
   window.addEventListener('blur', closeMenu)
 }

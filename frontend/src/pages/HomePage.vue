@@ -86,9 +86,17 @@ useInfiniteScroll(sentinelEl, () => feed.loadMore())
 
 const feedReveals = []
 
+/*
+ * revealOnScroll hands back the ScrollTrigger instances it created, and they have to be
+ * kept so they can be killed. Dropping them leaked one trigger per section: App never
+ * unmounts, so nothing else ever killed them, and every later ScrollTrigger.refresh()
+ * kept recomputing triggers pointing at nodes that had left the document.
+ */
+let pageReveal = null
+
 onMounted(() => {
   // Rails animate their own header and cards; this only covers the static sections.
-  revealOnScroll(pageEl.value, '[data-reveal]', { y: 20, stagger: 0.06 })
+  pageReveal = revealOnScroll(pageEl.value, '[data-reveal]', { y: 20, stagger: 0.06 })
 })
 
 // Every page appends into the same grid, so only the cards that are actually new may
@@ -106,6 +114,8 @@ watch(feedItems, async (rows) => {
 
 onBeforeUnmount(() => {
   feedReveals.forEach((kill) => kill())
+  pageReveal?.forEach((trigger) => trigger.kill())
+  pageReveal = null
 })
 </script>
 

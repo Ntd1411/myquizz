@@ -227,8 +227,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-md"
-      data-lenis-prevent
+      class="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/45 p-md"
       role="dialog"
       aria-modal="true"
       :aria-label="title"

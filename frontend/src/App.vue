@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { AUTH_EXPIRED_EVENT } from '@/api/http'
-import { useLenis, ScrollTrigger } from '@/composables/useMotion'
+import { ScrollTrigger } from '@/composables/useMotion'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -17,8 +17,6 @@ const route = useRoute()
  * would take a player out of the room they are sitting in.
  */
 const bare = computed(() => route.meta.bare === true)
-
-useLenis()
 
 /**
  * The one failure the app answers globally, because it is the one failure no screen
