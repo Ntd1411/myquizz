@@ -129,7 +129,9 @@ export async function deleteQuizService(
     throw new AppError(404, 'Quiz not found or unauthorized', 'QUIZ_NOT_FOUND')
   }
 
-  // Soft delete the quiz
+  // Hard delete, and there is no undo: the cascade takes the questions, the snapshots,
+  // and every game and player row built on those snapshots with it. The row is returned
+  // only so the caller can report what it removed.
   const deletedQuiz = await quizRepository.deleteQuiz(quizId)
   if (!deletedQuiz) {
     throw new AppError(404, 'Quiz not found or already deleted', 'QUIZ_NOT_FOUND')

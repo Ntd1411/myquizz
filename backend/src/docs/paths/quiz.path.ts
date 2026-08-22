@@ -488,18 +488,19 @@ export const quizPaths: PathMap = {
     },
     delete: {
       summary: 'Delete a quiz',
-      description: `Deletes a quiz and returns the row as it was, so the client can offer an undo. Sessions already created from it keep their own snapshot and are unaffected. Only the owner may delete, and for anybody else the quiz simply does not exist. ${AUTH_NOTE}`,
+      description: `Permanently deletes a quiz and returns the row as it was, so the client can name what it just removed. This is a hard delete and there is no undo: the questions go with the quiz, and so do the snapshots taken from it, every session ever hosted from those snapshots, and the player rows of those sessions. Deleting a quiz therefore also erases the play history of every match hosted from it, for every player. Only the owner may delete, and for anybody else the quiz simply does not exist. ${AUTH_NOTE}`,
       tags: [quizTag.name],
       parameters: [quizIdParam],
       responses: {
         200: successResponse({
-          description: 'The quiz as it was just before deletion.',
+          description:
+            'The quiz as it was in the moment before it was removed. It no longer exists anywhere, so this is the last read of it.',
           data: quizData
         }),
         401: unauthenticated,
         403: deactivated,
         404: errorResponse(
-          'No such quiz, one the caller does not own, or one that was already deleted',
+          'No such quiz, one the caller does not own, or one that an earlier version of this endpoint had already soft deleted',
           ['QUIZ_NOT_FOUND']
         )
       }

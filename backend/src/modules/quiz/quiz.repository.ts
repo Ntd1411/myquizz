@@ -208,9 +208,22 @@ export class QuizRepository {
     return result.rows.length > 0
   }
 
+  /**
+   * Hard delete: the row is gone, not flagged. RETURNING still hands back the row as it
+   * was, which is all the caller needs in order to answer with it.
+   *
+   * Everything hanging off the quiz goes with it through the ON DELETE CASCADE chain the
+   * schema declares: questions, quiz_snapshots, the game_sessions built on those
+   * snapshots, and the player_sessions of those games. Deleting a quiz therefore also
+   * deletes the play history of every match ever hosted from it, for every player.
+   *
+   * `deleted_at IS NULL` stays in the WHERE clause: a row soft deleted by the earlier
+   * version of this endpoint is invisible to every read, so it answers 404 here too
+   * instead of being silently swept away by a delete aimed at a live quiz.
+   */
   async deleteQuiz(quizId: number): Promise<Quiz | null> {
     const result = await pool.query<Quiz>(
-      `UPDATE quizzes SET deleted_at = NOW()
+      `DELETE FROM quizzes
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
       [quizId]

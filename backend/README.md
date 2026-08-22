@@ -206,7 +206,7 @@ Three properties are worth knowing:
 
 - **A guest has a history too.** Identity comes from the session cookie when there is one, and otherwise from the `x-guest-id` header the client already carries, which is how a `player_sessions` row without `player_id` is matched. A reader with neither is refused with `GAME_AUTH_REQUIRED`.
 - **Ordering is `coalesce(finished_at, created_at) desc, id desc`.** A room cancelled before it ever ended has no `finished_at`, and sorting on the raw column would bury it. The cursor is an opaque base64url string (`v1|role|endedAt|id`) validated against the role it was issued for, so paging one list with the other list's cursor is rejected as `GAME_CURSOR_INVALID` instead of returning rows from another result set. The same ordering expression is duplicated in `011_game_history_indexes.sql` and must stay identical.
-- **The quiz name and cover come from the snapshot**, never from `quizzes`, so a deleted quiz still has a readable title in a match that already happened.
+- **The quiz name and cover come from the snapshot**, never from `quizzes`, so a quiz renamed or rewritten after the match still shows the title it was actually played under. A quiz that is *deleted* is a different case: the delete is hard and cascades, so it takes its snapshots and the matches hosted from them with it, and those matches stop appearing in anybody's history.
 
 A summary is readable by the host and by everyone who held a seat (`GAME_FORBIDDEN` for anyone else); the answer sheet needs a seat, so a host asking for it gets `GAME_PLAYER_ONLY`. A match still running answers `409 GAME_STILL_RUNNING`, and a deleted one `410 GONE`.
 
@@ -383,9 +383,22 @@ erDiagram
   users ||--o{ player_sessions : "plays as"
 ```
 
-A session points at a **snapshot**, never at the live quiz. That is what makes history immutable: editing or deleting a quiz cannot rewrite a match that already happened. A `player_sessions` row without `player_id` is a guest, identified by `player_guest_id` and a display name.
+A session points at a **snapshot**, never at the live quiz, so *editing* a quiz cannot rewrite a match that already happened. *Deleting* one is not so contained: `quiz_snapshots.quiz_id` references `quizzes` with `on delete cascade`, so removing a quiz row removes its snapshots, the `game_sessions` built on those snapshots, and the `player_sessions` seated in those games. A `player_sessions` row without `player_id` is a guest, identified by `player_guest_id` and a display name.
 
 Deletion is soft almost everywhere: rows carry `deleted_at` and stay queryable, which is why a removed resource answers `410` rather than `404`.
+
+**`DELETE /v1/quizzes/id/:quizId` is the exception: it is a hard delete.** The row is removed with `DELETE FROM quizzes`, not flagged, and the foreign keys do the rest in one cascade:
+
+```
+quizzes
+  -> questions           (quiz_id, on delete cascade)
+  -> quiz_snapshots      (quiz_id, on delete cascade)
+       -> game_sessions       (quiz_snapshot_id, on delete cascade)
+            -> player_sessions     (game_session_id, on delete cascade)
+  -> player_sessions     (quiz_id, on delete cascade)
+```
+
+So deleting a quiz also erases the play history of every match ever hosted from it, for every player who took part, and there is no undo. The endpoint still returns the deleted row, but only so the client can say what it removed. Rows soft deleted by the earlier version of the endpoint are left alone and keep answering `404`.
 
 ### Migrations
 
@@ -401,7 +414,8 @@ To add a change: create the next numbered file in `migrations/`, never edit a fi
 ## Data and caching
 
 - **PostgreSQL is the source of truth.** `infrastructure/database/schema/` holds the base tables, `migrations/` the incremental changes; both are applied in order at boot.
-- **Quizzes are snapshotted.** Creating a session copies the questions into a snapshot, so editing or deleting a quiz never rewrites a match that already happened.
+- **Quizzes are snapshotted.** Creating a session copies the questions into a snapshot, so editing a quiz never rewrites a match that already happened.
+- **Deleting a quiz is hard and cascading.** `DELETE /v1/quizzes/id/:quizId` removes the row itself, and the foreign keys take the questions, the snapshots, the sessions built on those snapshots and their player rows with it. It is the one destructive path in the API: everything else only sets `deleted_at`.
 - **`answer_options` has exactly one stored shape**: an array of `{ id, option_text }`, where `id` is the position `correct_answer` points at. Creating and replacing questions share the same INSERT, so no write path can store a second shape.
 - **A choice question carries 2 to 4 options.** The bound is enforced in the Zod schema, on the same cross-field check that verifies `correct_answer` points at an option that exists, so the API and the editor cannot disagree about it.
 - **Sending `questions` in a PATCH replaces the whole list**: the previous rows are soft deleted and the new ones inserted in one transaction. Leaving the field out keeps the existing questions untouched.

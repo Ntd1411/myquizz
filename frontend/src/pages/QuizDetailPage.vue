@@ -163,9 +163,11 @@ function goPreview() {
 }
 
 /**
- * Deleting is a soft delete on the server, but it takes the quiz out of every listing
- * and out of this page, so it is asked for rather than done on the click. The dialog is
- * the page's own rather than window.confirm, which cannot be styled and blocks the tab.
+ * Deleting is a hard delete on the server: the row is removed, and the cascade takes the
+ * questions, the snapshots and every match ever hosted from them with it. Nothing can be
+ * restored afterwards, which is why it is asked for rather than done on the click. The
+ * dialog is the page's own rather than window.confirm, which cannot be styled and blocks
+ * the tab.
  */
 function askDelete() {
   deleteError.value = ''
@@ -473,7 +475,8 @@ watch(
             Delete this quiz?
           </p>
           <p class="mt-xs text-body-sm text-ink-2">
-            “{{ quiz?.title }}” and its questions go away for everyone. This cannot be undone.
+            “{{ quiz?.title }}”, its questions, and the results of every game ever hosted
+            from it go away for everyone. This cannot be undone.
           </p>
           <div class="mt-lg flex justify-end gap-xs">
             <button class="btn-utility" type="button" :disabled="deleting" @click="cancelDelete">
