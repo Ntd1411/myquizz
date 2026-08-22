@@ -337,10 +337,17 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-/** Shuffles the options so the correct answer is not always in the same slot. */
+/**
+ * Shuffles the options so the correct answer is not always in the same slot.
+ *
+ * Option ids are the array positions, counted from 0, because that is what the API
+ * create path writes (quiz.repository.ts numbers them with map's index) and what
+ * correct_answer means everywhere else in the product. Numbering these from 1
+ * instead made every seeded quiz disagree with every authored one.
+ */
 function toQuestionRow(question: NormalizedQuestion, random: () => number): QuestionRow {
   const shuffled = shuffle([question.correct, ...question.incorrect], random)
-  const answerOptions = shuffled.map((option_text, index) => ({ id: index + 1, option_text }))
+  const answerOptions = shuffled.map((option_text, index) => ({ id: index, option_text }))
   const correct = answerOptions.find(option => option.option_text === question.correct)
 
   if (!correct) {

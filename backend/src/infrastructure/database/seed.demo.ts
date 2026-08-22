@@ -217,16 +217,20 @@ function buildQuestion(topic: string, index: number): BuiltQuestion {
   }
 
   const optionCount = type === 'multiple_select' ? randInt(4, 5) : 4
+  // Option ids are positions counted from 0, like the API create path writes them
+  // (quiz.repository.ts), so a demo row and an authored row mean the same thing by
+  // correct_answer. The label still counts from 1, because that is what a reader sees.
   const answer_options = Array.from({ length: optionCount }, (_, i) => ({
-    id: i + 1,
+    id: i,
     option_text: `${topic} option ${i + 1}`
   }))
 
   // multiple_select keeps two correct ids, multiple_choice exactly one.
+  const lastOption = optionCount - 1
   const correct_answer =
     type === 'multiple_select'
-      ? Array.from(new Set([randInt(1, optionCount), randInt(1, optionCount)])).sort((a, b) => a - b)
-      : [randInt(1, optionCount)]
+      ? Array.from(new Set([randInt(0, lastOption), randInt(0, lastOption)])).sort((a, b) => a - b)
+      : [randInt(0, lastOption)]
 
   return {
     question_type: type,
