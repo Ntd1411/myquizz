@@ -19,6 +19,13 @@ export const useAuthStore = defineStore('auth', () => {
   const pending = ref(false)
 
   const isLoggedIn = computed(() => user.value !== null)
+  /**
+   * Staff flag, read straight off the row GET /users/me returns. It decides what is
+   * RENDERED - the Admin entries in the header, the /admin routes - and nothing else:
+   * every /admin endpoint checks the role of the account behind the cookie again and
+   * answers 403 on its own, so faking this in the console reveals no data.
+   */
+  const isAdmin = computed(() => user.value?.role === 'admin')
   // Fields come straight from the backend user row: fullname, email, avatar.
   const displayName = computed(() => user.value?.fullname || user.value?.email || 'Account')
   const avatarUrl = computed(() => user.value?.avatar || null)
@@ -123,6 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
     ready,
     pending,
     isLoggedIn,
+    isAdmin,
     displayName,
     avatarUrl,
     initials,

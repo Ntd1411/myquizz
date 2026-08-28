@@ -29,6 +29,9 @@ export const ERROR_CODES = [
   'USER_DEACTIVATED',
   'USER_PASSWORD_INCORRECT',
   'USER_NO_FIELDS_TO_UPDATE',
+  // Admin banning their own account: a refusal the client reacts to on the row it came
+  // from, unlike a plain BAD_REQUEST.
+  'ADMIN_CANNOT_BAN_SELF',
 
   // Password reset, where one status covers many different refusals
   'RESET_OTP_INVALID',

@@ -54,7 +54,7 @@ export const updateQuizSchema = createQuizSchema.partial()
 /** Largest integer a query parameter may carry, used where there is no natural cap. */
 const MAX_INT = Number.MAX_SAFE_INTEGER
 
-function intQuery(min: number, max: number = MAX_INT) {
+export function intQuery(min: number, max: number = MAX_INT) {
   return z.string().regex(/^\d+$/, 'Must be a non-negative integer')
     .transform(Number)
     .pipe(z.number().int().min(min).max(max))
@@ -62,9 +62,9 @@ function intQuery(min: number, max: number = MAX_INT) {
 
 // Only the literal strings are accepted: 'yes', '1' or '' would each be a
 // different guess about intent, and guessing here hides client bugs.
-const boolQuery = z.enum(['true', 'false']).transform((value) => value === 'true')
+export const boolQuery = z.enum(['true', 'false']).transform((value) => value === 'true')
 
-const dateOnlyQuery = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a YYYY-MM-DD date')
+export const dateOnlyQuery = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a YYYY-MM-DD date')
 
 /**
  * Listing cursor. It stays opaque to the client, so it is only length-capped
