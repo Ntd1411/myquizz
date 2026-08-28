@@ -18,11 +18,13 @@ import { userSchemas } from './components/user.doc.js'
 import { quizSchemas } from './components/quiz.doc.js'
 import { gameSchemas } from './components/game.doc.js'
 import { storageSchemas } from './components/storage.doc.js'
+import { adminSchemas } from './components/admin.doc.js'
 import { authPaths, authTag } from './paths/auth.path.js'
 import { userPaths, userTag } from './paths/user.path.js'
 import { quizPaths, quizTag } from './paths/quiz.path.js'
 import { gamePaths, gameTag } from './paths/game.path.js'
 import { storagePaths, storageTag } from './paths/storage.path.js'
+import { adminPaths, adminTag } from './paths/admin.path.js'
 
 /**
  * Routes are mounted under /v1, so every documented path is relative to it.
@@ -46,14 +48,22 @@ const servers = env.API_PUBLIC_URL
   : [developmentServer]
 
 // Tag order drives the sidebar order in the reference UI.
-const tags: TagObject[] = [authTag, userTag, quizTag, gameTag, storageTag]
+const tags: TagObject[] = [
+  authTag,
+  userTag,
+  quizTag,
+  gameTag,
+  storageTag,
+  adminTag
+]
 
 const schemas: SchemaMap = {
   ...envelopeSchemas,
   ...userSchemas,
   ...quizSchemas,
   ...gameSchemas,
-  ...storageSchemas
+  ...storageSchemas,
+  ...adminSchemas
 }
 
 const paths: PathMap = {
@@ -61,7 +71,8 @@ const paths: PathMap = {
   ...userPaths,
   ...quizPaths,
   ...gamePaths,
-  ...storagePaths
+  ...storagePaths,
+  ...adminPaths
 }
 
 /*
@@ -229,6 +240,18 @@ const description = [
   'A match that has not ended yet answers `GAME_STILL_RUNNING`, and an id behind',
   'no match at all `GAME_ROOM_NOT_FOUND`, exactly as the room routes above do.',
   '',
+  '### Admin',
+  '',
+  'Account moderation, admin role only. `FORBIDDEN` is part of the contract',
+  'here rather than a last-resort code: the role check is what these routes',
+  'are for, and a client has to tell it apart from a rejected token.',
+  '',
+  '| Code | Situation |',
+  '| --- | --- |',
+  '| `FORBIDDEN` | The caller is signed in but is not an admin. |',
+  '| `ADMIN_CANNOT_BAN_SELF` | An admin asked to ban their own account, which would remove the role needed to undo it. |',
+  '| `USER_NOT_FOUND` | No account carries that id. Both writes are idempotent, so it never means the account was already in the requested state. |',
+  '',
   '### Uploads',
   '',
   '| Code | Situation |',
@@ -261,6 +284,12 @@ const description = [
   'only computed when the request asks for it with `include_total=true`. The',
   'play history binds its cursor to `role` the same way, so a cursor from the',
   'played tab cannot page the hosted one.',
+  '',
+  '`GET /admin/users` is the one exception: it pages by `offset` and `limit`,',
+  'and reports `offset`, `limit`, `total` and the `status` it filtered on. A',
+  'moderation table has to jump to an arbitrary page and say how many accounts',
+  'match, neither of which a cursor can express, and its `total` is always',
+  'counted with the same `status` as the listing.',
   '',
   '## Authentication',
   '',

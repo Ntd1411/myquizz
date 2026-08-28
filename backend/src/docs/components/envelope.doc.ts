@@ -5,10 +5,12 @@
  * are the base every operation composes on instead of describing the wrapper
  * again on each route.
  *
- * There are exactly two pagination shapes in the codebase, both keyset-based:
+ * There are three pagination shapes in the codebase. Two are keyset-based:
  * ListingPagination for search, /quizzes/me, the public profile and the play
- * history, and CursorPagination for the discovery feed. No endpoint returns
- * page/offset paging, so no such schema is documented.
+ * history, and CursorPagination for the discovery feed. The third is
+ * OffsetPagination, which belongs to the admin listing and is documented next
+ * to it in components/admin.doc.ts: a cursor cannot express "page 4 of 12",
+ * which is exactly what a moderation table needs.
  */
 
 import { ERROR_CODES } from '../../shared/errors/codes.js'
@@ -28,7 +30,11 @@ export const envelopeSchemas: SchemaMap = {
         example: EXAMPLE_TIMESTAMP
       },
       pagination: {
-        oneOf: [ref('ListingPagination'), ref('CursorPagination')]
+        oneOf: [
+          ref('ListingPagination'),
+          ref('CursorPagination'),
+          ref('OffsetPagination')
+        ]
       },
       cached: {
         type: 'boolean',

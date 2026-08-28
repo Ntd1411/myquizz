@@ -128,6 +128,7 @@ src/
     quiz/                Authoring, listings, home sections, discovery feed
     game/                Sessions, config, realtime gameplay, engine/
     storage/             Presigned upload URLs
+    admin/               Account moderation: list, ban, lift a ban
   shared/
     errors/              AppError
     middlewares/         Error handler, optional auth, rate limits
@@ -187,8 +188,11 @@ No message and no field dump: prose written here would be English, would end up 
 | `/v1/quizzes` | 9 | Authoring, search, own quizzes, an author's quizzes, home sections, discovery feed |
 | `/v1/games` | 12 | Game modes, play history, create a session, lobby, config patch, host token, join, leaderboard, results, personal answer review, closed-match summary and answer sheet |
 | `/v1/storage` | 1 | Presigned upload URL |
+| `/v1/admin` | 3 | Account moderation, admin role only: list accounts with a status filter, ban an account, lift a ban |
 
 Listings are keyset paginated: pass back `meta.pagination.nextCursor`, and ask for `include_total=true` only when the count is actually needed. The cursor encodes the query, filters and sort, so changing any of them mid-pagination is rejected instead of silently returning rows from another result set.
+
+`GET /v1/admin/users` is the exception: it pages by `offset` and `limit` and always answers with a `total`, because a moderation table has to jump to an arbitrary page and say how many accounts match. Its `total` is counted with the same `status` filter the listing applied, so the pager is never told about pages the listing will not produce.
 
 Every read goes through one mapper per shape: `toQuizSummary` for a listing row, `toQuizDetail` for `GET /v1/quizzes/id/:quizId`. The detail response therefore carries the same nested `owner` block (`id`, `fullname`, `avatar`) and the same `question_count` / `play_count` counters as a card, plus its questions ordered by `id`; `hot_score` and `scored_at` stay internal. `POST /v1/quizzes` and `PATCH /v1/quizzes/id/:quizId` re-read the quiz through that same mapper before answering, so a metadata-only patch never comes back with an empty question list.
 
@@ -209,6 +213,22 @@ Three properties are worth knowing:
 - **The quiz name and cover come from the snapshot**, never from `quizzes`, so a quiz renamed or rewritten after the match still shows the title it was actually played under. A quiz that is *deleted* is a different case: the delete is hard and cascades, so it takes its snapshots and the matches hosted from them with it, and those matches stop appearing in anybody's history.
 
 A summary is readable by the host and by everyone who held a seat (`GAME_FORBIDDEN` for anyone else); the answer sheet needs a seat, so a host asking for it gets `GAME_PLAYER_ONLY`. A match still running answers `409 GAME_STILL_RUNNING`, and a deleted one `410 GONE`.
+
+### Account moderation
+
+`/v1/admin` is the only module gated by role. `authMiddleware` establishes who is calling, and the role check itself sits in the controller rather than in the router, so a handler added without its own check cannot ship reachable by a normal account.
+
+| Endpoint | Does |
+| --- | --- |
+| `GET /v1/admin/users` | Lists accounts newest first. `offset`, `limit` 1..100 (20 by default), `status=all` \| `active` \| `banned` |
+| `DELETE /v1/admin/users/{id}` | Bans the account: stamps `deleted_at` |
+| `POST /v1/admin/users/{id}/restore` | Lifts the ban: clears `deleted_at` |
+
+- **A ban is the soft delete the rest of the API already respects.** Every user lookup filters on `deleted_at IS NULL`, so a banned person can no longer sign in while their quizzes and match history stay where they are. Nothing is erased, which is what makes the undo a one-line update rather than a restore procedure.
+- **Both writes are idempotent.** Neither is conditional on the current `deleted_at`, so banning an already banned account succeeds and a `rowCount` of zero can only mean the id does not exist. A double click or a retried request therefore cannot turn into a `404` that reads as "this account is gone".
+- **An admin cannot ban their own account**, answered as `400 ADMIN_CANNOT_BAN_SELF`. On a workspace with a single admin that call would remove both the session and the role needed to lift the ban. The screen omits the control, but the rule has to hold server side because a request can be made without the screen.
+- **The listing returns `deleted_at`.** With `status=all` both kinds of row come back, and that column is the only thing telling them apart.
+- **Ordering is `created_at desc, id desc`.** Offset paging over an unordered select is free to show one account on two pages and never show another; the id breaks ties between accounts created in the same instant.
 
 ## Authentication
 

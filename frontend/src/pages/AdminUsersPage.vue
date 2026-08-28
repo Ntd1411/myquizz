@@ -224,7 +224,13 @@ onMounted(() => {
     <div class="admin-bar" data-enter>
       <p class="admin-note">
         <span class="admin-note-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          >
             <circle cx="12" cy="12" r="8.5" />
             <path d="M12 8v.5" />
             <path d="M12 11.5v4.5" />
