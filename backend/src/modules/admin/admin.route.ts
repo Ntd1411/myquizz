@@ -7,3 +7,4 @@ import { AdminSchema } from './admin.schema.js'
 export const adminRouter: Router = Router()
 
 adminRouter.get('/users', authMiddleware, validateQuery(AdminSchema), controller.getAllUsers)
+adminRouter.delete('/users/:id', authMiddleware, controller.deleteUser)

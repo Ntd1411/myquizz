@@ -13,3 +13,7 @@ export async function getAllUsers(offset?: number, limit?: number) {
   }
   return result
 }
+
+export async function deleteUser(id: number) {
+  await adminRepository.deleteUser(id)
+}

@@ -1,4 +1,5 @@
 import { pool } from '../../infrastructure/database/connection.js'
+import { AppError } from '../../shared/errors/AppError.js'
 import type { User } from '../auth/auth.type.js'
 
 export async function getAllUsers (offset?: number, limit?: number): Promise<User[]> {
@@ -25,4 +26,11 @@ export async function getUsersCount (): Promise<number> {
     throw new Error('Failed to retrieve users count')
   }
   return parseInt(result.rows[0].count, 10)
+}
+
+export async function deleteUser (id: number): Promise<void> {
+  const result = await pool.query('UPDATE users SET deleted_at = NOW() WHERE id = $1', [id])
+  if (result.rowCount === 0) {
+    throw new AppError(404, `User with id ${id} not found`, 'USER_NOT_FOUND')
+  }
 }

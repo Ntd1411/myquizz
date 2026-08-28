@@ -19,3 +19,19 @@ export async function getAllUsers(req: AuthRequest, res: Response, next: NextFun
     next(error)
   }
 }
+
+export async function deleteUser(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user || req.user.role != 'admin') {
+      throw new AppError(403, 'Access denied', 'FORBIDDEN')
+    }
+
+    const { id } = req.params
+
+    await adminService.deleteUser(Number(id))
+
+    success(res, { message: 'User deleted successfully' })
+  } catch (error) {
+    next(error)
+  }
+}
