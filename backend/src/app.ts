@@ -19,6 +19,7 @@ import { storageRouter } from './modules/storage/storage.route.js'
 import { apiRateLimiter, globalRateLimiter } from './shared/middlewares/rate.limit.middleware.js'
 import { pool } from './infrastructure/database/connection.js'
 import { startScoringScheduler } from './infrastructure/jobs/scoring.job.js'
+import { adminRouter } from './modules/admin/admin.route.js'
 
 bootstrapEngine()
 
@@ -97,6 +98,7 @@ router.use('/users', userRouter)
 router.use('/quizzes', quizRouter)
 router.use('/games', gameRouter)
 router.use('/storage', storageRouter)
+router.use('/admin', adminRouter)
 
 new GameSocket(io)
 
