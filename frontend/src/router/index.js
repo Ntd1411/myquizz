@@ -162,6 +162,16 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  // Admin. `requiresAdmin` implies a session, but `requiresAuth` is stated as well so
+  // a signed-out reader lands on the login screen with a redirect back here, rather
+  // than being bounced home for a permission they might actually hold.
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: () => import('@/pages/AdminUsersPage.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/pages/NotFoundPage.vue') },
 ]
 
@@ -192,6 +202,12 @@ router.beforeEach(async (to) => {
 
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // The guard only keeps the screen from being built for the wrong reader; the API is
+  // what actually refuses the data, with a 403 on every /admin call.
+  if (to.meta.requiresAdmin && !auth.isAdmin) {
+    return { name: 'home' }
   }
 
   if (to.meta.guestOnly && auth.isLoggedIn) {

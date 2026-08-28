@@ -51,10 +51,16 @@ const navLinks = [
   { label: 'Discover', to: { name: 'discover' } },
   { label: 'My library', to: { name: 'library' } },
   { label: 'Create', to: { name: 'create-start' }, requiresAuth: true },
+  // Only an admin ever sees this one, in the bar and in the mobile drawer alike.
+  { label: 'Admin', to: { name: 'admin-users' }, requiresAdmin: true },
 ]
 
 const visibleNavLinks = computed(() =>
-  navLinks.filter((link) => !link.requiresAuth || (auth.ready && auth.isLoggedIn)),
+  navLinks.filter((link) => {
+    if (!auth.ready) return !link.requiresAuth && !link.requiresAdmin
+    if (link.requiresAdmin) return auth.isAdmin
+    return !link.requiresAuth || auth.isLoggedIn
+  }),
 )
 
 /**
@@ -283,6 +289,19 @@ async function handleLogout() {
               @click="menuOpen = false"
             >
               Edit profile
+            </RouterLink>
+            <!--
+              Staff only, and set apart by a rule above it: user administration is not
+              one of the reader's own account actions.
+            -->
+            <RouterLink
+              v-if="auth.isAdmin"
+              :to="{ name: 'admin-users' }"
+              class="mt-xxs block rounded-md border-t border-hairline px-sm py-xs pt-xs text-body-sm font-medium text-ink hover:bg-canvas-soft"
+              role="menuitem"
+              @click="menuOpen = false"
+            >
+              Manage users
             </RouterLink>
             <button
               class="block w-full rounded-md px-sm py-xs text-left text-body-sm text-ink-secondary hover:bg-canvas-soft"

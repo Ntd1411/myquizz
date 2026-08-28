@@ -39,6 +39,7 @@ export const CODE_MESSAGES = {
   USER_DEACTIVATED: 'This account has been deactivated.',
   USER_PASSWORD_INCORRECT: 'Your current password is not correct.',
   USER_NO_FIELDS_TO_UPDATE: 'Change something before saving.',
+  ADMIN_CANNOT_BAN_SELF: 'You cannot ban your own account.',
 
   // Password reset, where several different refusals all arrive as 400
   RESET_OTP_INVALID: 'That code is not correct. Check the digits and try again.',
