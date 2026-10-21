@@ -86,6 +86,7 @@ export class GameSocket {
   private nsp: Namespace
   private timers = new Map<number, NodeJS.Timeout>() // gameId -> current phase timer
   private paused = new Map<number, number>() // gameId -> remaining ms while paused
+  private questionWork = new Map<number, Promise<void>>() // serialize host answers with closure
   private questions = new Map<number, SnapshotQuestion[]>() // gameId -> snapshot questions
   private matchTimers = new Map<string, NodeJS.Timeout>() // `${gameId}:${playerId}` -> marathon deadline
   private selfTimeouts = new Map<string, NodeJS.Timeout>() // `${gameId}:${playerId}` -> self-paced question timeout
@@ -106,6 +107,8 @@ export class GameSocket {
       if (data.code) {
         void socket.join(this.room(data.code))
         if (data.role === 'host') void socket.join(this.hostRoom(data.code))
+        if (data.role === 'player' && data.playerSessionId)
+          void socket.join(this.playerRoom(data.code, data.playerSessionId))
       }
 
       this.on(socket, 'lobby:join', () => this.onLobbyJoin(socket))
@@ -147,6 +150,7 @@ export class GameSocket {
   // rooms
   private room = (code: string) => `game:${code}`
   private hostRoom = (code: string) => `game:${code}:host`
+  private playerRoom = (code: string, playerId: number) => `game:${code}:player:${playerId}`
 
   // state helpers (Redis first, Postgres as the fallback)
   private async loadSession(gameId: number): Promise<GameSessionRow> {
@@ -401,7 +405,8 @@ export class GameSocket {
       players: players.map((p) => ({
         id: p.id,
         player_name: p.player_name,
-        player_score: p.player_score,
+        ...(session.session_status === 'lobby' || session.session_status === 'finished'
+          ? { player_score: p.player_score } : {}),
         player_avatar: p.player_avatar ?? null,
         lives: p.lives ?? null, // the host screen needs it in survival
         status: p.status
@@ -472,7 +477,7 @@ export class GameSocket {
         ? mode !== 'never'
         : mode === 'between_questions'
 
-    if (toPlayers)
+    if (toPlayers && (session.config.flow.showCorrectAnswer || audience === 'force'))
       this.nsp.to(this.room(code)).except(this.hostRoom(code)).emit('leaderboard:updated', {
         leaderboard: rows.map((r) => r.lean),
         serverTime
@@ -490,7 +495,7 @@ export class GameSocket {
   // The host screen is a monitor: it must see every phase change, including the
   // self-paced flow where no room-wide question event is ever emitted
   private async emitHostState(session: GameSessionRow) {
-    this.nsp.to(this.hostRoom(session.session_code)).emit('game:state', await this.snapshot(session))
+    this.nsp.to(this.hostRoom(session.session_code)).emit('game:state', await this.snapshot(session, undefined, true))
   }
 
   private async onLobbyJoin(socket: Socket) {
@@ -510,7 +515,7 @@ export class GameSocket {
     if (data.role === 'host') {
       // host only refreshes itself: the player roster did not change
       await this.emitLobby(session, socket)
-      socket.emit('game:state', await this.snapshot(session))
+      socket.emit('game:state', await this.snapshot(session, undefined, true))
       await this.emitLeaderboard(session, 'host-only')
     } else if (session.session_status === 'lobby') {
       // a player joined or reconnected: the roster changed, everyone needs it
@@ -678,7 +683,28 @@ export class GameSocket {
     if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true))
   }
 
+  // A timeout must not settle streaks halfway through an accepted answer write.
+  private async inQuestionOrder<T>(gameId: number, work: () => Promise<T>): Promise<T> {
+    const previous = this.questionWork.get(gameId) ?? Promise.resolve()
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.questionWork.set(gameId, pending)
+    await previous
+    try {
+      return await work()
+    } finally {
+      release()
+      if (this.questionWork.get(gameId) === pending) this.questionWork.delete(gameId)
+    }
+  }
+
   private async lockQuestion(gameId: number, byTimeUp: boolean) {
+    return this.inQuestionOrder(gameId, () => this.closeQuestion(gameId, byTimeUp))
+  }
+
+  private async closeQuestion(gameId: number, byTimeUp: boolean) {
     this.clearTimer(gameId)
     const current = await this.loadSession(gameId)
     if (current.current_phase !== 'question_active') return // already locked
@@ -704,9 +730,25 @@ export class GameSocket {
     // pre-calculate when the next question fires so the client can show a precise
     // countdown instead of computing Date.now() + showResultsSeconds itself
     const wait = cfg.timing.showResultsSeconds * 1000
+    const players = await this.loadPlayers(session.id)
+    // A missed question breaks a Classic streak, including disconnected players.
+    // Do not invent an answered_questions row: absence still means unanswered.
+    if (session.game_mode === 'classic') {
+      for (const player of players) {
+        if (!(player.answered_questions ?? []).some((a) => a.question_index === index)) {
+          player.streak = 0
+          await cache.updatePlayer(session.id, player)
+        }
+      }
+    }
+    await repo.flushPlayers(players)
     const nextQuestionAt = cfg.timing.autoAdvance ? iso(Date.now() + wait) : null
+    const next = await this.patchSession(session.id, {
+      current_phase: 'showing_results',
+      phase_ends_at: nextQuestionAt
+    })
 
-    // the correct answer is revealed only after the question is locked
+    // The shared result carries no personal grading or streak.
     this.nsp.to(this.room(session.session_code)).emit('question:results', {
       index,
       question_id: q?.id ?? null,
@@ -718,8 +760,13 @@ export class GameSocket {
       serverTime: iso(Date.now())
     })
 
-    const players = await this.loadPlayers(session.id)
-    await repo.flushPlayers(players) // flush Postgres at the end of every question
+    if (q) {
+      for (const player of players) {
+        const result = this.personalResult(next, player, q)
+        if (result) this.nsp.to(this.playerRoom(session.session_code, player.id))
+          .emit('question:personal-results', result)
+      }
+    }
 
     if (cfg.flow.showLeaderboard === 'between_questions') await this.emitLeaderboard(session)
     else await this.emitLeaderboard(session, 'host-only')
@@ -736,12 +783,9 @@ export class GameSocket {
       cfg
     )
 
-    const next = await this.patchSession(session.id, {
-      current_phase: 'showing_results',
-      phase_ends_at: nextQuestionAt
-    })
     if (!cfg.timing.autoAdvance) return // wait for the host to send game:next
-    this.timer(next.id, wait, async () => {
+    const remaining = nextQuestionAt ? Math.max(0, Date.parse(nextQuestionAt) - Date.now()) : 0
+    this.timer(next.id, remaining, async () => {
       const fresh = await this.loadSession(next.id)
       if (over) {
         await this.endGame(fresh)
@@ -809,7 +853,9 @@ export class GameSocket {
 
     const updated = await this.patchSession(gameId, { session_status: 'paused', phase_ends_at: null })
     await repo.updateSessionState(gameId, { session_status: 'paused' })
-    this.nsp.to(this.room(updated.session_code)).emit('game:state', await this.snapshot(updated))
+    this.nsp.to(this.room(updated.session_code)).except(this.hostRoom(updated.session_code))
+      .emit('game:state', await this.snapshot(updated))
+    await this.emitHostState(updated)
   }
 
   private async onResume(socket: Socket) {
@@ -826,7 +872,9 @@ export class GameSocket {
     const endsAt = remaining > 0 ? iso(Date.now() + remaining) : null
     const updated = await this.patchSession(gameId, { session_status: 'active', phase_ends_at: endsAt })
     await repo.updateSessionState(gameId, { session_status: 'active' })
-    this.nsp.to(this.room(updated.session_code)).emit('game:state', await this.snapshot(updated))
+    this.nsp.to(this.room(updated.session_code)).except(this.hostRoom(updated.session_code))
+      .emit('game:state', await this.snapshot(updated))
+    await this.emitHostState(updated)
 
     if (remaining <= 0) return
     // a pause during the countdown must resume the countdown, not a question
@@ -857,6 +905,13 @@ export class GameSocket {
 
   // answering
   private async onAnswer(socket: Socket, payload: unknown, ack?: Ack) {
+    const { gameId } = this.requirePlayer(socket)
+    const session = await this.loadSession(gameId)
+    if (session.config.flow.pacing === 'self') return this.acceptAnswer(socket, payload, ack)
+    return this.inQuestionOrder(gameId, () => this.acceptAnswer(socket, payload, ack))
+  }
+
+  private async acceptAnswer(socket: Socket, payload: unknown, ack?: Ack) {
     const { gameId, psid } = this.requirePlayer(socket)
     const session = await this.loadSession(gameId)
     if (session.session_status !== 'active')
@@ -981,7 +1036,7 @@ export class GameSocket {
     // Reveal answer outcome immediately only for self-paced modes.
     // For host-paced modes, the player receives only an acceptance ack ('accepted: true')
     // while the question is active; their individual outcome (isCorrect, score, streak)
-    // is revealed when the question locks via question:results / leaderboard broadcast.
+    // is revealed after closure via the private question:personal-results event.
     if (typeof ack === 'function') {
       const reveal = cfg.flow.showCorrectAnswer && selfPaced
       ack({
@@ -1039,7 +1094,7 @@ export class GameSocket {
         },
         cfg
       )
-      if (advance) await this.lockQuestion(gameId, false)
+      if (advance) await this.closeQuestion(gameId, false)
       return
     }
 
@@ -1337,7 +1392,25 @@ export class GameSocket {
   }
 
   // reconnect
-  private async snapshot(session: GameSessionRow, player?: PlayerSessionRow) {
+  private personalResult(session: GameSessionRow, player: PlayerSessionRow, q: SnapshotQuestion) {
+    if (session.game_mode !== 'classic' || session.current_phase !== 'showing_results' ||
+      !session.config.flow.showCorrectAnswer) return null
+    const answer = (player.answered_questions ?? [])
+      .find((a) => a.question_index === session.current_question_index && a.question_id === q.id)
+    return {
+      index: session.current_question_index,
+      question_id: q.id,
+      answered: answer !== undefined,
+      isCorrect: answer?.is_correct ?? null,
+      scoreEarned: answer?.score_earned ?? 0,
+      totalScore: player.player_score,
+      streak: player.streak,
+      nextQuestionAt: session.phase_ends_at,
+      serverTime: iso(Date.now())
+    }
+  }
+
+  private async snapshot(session: GameSessionRow, player?: PlayerSessionRow, isHost = false) {
     const cfg = session.config
     const questions = await this.loadQuestions(session.id)
     const selfPaced = cfg.flow.pacing === 'self'
@@ -1353,7 +1426,14 @@ export class GameSocket {
     const clock = selfPaced && player ? await cache.getPlayerClock(session.id, player.id) : null
     const endsAt = selfPaced && player && !counting ? clock?.endsAt ?? null : session.phase_ends_at
     const optionSeed = selfPaced && player ? session.id + player.id : session.id
-    const reveal = cfg.flow.showCorrectAnswer || session.session_status === 'finished'
+    const finished = session.session_status === 'finished'
+    // Host-paced grading stays private until results have been settled, even if
+    // the configuration allows revealing the answer once the question closes.
+    const reveal = cfg.flow.showCorrectAnswer &&
+      (finished || selfPaced || session.current_phase === 'showing_results')
+    const showBoard = isHost || (cfg.flow.showLeaderboard !== 'never' &&
+      (finished || (cfg.flow.showLeaderboard === 'between_questions' && reveal &&
+        session.current_phase === 'showing_results')))
 
     return {
       session_status: session.session_status,
@@ -1373,12 +1453,13 @@ export class GameSocket {
         : null,
       serverTime: iso(Date.now()),
       player: player ? this.publicPlayer(player, reveal) : null,
-      leaderboard:
-        cfg.flow.showLeaderboard === 'never' ||
-        // a live score during an open question tells the player whether they were right
-        (!reveal && session.current_phase === 'question_active')
-          ? []
-          : (await cache.getLeaderboard(session.id)) ?? (await repo.getLeaderboard(session.id))
+      personal_result: player && q ? this.personalResult(session, player, q) : null,
+      // Use the same lean rows as leaderboard:updated; cached/DB rows include
+      // private streak and correctness counts and are never a player contract.
+      leaderboard: showBoard
+        ? this.buildLeaderboard(await this.loadPlayers(session.id), questions.length)
+          .map((row) => isHost ? row.full : row.lean)
+        : []
     }
   }
 
@@ -1390,7 +1471,7 @@ export class GameSocket {
       data.role === 'player' && data.playerSessionId
         ? await this.loadPlayer(session.id, data.playerSessionId)
         : undefined
-    socket.emit('game:state', await this.snapshot(session, player))
+    socket.emit('game:state', await this.snapshot(session, player, data.role === 'host'))
   }
 
   // end of match

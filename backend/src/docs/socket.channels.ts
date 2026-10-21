@@ -180,12 +180,17 @@ export const gameChannels: Record<string, OpenApiObject> = {
       ['answer']
     ),
     ack: object({
-      is_correct: bool('Result of the server-side grading.'),
-      score_earned: int('Points added for this answer.'),
-      is_late: bool('True when the answer landed after the deadline and was still accepted.'),
+      accepted: bool('Receipt only in Classic; never a grading result while the question is open.'),
+      isLate: bool('Whether the server considered the submission late.'),
       lives: nullable(int('Remaining lives, null outside survival.'), 'integer'),
+      eliminated: bool('Whether this answer eliminated the player.'),
+      isCorrect: bool('Self-paced and showCorrectAnswer only.'),
+      scoreEarned: int('Self-paced and showCorrectAnswer only.'),
+      totalScore: int('Self-paced and showCorrectAnswer only.'),
+      streak: int('Self-paced and showCorrectAnswer only.'),
+      correct_answer: { description: 'Self-paced and showCorrectAnswer only: option ids or accepted text.' },
       serverTime
-    })
+    }, ['accepted', 'isLate', 'lives', 'eliminated', 'serverTime'])
   }),
 
   'question:next': clientEvent({
@@ -232,7 +237,7 @@ export const gameChannels: Record<string, OpenApiObject> = {
     audience: 'everyone',
     summary: 'Full snapshot of the room',
     description:
-      'The only event a client needs to render the screen from scratch. Sent on player:sync, on the host screen after a config change, and around pause and resume.',
+      'The only event a client needs to render the screen from scratch. Sent on player:sync, on the host screen after a config change, and around pause and resume. A player sync during Classic showing_results includes personal_result when showCorrectAnswer is enabled; other phases return null. Shared pause/resume broadcasts carry no private result; request player:sync to restore it.',
     payload: ref('GameState')
   }),
 
@@ -305,6 +310,15 @@ export const gameChannels: Record<string, OpenApiObject> = {
       nextQuestionAt: nullable(time('When the next question fires, null when the host advances manually.'), 'string'),
       serverTime
     })
+  }),
+
+  'question:personal-results': serverEvent({
+    event: 'question:personal-results',
+    audience: 'player',
+    summary: 'Private Classic result after question closure',
+    description:
+      'Classic only, sent to every socket authenticated as this player after the question is settled and only when flow.showCorrectAnswer is true. Not broadcast to other players or the host. Correct answers increment streak; wrong or unanswered questions (including timeout or disconnection) reset it to 0. Reconnect with player:sync: game:state.personal_result has the same fields only during showing_results, including a paused result phase; otherwise null. Match index and question_id, replace state rather than incrementing locally, and discard results for older questions.',
+    payload: ref('PersonalQuestionResult')
   }),
 
   'question:awaiting_next': serverEvent({

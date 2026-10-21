@@ -144,7 +144,6 @@ vite.config.ts.timestamp-*
 
 .cursor
 
-tests
 .codegraph
 .vscode
 .github/skills
