@@ -36,7 +36,7 @@ export const PREVIEW_CONFIG = {
   timing: {
     countdownSeconds: 3,
     autoAdvance: true,
-    showResultsSeconds: 2,
+    showResultsSeconds: 5,
   },
   flow: {
     allowAnswerLate: true,
