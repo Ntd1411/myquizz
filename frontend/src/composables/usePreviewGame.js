@@ -22,7 +22,7 @@ import {
  *     plays like the quiz plays;
  *   - the reveal advances by itself after timing.showResultsSeconds, like classic does,
  *     so the rehearsal runs at the pace of the real thing. `next()` is still there for a
- *     reader who wants the explanation now rather than in two seconds.
+ *     reader who wants the explanation now rather than in five seconds.
  *
  * The deadline is real but not final: flow.allowAnswerLate is on, so zero on the clock
  * stops the speed bonus and taxes the answer by latePenaltyRatio instead of closing the

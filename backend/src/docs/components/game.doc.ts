@@ -53,7 +53,7 @@ export const gameSchemas: SchemaMap = {
           countdownSeconds: { type: 'number', default: 3 },
           perQuestionSeconds: { type: 'number', nullable: true, default: null },
           autoAdvance: { type: 'boolean', default: true },
-          showResultsSeconds: { type: 'number', default: 2 },
+          showResultsSeconds: { type: 'number', default: 5 },
           totalMatchSeconds: { type: 'number', nullable: true, default: null }
         }
       },

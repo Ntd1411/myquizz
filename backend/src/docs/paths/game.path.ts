@@ -97,7 +97,7 @@ const exampleConfig = {
     // null on purpose: the engine then uses the time_limit of each question.
     perQuestionSeconds: null,
     autoAdvance: true,
-    showResultsSeconds: 2,
+    showResultsSeconds: 5,
     totalMatchSeconds: null
   },
   lobby: { maxPlayers: 100, allowLateJoin: false, allowGuests: true },
@@ -151,7 +151,7 @@ export const gamePaths: PathMap = {
   '/games': {
     post: {
       summary: 'Create a game session',
-      description: `Snapshots the quiz, opens a room for it and makes the caller its host. The session is nested under data.data.session, and any config field the mode refused is listed under data.ignored instead of failing the request. mode defaults to classic when omitted. The stored config is not simply the patch you sent: once the surviving fields are merged, the mode rewrites what it owns, so marathon always auto-advances and pins showResultsSeconds to 2, reviewMode forces showCorrectAnswer, perQuestionSeconds 0 disables the speed bonus, self-paced modes downgrade showLeaderboard from between_questions to end_only, and practice zeroes the whole scoring block. Compare data.data.session.config, never your own patch. ${AUTH_NOTE}`,
+      description: `Snapshots the quiz, opens a room for it and makes the caller its host. The session is nested under data.data.session, and any config field the mode refused is listed under data.ignored instead of failing the request. mode defaults to classic when omitted. The stored config is not simply the patch you sent: once the surviving fields are merged, the mode rewrites what it owns, so marathon always auto-advances and pins showResultsSeconds to 5, reviewMode forces showCorrectAnswer, perQuestionSeconds 0 disables the speed bonus, self-paced modes downgrade showLeaderboard from between_questions to end_only, and practice zeroes the whole scoring block. Compare data.data.session.config, never your own patch. ${AUTH_NOTE}`,
       tags: [gameTag.name],
       requestBody: jsonBody(
         object(
