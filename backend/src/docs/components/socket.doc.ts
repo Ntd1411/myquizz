@@ -75,7 +75,7 @@ export const socketSchemas: SchemaMap = {
   LobbyPlayer: object({
     id: int('Player session id.'),
     player_name: str('Display name.'),
-    player_score: int('Score so far.'),
+    player_score: int('Score so far. Omitted while the match is active or paused.'),
     player_avatar: nullable(str('Avatar URL, null when the player never picked one.'), 'string'),
     lives: nullable(int('Remaining lives, null outside survival.'), 'integer'),
     status: str('connected, disconnected, eliminated or finished.')
@@ -115,7 +115,7 @@ export const socketSchemas: SchemaMap = {
   PlayerState: {
     type: 'object',
     description:
-      'The player as seen by that player. While the answer key must stay hidden the payload is trimmed to the fields below; once the answers are revealed (flow.showCorrectAnswer, or the match is finished) the full player row is sent instead.',
+      'The player as seen by that player. While the answer key must stay hidden the payload is trimmed to the fields below; grading fields require flow.showCorrectAnswer and, for host-paced rooms, showing_results or a finished match. Active or paused open questions never reveal grading, totals or streak. Self-paced rooms retain immediate reveal when enabled.',
     properties: {
       id: int('Player session id.'),
       player_name: str('Display name.'),
@@ -146,6 +146,19 @@ export const socketSchemas: SchemaMap = {
     correct_count: int('Players who got it right.')
   }),
 
+  PersonalQuestionResult: object({
+    index: int('0-based room question index; pair with question_id when reconciling events.'),
+    question_id: int('Snapshot question id.'),
+    answered: bool('Whether the server accepted an answer for this question.'),
+    isCorrect: nullable(bool('Server grading; null when unanswered.'), 'boolean'),
+    scoreEarned: int('Points added for this question, 0 when unanswered.'),
+    totalScore: int('Player score after this question.'),
+    streak: int('Consecutive correct answers after closure. Wrong or unanswered resets to 0.'),
+    nextQuestionAt: nullable(time('Next transition, null for manual advance or while paused.'), 'string'),
+    serverTime
+  }, ['index', 'question_id', 'answered', 'isCorrect', 'scoreEarned', 'totalScore', 'streak',
+    'nextQuestionAt', 'serverTime']),
+
   GameState: object({
     session_status: str('lobby, active, paused, finished or cancelled.'),
     current_phase: str('countdown, question_active, question_locked or showing_results.'),
@@ -164,10 +177,11 @@ export const socketSchemas: SchemaMap = {
     remainingSeconds: nullable(int('Seconds left, already computed against the server clock.'), 'integer'),
     serverTime,
     player: nullable(ref('PlayerState'), 'object'),
+    personal_result: nullable(ref('PersonalQuestionResult'), 'object'),
     leaderboard: {
       type: 'array',
       items: ref('LeaderboardRow'),
-      description: 'Empty while a live score would reveal whether the current answer was right.'
+      description: 'Player snapshots use lean LeaderboardRow entries only. Empty until showing_results with showCorrectAnswer and between_questions enabled, or at finish unless never. Hosts receive their monitoring rows.'
     }
   }),
 

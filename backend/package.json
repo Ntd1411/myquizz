@@ -17,7 +17,8 @@
     "db:reset": "tsx scripts/reset-db.ts",
     "trivia:build": "tsx scripts/build-trivia-seed.ts",
     "db:migrate:prod": "node dist/infrastructure/database/migrate.js migrate",
-    "db:score:prod": "node dist/infrastructure/jobs/scoring.cli.js"
+    "db:score:prod": "node dist/infrastructure/jobs/scoring.cli.js",
+    "test": "pnpm build && node --experimental-test-module-mocks --test tests/*.test.mjs"
   },
   "repository": {
     "type": "git",
