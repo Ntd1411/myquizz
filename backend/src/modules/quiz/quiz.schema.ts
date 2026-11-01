@@ -11,8 +11,7 @@ import { LIST_SORTS, VISIBILITY_FILTERS } from './listing.type.js'
 export const TIME_LIMIT_MIN = 5
 export const TIME_LIMIT_MAX = 600
 
-export const createQuestionSchema = z.object({
-  question_type: z.enum(['multiple_choice', 'multiple_select', 'short_answer', 'long_answer']),
+const questionBase = z.object({
   question_text: z.string().min(1, 'Question must be at least 1 character').max(200, 'Question must be at most 200 characters'),
   time_limit: z.number().int('Time limit must be whole seconds')
     .min(TIME_LIMIT_MIN, `Time limit must be at least ${TIME_LIMIT_MIN} seconds`)
@@ -22,14 +21,38 @@ export const createQuestionSchema = z.object({
   // Both columns are varchar(255), so a longer string is refused here instead of
   // reaching the driver and surfacing as a 500.
   question_hint: z.string().max(255, 'Hint must be at most 255 characters').optional(),
-  explanation: z.string().max(255, 'Explanation must be at most 255 characters').optional(),
-  answer_options: z.array(z.string().min(1, 'Option must be at least 1 character').max(100, 'Option must be at most 100 characters'))
-    .min(2, 'Question must have at least 2 options')
-    .max(4, 'Question can have at most 4 options').optional(),
-  correct_answer: z.union([
-    z.array(z.number().int().min(0)).min(1, 'At least one correct answer is required'),
-    z.string().min(1, 'Correct answer is required')])
+  explanation: z.string().max(255, 'Explanation must be at most 255 characters').optional()
 })
+
+const answerOptions = z.array(z.string().min(1, 'Option must be at least 1 character').max(100, 'Option must be at most 100 characters'))
+  .min(2, 'Question must have at least 2 options')
+  .max(4, 'Question can have at most 4 options')
+
+const choiceQuestion = (type: 'multiple_choice' | 'multiple_select') =>
+  questionBase.extend({
+    question_type: z.literal(type),
+    answer_options: answerOptions,
+    correct_answer: z.array(z.number().int().min(0)).min(1)
+  }).superRefine((question, ctx) => {
+    const answers = question.correct_answer
+    if (type === 'multiple_choice' && answers.length !== 1)
+      ctx.addIssue({ code: 'custom', path: ['correct_answer'], message: 'Select exactly one answer' })
+    if (new Set(answers).size !== answers.length || answers.some((answer) => answer >= question.answer_options.length))
+      ctx.addIssue({ code: 'custom', path: ['correct_answer'], message: 'Answers must be distinct option IDs' })
+  })
+
+const typedQuestion = (type: 'short_answer' | 'long_answer') =>
+  questionBase.extend({
+    question_type: z.literal(type),
+    correct_answer: z.string().min(1, 'Correct answer is required')
+  })
+
+export const createQuestionSchema = z.union([
+  choiceQuestion('multiple_choice'),
+  choiceQuestion('multiple_select'),
+  typedQuestion('short_answer'),
+  typedQuestion('long_answer')
+])
 
 export const createQuizSchema = z.object({
   quiz_name: z.string().min(3, 'Quiz name at least 3 chars').max(100, 'Quiz name must be at most 100 characters'),
@@ -65,6 +88,10 @@ export function intQuery(min: number, max: number = MAX_INT) {
 export const boolQuery = z.enum(['true', 'false']).transform((value) => value === 'true')
 
 export const dateOnlyQuery = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a YYYY-MM-DD date')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value
+  }, 'Must be a real calendar date')
 
 /**
  * Listing cursor. It stays opaque to the client, so it is only length-capped

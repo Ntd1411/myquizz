@@ -1,4 +1,5 @@
 import { pool } from '../../infrastructure/database/connection.js'
+import type { PoolClient } from 'pg'
 import type { CreateQuestionRequest, CreateQuizRequest, UpdateQuizRequest } from './quiz.schema.js'
 import type { Question, Quiz } from './quiz.type.js'
 import { toQuizDetail } from './quiz.mapper.js'
@@ -57,7 +58,7 @@ function questionValues(quizId: number, question: CreateQuestionRequest): Questi
     question.question_image,
     question.question_hint,
     question.explanation,
-    JSON.stringify(buildAnswerOptions(question.answer_options)),
+    JSON.stringify(buildAnswerOptions('answer_options' in question ? question.answer_options : undefined)),
     JSON.stringify(question.correct_answer)
   ]
 }
@@ -65,9 +66,10 @@ function questionValues(quizId: number, question: CreateQuestionRequest): Questi
 export class QuizRepository {
   async insertQuiz(
     userId: number,
-    quizData: Omit<CreateQuizRequest, 'questions'>
+    quizData: Omit<CreateQuizRequest, 'questions'>,
+    client: PoolClient | typeof pool = pool
   ): Promise<Quiz | null> {
-    const result = await pool.query<Quiz>(
+    const result = await client.query<Quiz>(
       `INSERT INTO quizzes (quiz_owner, quiz_name, quiz_description, 
       quiz_language, quiz_image, quiz_category, is_public) 
       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -84,10 +86,14 @@ export class QuizRepository {
     return result.rows[0] || null
   }
 
-  async insertQuestions(quizId: number, questions: CreateQuestionRequest[]): Promise<Question[]> {
+  async insertQuestions(
+    quizId: number,
+    questions: CreateQuestionRequest[],
+    client: PoolClient | typeof pool = pool
+  ): Promise<Question[]> {
     const insertedQuestions: Question[] = []
     for (const question of questions) {
-      const result = await pool.query<Question>(
+      const result = await client.query<Question>(
         INSERT_QUESTION_SQL,
         questionValues(quizId, question)
       )
@@ -132,7 +138,8 @@ export class QuizRepository {
   async updateQuizMetadata(
     quizId: number,
     userId: number,
-    quizData: Omit<UpdateQuizRequest, 'questions'>
+    quizData: Omit<UpdateQuizRequest, 'questions'>,
+    client: PoolClient | typeof pool = pool
   ): Promise<Quiz | null> {
     const fieldsToUpdate: string[] = []
     const values: (string | number | boolean)[] = []
@@ -160,44 +167,34 @@ export class QuizRepository {
       AND deleted_at IS NULL 
       RETURNING *`
 
-    const result = await pool.query<Quiz>(updateQuery, values)
+    const result = await client.query<Quiz>(updateQuery, values)
     return result.rows[0] || null
   }
 
   async replaceQuizQuestions(
     quizId: number,
-    questions: CreateQuestionRequest[]
+    questions: CreateQuestionRequest[],
+    client: PoolClient
   ): Promise<Question[]> {
-    const client = await pool.connect()
-    try {
-      await client.query('BEGIN')
+    // Soft delete existing questions
+    await client.query(
+      'UPDATE questions SET deleted_at = NOW() WHERE quiz_id = $1 AND deleted_at IS NULL',
+      [quizId]
+    )
 
-      // Soft delete existing questions
-      await client.query(
-        'UPDATE questions SET deleted_at = NOW() WHERE quiz_id = $1 AND deleted_at IS NULL',
-        [quizId]
+    // Insert new questions
+    const newQuestions: Question[] = []
+    for (const question of questions) {
+      const result = await client.query<Question>(
+        INSERT_QUESTION_SQL,
+        questionValues(quizId, question)
       )
-
-      // Insert new questions
-      const newQuestions: Question[] = []
-      for (const question of questions) {
-        const result = await client.query<Question>(
-          INSERT_QUESTION_SQL,
-          questionValues(quizId, question)
-        )
-        if (result.rows[0]) {
-          newQuestions.push(result.rows[0])
-        }
+      if (result.rows[0]) {
+        newQuestions.push(result.rows[0])
       }
-
-      await client.query('COMMIT')
-      return newQuestions
-    } catch (error) {
-      await client.query('ROLLBACK')
-      throw error
-    } finally {
-      client.release()
     }
+
+    return newQuestions
   }
 
   async checkQuizOwnership(quizId: number, userId: number): Promise<boolean> {
@@ -208,22 +205,10 @@ export class QuizRepository {
     return result.rows.length > 0
   }
 
-  /**
-   * Hard delete: the row is gone, not flagged. RETURNING still hands back the row as it
-   * was, which is all the caller needs in order to answer with it.
-   *
-   * Everything hanging off the quiz goes with it through the ON DELETE CASCADE chain the
-   * schema declares: questions, quiz_snapshots, the game_sessions built on those
-   * snapshots, and the player_sessions of those games. Deleting a quiz therefore also
-   * deletes the play history of every match ever hosted from it, for every player.
-   *
-   * `deleted_at IS NULL` stays in the WHERE clause: a row soft deleted by the earlier
-   * version of this endpoint is invisible to every read, so it answers 404 here too
-   * instead of being silently swept away by a delete aimed at a live quiz.
-   */
+  /** Hide a quiz while preserving snapshots, active rooms and match history. */
   async deleteQuiz(quizId: number): Promise<Quiz | null> {
     const result = await pool.query<Quiz>(
-      `DELETE FROM quizzes
+      `UPDATE quizzes SET deleted_at = now(), is_public = false
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,
       [quizId]

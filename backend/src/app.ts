@@ -17,14 +17,15 @@ import RedisClient, { redisClient } from './infrastructure/cache/redis.client.js
 import { bootstrapEngine } from './modules/game/engine/index.js'
 import { storageRouter } from './modules/storage/storage.route.js'
 import { apiRateLimiter, globalRateLimiter } from './shared/middlewares/rate.limit.middleware.js'
-import { pool } from './infrastructure/database/connection.js'
-import { startScoringScheduler } from './infrastructure/jobs/scoring.job.js'
+import { pool, testConnection, closePool } from './infrastructure/database/connection.js'
+import { startScoringScheduler, stopScoringScheduler } from './infrastructure/jobs/scoring.job.js'
 import { adminRouter } from './modules/admin/admin.route.js'
 import { authRepository } from './modules/auth/auth.repository.js'
 
 bootstrapEngine()
 
 const port = env.PORT
+await testConnection()
 await runMigrations()
 
 // Redis is a cache, not a hard dependency: log the failure and keep booting.
@@ -71,6 +72,12 @@ app.get('/health', async (req, res) => {
   const db = await pool.query('SELECT 1').then(() => true).catch(() => false)
   const redis = RedisClient.isConnected()
   res.status(db ? 200 : 503).json({ db, redis })
+})
+app.get('/health/live', (req, res) => res.status(200).json({ live: true }))
+app.get('/health/ready', async (req, res) => {
+  const db = await pool.query('SELECT 1').then(() => true).catch(() => false)
+  const redis = RedisClient.isConnected()
+  res.status(db && redis ? 200 : 503).json({ db, redis, realtime: true })
 })
 
 app.use(globalRateLimiter)
@@ -119,3 +126,16 @@ httpServer.listen(port, () => {
   cleanup()
   setInterval(cleanup, 60 * 60 * 1000).unref()
 })
+
+const shutdown = () => {
+  stopScoringScheduler()
+  void io.close()
+    .then(() => Promise.all([closePool(), RedisClient.disconnect()]))
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error('Shutdown failed:', error)
+      process.exit(1)
+    })
+}
+process.once('SIGTERM', shutdown)
+process.once('SIGINT', shutdown)

@@ -488,7 +488,7 @@ export const quizPaths: PathMap = {
     },
     delete: {
       summary: 'Delete a quiz',
-      description: `Permanently deletes a quiz and returns the row as it was, so the client can name what it just removed. This is a hard delete and there is no undo: the questions go with the quiz, and so do the snapshots taken from it, every session ever hosted from those snapshots, and the player rows of those sessions. Deleting a quiz therefore also erases the play history of every match hosted from it, for every player. Only the owner may delete, and for anybody else the quiz simply does not exist. ${AUTH_NOTE}`,
+      description: `Soft deletes a quiz and returns the row. It disappears from listings and cannot start new rooms, while existing snapshots, active rooms and match history remain available. Only the owner may delete it. ${AUTH_NOTE}`,
       tags: [quizTag.name],
       parameters: [quizIdParam],
       responses: {

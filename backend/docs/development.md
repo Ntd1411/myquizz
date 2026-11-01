@@ -8,7 +8,7 @@ Dùng `.env.example` tương ứng cho từng package; root `.env.example` dành
 - Root: `docker compose up -d --build` khởi động PostgreSQL, Redis, API và web.
 - Trong `backend/`: `pnpm install --frozen-lockfile`, `pnpm dev`, `pnpm lint`, `pnpm build`.
 - `pnpm db:migrate` chạy migrations; startup cũng chạy migration. `pnpm db:seed:demo` và `pnpm db:score` dùng với DB phát triển được cho phép.
-- `GET /health` kiểm tra DB/Redis; `/v1/docs` là API reference; `/v1/docs/socket` là tài liệu socket. `/v1/api-docs` cần được bảo vệ ở reverse proxy trong production.
+- `GET /health` kiểm tra DB/Redis; `/health/live` chỉ xác nhận process còn chạy và `/health/ready` yêu cầu DB/Redis sẵn sàng. `/v1/docs` là API reference; `/v1/docs/socket` là tài liệu socket. `/v1/api-docs` cần được bảo vệ ở reverse proxy trong production.
 - `pnpm docs:export` xuất đặc tả khi thay đổi hợp đồng API.
 
 ## Chiến lược xác minh

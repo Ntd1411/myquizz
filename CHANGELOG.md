@@ -2,6 +2,16 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:35:48 GMT+7
+
+### Đợt 4: dữ liệu quiz, upload và khởi động
+
+- Gộp tạo/cập nhật quiz và câu hỏi trong transaction; xóa quiz bằng `deleted_at` để giữ snapshot, room và lịch sử trận.
+- Ràng buộc đáp án theo loại câu hỏi và option ID, kiểm tra ngày lịch thật, mở rộng mô tả quiz lên 500 ký tự bằng migration `015`.
+- Yêu cầu kích thước upload nguyên và kiểm tra URL/object ảnh quiz/câu hỏi thuộc người dùng trước khi gắn; giữ URL ảnh cũ khi sửa quiz để tương thích dữ liệu có sẵn.
+- Kết nối DB tường minh lúc bootstrap, thêm liveness/readiness và đóng HTTP/Socket.IO/DB/Redis khi có tín hiệu dừng.
+- Xác minh: backend lint/build và 38/38 test; frontend lint/build. Chưa chạy migration, API hoặc S3 trên dịch vụ thật vì Docker daemon không sẵn có. HEAD metadata không phát hiện nội dung ảnh giả mạo nếu object storage tin Content-Type do client khai báo.
+
 ## 2026-11-01 22:21:33 GMT+7
 
 ### Đợt 3: một phần độ tin cậy game

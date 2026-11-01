@@ -2,6 +2,21 @@ import type { Quiz } from './quiz.type.js'
 import { quizRepository } from './quiz.repository.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import type { CreateQuizRequest, UpdateQuizRequest } from './quiz.schema.js'
+import { withTransaction } from '../../infrastructure/database/connection.js'
+import { assertOwnedUpload } from '../storage/storage.service.js'
+
+const validateImages = async (
+  userId: number,
+  image: string | undefined,
+  questions?: CreateQuizRequest['questions'],
+  existingUrls = new Set<string>()
+) => {
+  if (image && !existingUrls.has(image)) await assertOwnedUpload(image, 'quizzes', userId)
+  for (const question of questions ?? []) {
+    if (question.question_image && !existingUrls.has(question.question_image))
+      await assertOwnedUpload(question.question_image, 'questions', userId)
+  }
+}
 
 /*
  * Quiz CRUD rules. Listing and search moved to listing.service.ts, where every
@@ -20,22 +35,16 @@ export async function createQuizService(
     throw new AppError(400, 'Quiz must have at least one question', 'QUIZ_NO_QUESTIONS')
   }
 
-  // Insert quiz
-  const createdQuiz = await quizRepository.insertQuiz(userId, quizData)
-  if (!createdQuiz) {
-    throw new AppError(500, 'Failed to create quiz', 'SERVER_ERROR')
-  }
+  await validateImages(userId, quizData.quiz_image, questions)
 
-  // Insert questions
-  const createdQuestions = await quizRepository.insertQuestions(
-    createdQuiz.id,
-    questions
-  )
-
-  // Verify all questions were created
-  if (createdQuestions.length !== questions.length) {
-    throw new AppError(500, 'Failed to create all questions', 'SERVER_ERROR')
-  }
+  const createdQuiz = await withTransaction(async (client) => {
+    const inserted = await quizRepository.insertQuiz(userId, quizData, client)
+    if (!inserted) throw new AppError(500, 'Failed to create quiz', 'SERVER_ERROR')
+    const createdQuestions = await quizRepository.insertQuestions(inserted.id, questions, client)
+    if (createdQuestions.length !== questions.length)
+      throw new AppError(500, 'Failed to create all questions', 'SERVER_ERROR')
+    return inserted
+  })
 
   // Re-read so the response carries the joined author and the counters the
   // insert just refreshed, in the exact shape GET /quizzes/id/:quizId returns.
@@ -92,22 +101,26 @@ export async function updateQuizService(
     throw new AppError(400, 'No valid fields to update', 'VALIDATION_ERROR')
   }
 
-  // Update quiz metadata if provided
-  if (hasMetadataUpdate) {
-    const updatedQuiz = await quizRepository.updateQuizMetadata(
-      quizId,
-      userId,
-      quizMetadata
-    )
-    if (!updatedQuiz) {
-      throw new AppError(404, 'Quiz not found', 'QUIZ_NOT_FOUND')
-    }
-  }
+  const previous = await quizRepository.getQuizById(quizId)
+  const existingUrls = new Set([
+    previous?.quiz_image,
+    ...(previous?.questions.map((question) => question.question_image) ?? [])
+  ].filter((value): value is string => !!value))
+  await validateImages(userId, quizMetadata.quiz_image, questions, existingUrls)
 
-  // Update questions if provided. Sending questions replaces the whole list.
-  if (hasQuestionsUpdate && questions) {
-    await quizRepository.replaceQuizQuestions(quizId, questions)
-  }
+  await withTransaction(async (client) => {
+    const locked = await client.query(
+      'SELECT id FROM quizzes WHERE id = $1 AND quiz_owner = $2 AND deleted_at IS NULL FOR UPDATE',
+      [quizId, userId]
+    )
+    if (!locked.rows[0]) throw new AppError(404, 'Quiz not found', 'QUIZ_NOT_FOUND')
+    if (hasMetadataUpdate) {
+      const updated = await quizRepository.updateQuizMetadata(quizId, userId, quizMetadata, client)
+      if (!updated) throw new AppError(404, 'Quiz not found', 'QUIZ_NOT_FOUND')
+    }
+    if (hasQuestionsUpdate && questions)
+      await quizRepository.replaceQuizQuestions(quizId, questions, client)
+  })
 
   // Always re-read the final state. Stitching the two partial results together
   // used to return an empty question list on a metadata-only update.
@@ -129,9 +142,7 @@ export async function deleteQuizService(
     throw new AppError(404, 'Quiz not found or unauthorized', 'QUIZ_NOT_FOUND')
   }
 
-  // Hard delete, and there is no undo: the cascade takes the questions, the snapshots,
-  // and every game and player row built on those snapshots with it. The row is returned
-  // only so the caller can report what it removed.
+  // Keep snapshots and match history when removing a quiz from listings.
   const deletedQuiz = await quizRepository.deleteQuiz(quizId)
   if (!deletedQuiz) {
     throw new AppError(404, 'Quiz not found or already deleted', 'QUIZ_NOT_FOUND')

@@ -163,9 +163,8 @@ function goPreview() {
 }
 
 /**
- * Deleting is a hard delete on the server: the row is removed, and the cascade takes the
- * questions, the snapshots and every match ever hosted from them with it. Nothing can be
- * restored afterwards, which is why it is asked for rather than done on the click. The
+ * Deleting hides the quiz on the server while preserving prior match history.
+ * There is no restore action in this UI, which is why deletion is confirmed. The
  * dialog is the page's own rather than window.confirm, which cannot be styled and blocks
  * the tab.
  */

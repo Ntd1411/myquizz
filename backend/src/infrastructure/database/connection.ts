@@ -18,20 +18,12 @@ pool.on('error', (err) => {
 })
 
 export async function testConnection() {
-  try {
-    const result = await pool.query('SELECT NOW()')
-    console.log('Database connected:', result.rows[0])
-  } catch (err) {
-    console.error('Database connection failed:', err)
-    process.exit(1)
-  }
+  await pool.query('SELECT 1')
 }
 
 export async function closePool() {
   await pool.end()
 }
-
-await testConnection()
 
 export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect()

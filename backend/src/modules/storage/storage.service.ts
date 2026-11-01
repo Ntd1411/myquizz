@@ -8,7 +8,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { v4 as uuidv4 } from 'uuid'
 import { storageConfig } from '../../infrastructure/config/storage.js'
 import { AppError } from '../../shared/errors/AppError.js'
-import { ALLOWED_FOLDERS, MAX_FILE_SIZE, type AllowedFolder } from './storage.schema.js'
+import { ALLOWED_FOLDERS, ALLOWED_MIME_TYPES, MAX_FILE_SIZE, type AllowedFolder } from './storage.schema.js'
 
 // S3 client
 const s3Client = new S3Client({
@@ -58,7 +58,8 @@ export async function assertOwnedUpload(fileUrl: string, folder: AllowedFolder, 
     throw new AppError(400, 'Upload does not belong to this account', 'FILE_FIELD_INVALID')
   try {
     const result = await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }))
-    if (!result.ContentType?.startsWith('image/') || !result.ContentLength || result.ContentLength > MAX_FILE_SIZE)
+    if (!ALLOWED_MIME_TYPES.includes(result.ContentType as typeof ALLOWED_MIME_TYPES[number]) ||
+      !result.ContentLength || result.ContentLength > MAX_FILE_SIZE)
       throw new AppError(400, 'Uploaded file is invalid', 'FILE_FIELD_INVALID')
   } catch (error) {
     if (error instanceof AppError) throw error
