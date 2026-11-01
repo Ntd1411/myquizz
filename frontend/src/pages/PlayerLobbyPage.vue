@@ -110,6 +110,19 @@ async function load() {
   let token = stored?.socketToken ?? null
   let playerId = stored?.playerId ?? null
 
+  // Closed rooms refuse socket handshakes and new joins. The public room state is
+  // enough to show the end screen; its report loads from REST when allowed.
+  if (found.session?.session_status === 'finished') {
+    game.setIdentity({
+      role: 'player',
+      code: roomCode.value,
+      sessionId: found.session.id,
+      playerId,
+    })
+    loading.value = false
+    return
+  }
+
   if (!token) {
     // No seat in this tab: either a fresh tab or the previous one was closed, which wipes
     // sessionStorage. A signed-in visitor is rejoined from the session cookie; a guest is

@@ -105,12 +105,25 @@ async function load() {
     return
   }
   session.value = room.session
-
   const token = await getHostToken(room.session.id).catch((error) => {
     loadError.value = toErrorMessage(error, 'You are not the host of this room.')
     return null
   })
   if (!token) {
+    loading.value = false
+    return
+  }
+
+  game.setIdentity({ role: 'host', code: roomCode.value, sessionId: room.session.id })
+  game.applyLobby({
+    session_status: room.session.session_status,
+    config: room.config,
+    players: room.players,
+  })
+
+  // The host token verifies ownership, but finished rooms reject Socket.IO
+  // handshakes. The report reads final standings from REST instead.
+  if (room.session.session_status === 'finished') {
     loading.value = false
     return
   }

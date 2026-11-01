@@ -6,6 +6,7 @@ Vue 3/Vite, Vue Router, Pinia, TanStack Vue Query, Tailwind và Socket.IO client
 
 `src/api/http.js` dùng Axios với withCredentials và promise dùng chung để gom refresh đồng thời. Không cần đề xuất xây lại cơ chế này như tính năng chưa có. Hiện refresh lỗi sẽ phát sự kiện hết phiên; cần phân biệt lỗi mạng tạm thời và lỗi phiên dứt điểm.
 `useGameSocket.js` nối event với game store, xử lý join/sync khi reconnect; server là nguồn quyết định quyền và điểm.
+Khi phòng đã kết thúc, trang người chơi/host dùng trạng thái REST để mở màn kết quả mà không kết nối Socket.IO (backend từ chối handshake cho phòng đóng). Người chơi có `showLeaderboard: 'never'` không gọi endpoint results bị cấm; host vẫn xác minh quyền qua host-token trước khi xem báo cáo.
 
 ## Phát triển và kiểm thử
 

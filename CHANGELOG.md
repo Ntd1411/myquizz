@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 23:05:14 GMT+7
+
+### Kết quả phòng đã đóng trên frontend
+
+- Dùng trạng thái phòng từ REST khi mở lại kết quả; không kết nối Socket.IO cho phòng đã kết thúc. Host vẫn được backend kiểm tra quyền qua host-token.
+- Người chơi trong phòng ẩn bảng xếp hạng không gọi endpoint results bị từ chối 403 và không thấy lỗi giả.
+- Xác minh: 2 test hồi quy useFinalResults, frontend lint/build. Toàn bộ Vitest: 209/215 qua, 6 test cũ ở GameResultsView/envelope/useGameSocket còn thất bại. Không chạy được Docker integration vì daemon không hoạt động và không có quyền khởi động dịch vụ.
+
 ## 2026-11-01 22:49:44 GMT+7
 
 ### Định dạng nhập bảng tính

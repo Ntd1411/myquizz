@@ -34,9 +34,12 @@ export function useFinalResults() {
   const reviewEnabled = computed(
     () => game.finalResults?.review_enabled ?? game.config?.flow?.reviewMode ?? false,
   )
+  const resultsHidden = computed(
+    () => !game.isHost && game.config?.flow?.showLeaderboard === 'never',
+  )
 
   async function load() {
-    if (loading.value || !game.sessionId) return
+    if (loading.value || !game.sessionId || resultsHidden.value) return
     loading.value = true
     error.value = ''
 
@@ -51,7 +54,7 @@ export function useFinalResults() {
   // Only fetch what the socket did not bring. An empty leaderboard is not a reason to
   // call: the host can hide the standings on purpose (`showLeaderboard: 'never'`).
   watch(
-    () => game.isFinished && !game.finalResults && Boolean(game.sessionId),
+    () => game.isFinished && !game.finalResults && Boolean(game.sessionId) && !resultsHidden.value,
     (needed) => {
       if (needed && !fetched.value) load()
     },
