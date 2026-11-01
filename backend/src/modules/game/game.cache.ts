@@ -1,5 +1,6 @@
 import { redisClient as redis } from '../../infrastructure/cache/redis.client.js'
 import type { CachedAnswer, GameSessionRow, PlayerSessionRow } from './game.type.js'
+import { AppError } from '../../shared/errors/AppError.js'
 
 const TTL = {
   session: 60 * 60 * 6,
@@ -11,6 +12,7 @@ const TTL = {
 export const key = {
   session: (gameId: number) => `game:${gameId}:session`,
   players: (gameId: number) => `game:${gameId}:players`,
+  playersComplete: (gameId: number) => `game:${gameId}:players:complete`,
   leaderboard: (gameId: number) => `game:${gameId}:leaderboard`,
   answers: (gameId: number, qIndex: number) => `game:${gameId}:answers:${qIndex}`,
   codeToId: (code: string) => `game:code:${code.toUpperCase()}`,
@@ -76,11 +78,16 @@ export const getPlayer = async (gameId: number, playerId: number) =>
 
 export const getPlayers = async (gameId: number) =>
   safe(async () => {
+    if (!(await redis.exists(key.playersComplete(gameId)))) return null
     const all = await redis.hgetall(key.players(gameId))
     const values = Object.values(all)
     if (values.length === 0) return null
     return values.map((v) => JSON.parse(v) as PlayerSessionRow)
   }, null)
+
+export const markPlayersComplete = async (gameId: number) => {
+  await redis.set(key.playersComplete(gameId), '1', 'EX', TTL.players)
+}
 
 export const countPlayers = async (gameId: number) =>
   safe(async () => {
@@ -136,12 +143,23 @@ export const recordAnswer = async (
   const field = String(playerId)
   const payload = JSON.stringify(data)
 
-  let accepted = true
-  if (allowChange) await redis.hset(k, field, payload)
-  else accepted = (await redis.hsetnx(k, field, payload)) === 1
-
-  await redis.expire(k, TTL.answers)
-  return accepted
+  try {
+    const accepted = await redis.eval(
+      `local accepted
+       if ARGV[3] == '1' then
+         redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+         accepted = 1
+       else
+         accepted = redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2])
+       end
+       redis.call('EXPIRE', KEYS[1], ARGV[4])
+       return accepted`,
+      1, k, field, payload, allowChange ? '1' : '0', TTL.answers
+    )
+    return accepted === 1
+  } catch {
+    throw new AppError(503, 'Game state is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+  }
 }
 
 export const countAnswers = async (gameId: number, qIndex: number) =>
@@ -170,6 +188,7 @@ export const clearGame = async (session: GameSessionRow) =>
     const pipeline = redis.multi()
       .del(key.session(session.id))
       .del(key.players(session.id))
+      .del(key.playersComplete(session.id))
       .del(key.leaderboard(session.id))
       .del(key.codeToId(session.session_code))
     for (let i = 0; i < session.total_questions; i++) {
@@ -190,11 +209,14 @@ export interface PlayerClock {
   pausedAt?: string | null
 }
 
-export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) =>
-  safe(async () => {
+export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) => {
+  try {
     await redis.set(key.clock(gameId, playerId), JSON.stringify(clock), 'EX', TTL.session)
     return clock
-  }, clock)
+  } catch {
+    throw new AppError(503, 'Game clock is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+  }
+}
 
 export const getPlayerClock = async (gameId: number, playerId: number) =>
   safe(async () => {

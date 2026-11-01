@@ -211,6 +211,47 @@ export const createPlayerSession = async (data: {
     return rows[0]
   })
 
+export const joinPlayerSession = async (data: {
+  game_session_id: number
+  player_id: number | null
+  player_guest_id: string | null
+  player_name: string
+  player_avatar: string | null
+  lives: number | null
+}): Promise<PlayerSessionRow> => withTransaction(async (tx) => {
+  const room = await tx.query<GameSessionRow>(
+    'SELECT * FROM game_sessions WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+    [data.game_session_id]
+  )
+  const session = room.rows[0]
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (session.session_status !== 'lobby' &&
+    !(session.session_status === 'active' && session.config.lobby.allowLateJoin))
+    throw new AppError(409, 'Game already started', 'GAME_ALREADY_STARTED')
+  const existing = await tx.query<PlayerSessionRow>(
+    `SELECT * FROM player_sessions
+     WHERE game_session_id = $1 AND deleted_at IS NULL
+       AND (($2::int IS NOT NULL AND player_id = $2) OR
+            ($3::varchar IS NOT NULL AND player_guest_id = $3))`,
+    [data.game_session_id, data.player_id, data.player_guest_id]
+  )
+  if (existing.rows[0]) return existing.rows[0]
+  const count = await tx.query<{ count: number }>(
+    'SELECT count(*)::int AS count FROM player_sessions WHERE game_session_id = $1 AND deleted_at IS NULL',
+    [data.game_session_id]
+  )
+  if ((count.rows[0]?.count ?? 0) >= session.config.lobby.maxPlayers)
+    throw new AppError(409, 'Room is full', 'GAME_ROOM_FULL')
+  const inserted = await tx.query<PlayerSessionRow>(
+    `INSERT INTO player_sessions
+       (game_session_id, player_id, player_guest_id, player_name, player_avatar, lives)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [data.game_session_id, data.player_id, data.player_guest_id, data.player_name, data.player_avatar, data.lives]
+  )
+  await tx.query('UPDATE game_sessions SET total_players = total_players + 1 WHERE id = $1', [data.game_session_id])
+  return inserted.rows[0] as PlayerSessionRow
+})
+
 // ---------- Leaderboard / results ----------
 export const getLeaderboard = async (gameSessionId: number) => {
   const { rows } = await pool.query<LeaderboardRow>(

@@ -2,6 +2,16 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:21:33 GMT+7
+
+### Đợt 3: một phần độ tin cậy game
+
+- Join kiểm tra trạng thái và sức chứa trong transaction khóa room, cho phép rejoin seat cũ kể cả khi phòng đầy; thêm unique partial indexes cho user/guest seat.
+- Tránh đọc hash Redis chưa được rehydrate sau restart; answer và timeout cùng claim một slot Redis bằng Lua, gắn `index` vào payload để chặn câu trả lời sớm/cũ.
+- Rời room xóa cả membership host/player và tránh đánh dấu mất kết nối khi seat còn socket khác; hủy toàn bộ self timeout khi game kết thúc; Redis lỗi ở answer/clock trả `SERVICE_UNAVAILABLE`.
+- Xác minh: backend 34/34 test, lint/build; frontend lint/build. Chưa chạy PostgreSQL/Redis/Socket.IO tích hợp vì Docker daemon không sẵn có.
+- Chưa xử lý bền vững timer/recovery sau restart (B16), CAS cho host transition (B17) và toàn bộ đường ghi game khi Redis lỗi (B20). Migration `014` cần rà soát seat trùng trước khi áp dụng lên DB có dữ liệu.
+
 ## 2026-11-01 22:15:49 GMT+7
 
 ### Đợt 2: phiên và tài khoản

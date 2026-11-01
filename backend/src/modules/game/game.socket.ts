@@ -139,6 +139,11 @@ export class GameSocket {
     handler: (payload: unknown, ack?: Ack) => Promise<void>
   ) {
     socket.on(event, (payload: unknown, ack?: Ack) => {
+      if ((socket.data as CustomSocketData).left && event !== 'lobby:join') {
+        if (typeof ack === 'function') ack({ error: { code: 'GAME_PLAYER_NOT_FOUND' } })
+        else socket.emit('error', { event, code: 'GAME_PLAYER_NOT_FOUND' })
+        return
+      }
       handler(payload, ack).catch((e: unknown) => {
         // The prose stays in the log, the room only ever sees the code
         const code = e instanceof AppError ? e.code : 'SERVER_ERROR'
@@ -166,6 +171,7 @@ export class GameSocket {
     if (hot) return hot
     const rows = await repo.listPlayerSessions(gameId) // re-warm after a Redis restart
     for (const p of rows) await cache.updatePlayer(gameId, p)
+    await cache.markPlayersComplete(gameId)
     return rows
   }
 
@@ -316,6 +322,12 @@ export class GameSocket {
     const handle = this.selfTimeouts.get(key)
     if (handle) clearTimeout(handle)
     this.selfTimeouts.delete(key)
+  }
+
+  private clearSelfTimeouts(gameId: number) {
+    for (const key of this.selfTimeouts.keys()) {
+      if (key.startsWith(`${gameId}:`)) this.clearSelfTimeout(gameId, Number(key.split(':')[1]))
+    }
   }
 
   // Who still owes an answer for this question.
@@ -505,6 +517,11 @@ export class GameSocket {
     if (!data.gameId || !data.code)
       throw new AppError(403, 'no room in token', 'GAME_TOKEN_INVALID')
     const session = await this.loadSession(data.gameId)
+    data.left = false
+    await socket.join(this.room(data.code))
+    if (data.role === 'host') await socket.join(this.hostRoom(data.code))
+    if (data.role === 'player' && data.playerSessionId)
+      await socket.join(this.playerRoom(data.code, data.playerSessionId))
 
     if (data.role === 'player' && data.playerSessionId) {
       const player = await this.loadPlayer(data.gameId, data.playerSessionId)
@@ -545,16 +562,21 @@ export class GameSocket {
 
   private async onLeave(socket: Socket) {
     const data = socket.data as CustomSocketData
-    if (!data.gameId || !data.code) return
+    if (!data.gameId || !data.code || data.left) return
+    data.left = true
+    await socket.leave(this.room(data.code))
+    await socket.leave(this.hostRoom(data.code))
+    if (data.playerSessionId)
+      await socket.leave(this.playerRoom(data.code, data.playerSessionId))
     if (data.role === 'player' && data.playerSessionId) {
+      const otherSockets = this.nsp.adapter.rooms.get(this.playerRoom(data.code, data.playerSessionId))
+      if (otherSockets?.size) return
       const player = await cache.getPlayer(data.gameId, data.playerSessionId)
       if (player && player.status === 'connected') {
         player.status = 'disconnected' // keep the row: the player may reconnect with the same token
         await cache.updatePlayer(data.gameId, player)
       }
     }
-    void socket.leave(this.room(data.code))
-
     const session = await cache.getSession(data.gameId)
     if (!session || data.role === 'host') return
     await this.emitLobby(session)
@@ -926,10 +948,12 @@ export class GameSocket {
     if (player.status === 'eliminated' || player.status === 'finished')
       throw new AppError(409, 'player can not answer anymore', 'GAME_PLAYER_INACTIVE')
 
-    const body = (payload ?? {}) as { answer?: unknown }
+    const body = (payload ?? {}) as { answer?: unknown; index?: number }
     const questions = await this.loadQuestions(gameId)
     const selfPaced = cfg.flow.pacing === 'self'
     const index = selfPaced ? player.current_question_index : session.current_question_index
+    if (!Number.isInteger(body.index) || body.index !== index)
+      throw new AppError(409, 'Question is not current', 'GAME_QUESTION_LOCKED')
     const total = questions.length
     // marathon loops the question bank; resolve the same way sendSelfQuestion does
     const marathon = selfPaced && cfg.timing.totalMatchSeconds !== null
@@ -946,6 +970,8 @@ export class GameSocket {
 
     // server authoritative timing
     const clock = selfPaced ? await cache.getPlayerClock(gameId, psid) : null
+    if (selfPaced && (!clock || clock.questionIndex !== index))
+      throw new AppError(409, 'Question has not started', 'GAME_QUESTION_LOCKED')
     const limit = limitOf(q, cfg)
     const now = Date.now()
     let timeTaken: number
@@ -1226,6 +1252,12 @@ export class GameSocket {
   !cfg.flow.allowAnswerLate &&
   Date.now() > Date.parse(resume.endsAt) + LATE_GRACE_MS
     ) {
+      const claimed = await cache.recordAnswer(
+        session.id, index, player.id,
+        { answer: null, isCorrect: false, timeTaken: resume.timeLimit, scoreEarned: 0 },
+        false
+      )
+      if (!claimed) return
       player.answered_questions = [
         ...(player.answered_questions ?? []),
     {
@@ -1242,11 +1274,6 @@ export class GameSocket {
       player.streak = 0 // a timeout breaks the streak, like a wrong answer
       player.current_question_index = index + 1
       await cache.updatePlayer(session.id, player)
-      await cache.recordAnswer(
-        session.id, index, player.id,
-        { answer: null, isCorrect: false, timeTaken: resume.timeLimit, scoreEarned: 0 },
-        true
-      )
       // the stale clock is left untouched on purpose: questionIndex no longer matches
       // the new index, so the next round creates a fresh one
       return this.sendSelfQuestion(socket, session)
@@ -1262,8 +1289,16 @@ export class GameSocket {
 
       this.armSelfTimeout(session.id, player.id, remainingMs, async () => {
         const freshSession = await this.loadSession(session.id)
+        if (freshSession.session_status !== 'active') return
         const freshPlayer = await this.loadPlayer(session.id, player.id)
         if (freshPlayer.current_question_index !== index) return // already answered
+
+        const claimed = await cache.recordAnswer(
+          session.id, index, freshPlayer.id,
+          { answer: null, isCorrect: false, timeTaken: limit, scoreEarned: 0 },
+          false
+        )
+        if (!claimed) return
 
         freshPlayer.answered_questions = [
           ...(freshPlayer.answered_questions ?? []),
@@ -1285,11 +1320,6 @@ export class GameSocket {
         }
         freshPlayer.current_question_index = index + 1
         await cache.updatePlayer(session.id, freshPlayer)
-        await cache.recordAnswer(
-          session.id, index, freshPlayer.id,
-          { answer: null, isCorrect: false, timeTaken: limit, scoreEarned: 0 },
-          true
-        )
 
         const over = freshPlayer.status === 'eliminated' || freshPlayer.current_question_index >= questions.length
         const reveal = freshSession.config.flow.showCorrectAnswer
@@ -1480,6 +1510,7 @@ export class GameSocket {
   private async endGame(session: GameSessionRow) {
     this.clearTimer(session.id)
     this.clearMatchTimers(session.id)
+    this.clearSelfTimeouts(session.id)
     this.paused.delete(session.id)
 
     const players = await this.loadPlayers(session.id)

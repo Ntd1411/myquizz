@@ -169,15 +169,16 @@ export const gameChannels: Record<string, OpenApiObject> = {
     audience: 'player',
     summary: 'Submit an answer',
     description:
-      'Player only, one answer per question. Grading, scoring and the late check all run on the server: the payload carries the choice and nothing else.',
+      'Player only, one answer per question. The payload carries the question index last shown to this player; the server rejects stale or early answers.',
     payload: object(
       {
         answer: {
           description:
             'An option id for multiple_choice, an array of option ids for multiple_select, the typed text for short_answer and long_answer. Option ids can be 0.'
-        }
+        },
+        index: { type: 'integer', description: '0-based question index last shown to this player.' }
       },
-      ['answer']
+      ['answer', 'index']
     ),
     ack: object({
       accepted: bool('Receipt only in Classic; never a grading result while the question is open.'),

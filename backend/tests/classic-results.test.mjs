@@ -101,7 +101,7 @@ for (const [name, answer, expected] of [['correct', 0, 3], ['wrong', 1, 0]]) {
   test(`${name} answer: receipt ACK, private settled result, reconnect parity and persistence`, async () => {
     const { game, first, second, host } = setup()
     let ack
-    await game.onAnswer(first, { answer }, (payload) => { ack = payload })
+    await game.onAnswer(first, { answer, index: session.current_question_index }, (payload) => { ack = payload })
     assert.equal(ack.accepted, true)
     for (const key of ['isCorrect', 'scoreEarned', 'totalScore', 'streak', 'correct_answer'])
       assert.equal(key in ack, false)
@@ -148,7 +148,7 @@ for (const disconnected of [false, true]) {
 test('too-late answer is rejected; closure resets the unanswered streak', async () => {
   const { game, first } = setup()
   session.phase_ends_at = new Date(Date.now() - 2000).toISOString()
-  await assert.rejects(game.onAnswer(first, { answer: 0 }), { code: 'GAME_ANSWER_TOO_LATE' })
+  await assert.rejects(game.onAnswer(first, { answer: 0, index: session.current_question_index }), { code: 'GAME_ANSWER_TOO_LATE' })
   await game.lockQuestion(1, true)
   assert.equal(message(first, 'question:personal-results').streak, 0)
 })
@@ -191,7 +191,7 @@ for (const phase of ['countdown', 'question_active', 'question_locked']) {
 
 test('showCorrectAnswer=false hides the private result, grading and live leaderboard', async () => {
   const { game, first } = setup({ reveal: false })
-  await game.onAnswer(first, { answer: 0 })
+  await game.onAnswer(first, { answer: 0, index: session.current_question_index })
   await game.lockQuestion(1, true)
   assert.equal(message(first, 'question:personal-results'), undefined)
   assert.equal(message(first, 'leaderboard:updated'), undefined)
@@ -217,7 +217,7 @@ for (const board of ['never', 'end_only']) {
 
 test('pause/resume broadcasts no private or live grading; host retains monitoring', async () => {
   const { game, first, host } = setup()
-  await game.onAnswer(first, { answer: 0 })
+  await game.onAnswer(first, { answer: 0, index: session.current_question_index })
   await game.onPause(host)
   assert.deepEqual(message(first, 'game:state').leaderboard, [])
   assert.equal(message(first, 'game:state').personal_result, null)
@@ -253,7 +253,7 @@ test('self-paced sync retains its reveal policy without attaching a Classic resu
 
 test('a reconnected socket gets only its own settled result through player:sync', async () => {
   const { game, first, socket } = setup()
-  await game.onAnswer(first, { answer: 0 })
+  await game.onAnswer(first, { answer: 0, index: session.current_question_index })
   await game.lockQuestion(1, true)
   const reconnect = socket('player', 1)
   await game.onLobbyJoin(reconnect)
@@ -272,7 +272,7 @@ test('timeout waits for an in-flight answer before persisting and revealing the 
     await gate
     return original(...args)
   }
-  const answer = game.onAnswer(first, { answer: 0 })
+  const answer = game.onAnswer(first, { answer: 0, index: session.current_question_index })
   await waiting
   const closing = game.lockQuestion(1, true)
   await Promise.resolve()
@@ -285,7 +285,7 @@ test('timeout waits for an in-flight answer before persisting and revealing the 
 
 test('all-answered closure completes inside the answer queue without deadlock', async () => {
   const { game, first, second } = setup()
-  await Promise.all([game.onAnswer(first, { answer: 0 }), game.onAnswer(second, { answer: 1 })])
+  await Promise.all([game.onAnswer(first, { answer: 0, index: session.current_question_index }), game.onAnswer(second, { answer: 1, index: session.current_question_index })])
   assert.equal(session.current_phase, 'showing_results')
   assert.equal(message(first, 'question:personal-results').streak, 3)
   assert.equal(message(second, 'question:personal-results').streak, 0)
@@ -296,7 +296,7 @@ test('a correct answer after a missed question starts a new streak at one', asyn
   await game.lockQuestion(1, true)
   game.timer = () => {}
   await game.startQuestion(session, 3)
-  await game.onAnswer(first, { answer: 0 })
+  await game.onAnswer(first, { answer: 0, index: session.current_question_index })
   await game.lockQuestion(1, true)
   assert.equal(message(first, 'question:personal-results').index, 3)
   assert.equal(message(first, 'question:personal-results').streak, 1)

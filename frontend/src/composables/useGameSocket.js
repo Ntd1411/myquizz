@@ -153,7 +153,7 @@ export function useGameSocket() {
    */
   async function answer(value) {
     game.markAnswerPending(value)
-    const ack = await emitGameEventWithAck('question:answer', { answer: value }).catch((error) => {
+    const ack = await emitGameEventWithAck('question:answer', { answer: value, index: game.index }).catch((error) => {
       game.rejectAnswer()
       game.setError({ ...parseSocketError(error), event: 'question:answer' })
       throw error

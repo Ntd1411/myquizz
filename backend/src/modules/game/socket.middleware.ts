@@ -12,6 +12,7 @@ export interface CustomSocketData {
   role?: 'player' | 'host'
   playerSessionId?: number | null
   userId?: number
+  left?: boolean
 }
 
 export interface SocketTokenPayload {

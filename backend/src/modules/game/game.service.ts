@@ -90,34 +90,22 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
   if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   const config = session.config
 
-  if (session.session_status !== 'lobby' && !config.lobby.allowLateJoin)
+  if (session.session_status !== 'lobby' &&
+    !(session.session_status === 'active' && config.lobby.allowLateJoin))
     throw new AppError(409, 'Game already started, no late join allowed', 'GAME_ALREADY_STARTED')
   if (!input.player_id && !config.lobby.allowGuests)
     throw new AppError(403, 'Room does not allow guests', 'GAME_GUESTS_NOT_ALLOWED')
   if (input.player_id === session.session_host)
     throw new AppError(403, 'Host can not join game', 'GAME_HOST_CANNOT_JOIN')
 
-  const currentPlayers = (await cache.countPlayers(session.id)) ?? (await repo.countPlayers(session.id))
-  if ((currentPlayers ?? 0) >= config.lobby.maxPlayers)
-    throw new AppError(409, 'Room is full', 'GAME_ROOM_FULL')
-
-  let player: PlayerSessionRow | null = null
-  if (input.player_id) {
-    player = await repo.getPlayerSessionBySessionAndPlayer(session.id, input.player_id)
-  } else if (input.player_guest_id) {
-    player = await repo.getPlayerSessionBySessionAndGuest(session.id, input.player_guest_id)
-  }
-
-  if (!player) {
-    player = await repo.createPlayerSession({
-      game_session_id: session.id,
-      player_id: input.player_id ?? null,
-      player_avatar: input.player_avatar ?? null,
-      player_guest_id: input.player_guest_id ?? null,
-      player_name: input.player_name,
-      lives: config.flow.lives ?? null // initialize lives if mode uses
-    })
-  }
+  const player = await repo.joinPlayerSession({
+    game_session_id: session.id,
+    player_id: input.player_id ?? null,
+    player_avatar: input.player_avatar ?? null,
+    player_guest_id: input.player_guest_id ?? null,
+    player_name: input.player_name,
+    lives: config.flow.lives ?? null // initialize lives if mode uses
+  })
   await cache.updatePlayer(session.id, player)
 
   const socketToken = signSocketToken({
