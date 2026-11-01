@@ -13,7 +13,7 @@ Dùng `.env.example` tương ứng cho từng package; root `.env.example` dành
 
 ## Chiến lược xác minh
 
-Backend hiện chưa khai báo script test/framework test. Với thay đổi nghiệp vụ cần bổ sung regression test có ý nghĩa và lệnh chạy rõ ràng; chọn công cụ phù hợp ở nhánh triển khai, không ghi nhận test chưa chạy là đạt.
+Backend có `pnpm test` chạy build và Node test runner cho `tests/*.test.mjs` và `tests/*.test.cjs`. Test DB/Redis cần dịch vụ cô lập; unit test mô phỏng không thay thế kiểm tra cạnh tranh trên dịch vụ thật.
 Chạy lint/build khi sửa code; kiểm tra tài liệu/link/diff cho thay đổi chỉ có Markdown. Nếu check lỗi có sẵn, ghi rõ nguyên nhân và phạm vi; không sửa lan man hoặc tự coi là đạt.
 
 Các kịch bản trọng tâm: 401/403 và phân quyền chéo tài khoản; refresh đồng thời/replay; reset hết hạn/dùng lại; token socket hết hạn/sai room; trả lời trùng/quá giờ; reconnect không đặt lại thời gian; Redis gián đoạn; upload sai kiểu/kích thước.

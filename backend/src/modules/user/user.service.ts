@@ -1,11 +1,11 @@
 import { AppError } from '../../shared/errors/AppError.js'
 import { userRepository } from './user.repository.js'
 import { hashPassword, hashToken, verifyPassword } from '../auth/auth.util.js'
-import { authRepository } from '../auth/auth.repository.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
 import { assertOwnedUpload, deleteFileService, extractKeyFromUrl } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
+import { disconnectUserSockets } from '../game/socket.access.js'
 import {
   generateOTP,
   generateResetTicket,
@@ -34,13 +34,13 @@ async function invalidateUserCache(userId: number): Promise<void> {
   await redis.del(cacheKey)
 }
 
-export async function getUserService(userId: number): Promise<User> {
+export async function getUserService(userId: number) {
   const redis = RedisClient.getInstance()
   const cacheKey = `${USER_CACHE_PREFIX}:${userId}`
 
-  const cached = await redis.get(cacheKey)
+  const cached = await redis.get(cacheKey).catch(() => null)
   if (cached) {
-    return JSON.parse(cached) as User
+    return JSON.parse(cached) as Pick<User, 'id' | 'fullname' | 'email' | 'avatar' | 'description' | 'role' | 'created_at'>
   }
   // Cache miss
   const user = await userRepository.findById(userId)
@@ -52,9 +52,17 @@ export async function getUserService(userId: number): Promise<User> {
     throw new AppError(410, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
-  await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(user))
-
-  return user
+  const publicProfile = {
+    id: user.id,
+    fullname: user.fullname,
+    email: user.email,
+    avatar: user.avatar,
+    description: user.description,
+    role: user.role,
+    created_at: user.created_at
+  }
+  await redis.setex(cacheKey, USER_CACHE_TTL, JSON.stringify(publicProfile)).catch(() => {})
+  return publicProfile
 }
 
 export async function changePasswordService(
@@ -100,6 +108,7 @@ export async function changePasswordService(
   }
 
   await invalidateUserCache(user.id)
+  disconnectUserSockets(user.id)
 }
 
 export async function uploadAvatarService(
@@ -146,7 +155,7 @@ export async function updateProfileService(
   if (phone !== undefined) {
     if (phone) {
       const user = await userRepository.findByPhone(phone)
-      if (user) {
+      if (user && user.id !== userId) {
         throw new AppError(
           400,
           'Phone number is already in use',
@@ -199,6 +208,7 @@ export async function deactivateAccountService(
   }
 
   await invalidateUserCache(user.id)
+  disconnectUserSockets(user.id)
 }
 
 /**
@@ -270,20 +280,32 @@ async function findResettableUser(
  * itself, both are only accepted by verifyResetService.
  */
 export async function forgotPasswordService(email: string): Promise<ResetSchedule> {
-  await findResettableUser(email, 'Email not found')
+  const user = await userRepository.findByEmail(email)
+  const canReset = !!user && !user.deleted_at && user.auth_provider !== 'google'
 
   const redis = RedisClient.getInstance()
   const otpKey = otpKeyOf(email)
   const resendKey = `${RESET_PREFIX}:resend:${email}`
+  const dummyKey = `${RESET_PREFIX}:dummy:${hashToken(email)}`
 
   const resendTtl = await redis.ttl(resendKey)
 
   if (resendTtl > 0) {
     const otpTtl = await redis.ttl(otpKey)
+    const effectiveTtl = otpTtl > 0 ? otpTtl : await redis.ttl(dummyKey)
 
     return {
       resetTime: new Date(Date.now() + resendTtl * 1000),
-      expiresAt: new Date(Date.now() + Math.max(otpTtl, 0) * 1000)
+      expiresAt: new Date(Date.now() + Math.max(effectiveTtl, 0) * 1000)
+    }
+  }
+
+  if (!canReset) {
+    await redis.setex(dummyKey, RESET_TTL, '1')
+    await redis.setex(resendKey, RESET_RESEND_TTL, '1')
+    return {
+      resetTime: new Date(Date.now() + RESET_RESEND_TTL * 1000),
+      expiresAt: new Date(Date.now() + RESET_TTL * 1000)
     }
   }
 
@@ -408,16 +430,27 @@ export async function verifyResetService(
 
   const redis = RedisClient.getInstance()
   const ticket = generateResetTicket()
-
-  await redis.setex(
+  const otpKey = otpKeyOf(email)
+  const tokenHash = await redis.hget(otpKey, 'token')
+  const proof = 'token' in input ? hashToken(input.token) : hashToken(input.otp)
+  const claimed = await redis.eval(
+    `local otp = redis.call('HGET', KEYS[1], ARGV[1])
+     if otp ~= ARGV[2] then return 0 end
+     if ARGV[1] == 'token' and redis.call('GET', KEYS[2]) ~= ARGV[3] then return 0 end
+     redis.call('SET', KEYS[4], ARGV[3], 'EX', ARGV[4])
+     redis.call('DEL', KEYS[1], KEYS[2], KEYS[3])
+     return 1`,
+    4,
+    otpKey,
+    `${RESET_PREFIX}:link:${tokenHash ?? ''}`,
+    `${RESET_PREFIX}:resend:${email}`,
     `${RESET_PREFIX}:ticket:${hashToken(ticket)}`,
-    RESET_TICKET_TTL,
-    email
+    'token' in input ? 'token' : 'otp',
+    proof,
+    email,
+    RESET_TICKET_TTL
   )
-
-  // The proof is spent here rather than at the write, so one email opens exactly
-  // one reset page and the link stops working the moment the code is used.
-  await clearResetState(email)
+  if (claimed !== 1) throw new AppError(400, 'Reset proof already used', 'RESET_LINK_INVALID')
 
   return {
     ticket,
@@ -459,10 +492,8 @@ export async function readResetTicketService(
  * Step three, the only place that writes a password. It never sees the code or
  * the emailed token, only the ticket, and that ticket is single use.
  *
- * Every refresh token of the account is revoked: a reset is what somebody locked
- * out of their account does, and whoever locked them out must not keep a session.
- * Access tokens already issued stay valid until they expire, which is the same
- * window the rest of the app lives with.
+ * Every refresh token is revoked and session_version advances in the same DB
+ * transaction. Existing access tokens and signed-in socket tokens then fail.
  */
 export async function completeResetService(
   ticket: string,
@@ -492,19 +523,20 @@ export async function completeResetService(
   }
 
   const newPasswordHash = await hashPassword(newPassword)
-  const isPasswordChanged = await userRepository.changePassword(
-    user.id,
-    newPasswordHash
-  )
-
-  if (!isPasswordChanged) {
-    throw new AppError(500, 'Failed to reset password', 'SERVER_ERROR')
+  const ttl = await redis.pttl(ticketKey)
+  const claimedEmail = await redis.getdel(ticketKey)
+  if (claimedEmail !== email)
+    throw new AppError(400, 'Reset session expired or invalid', 'RESET_TICKET_INVALID')
+  try {
+    const changed = await userRepository.changePassword(user.id, newPasswordHash)
+    if (!changed) throw new AppError(500, 'Failed to reset password', 'SERVER_ERROR')
+  } catch (error) {
+    if (ttl > 0) await redis.set(ticketKey, email, 'PX', ttl, 'NX')
+    throw error
   }
-
-  await redis.del(ticketKey)
-  await clearResetState(email)
-  await authRepository.revokeUserSessions(user.id)
-  await invalidateUserCache(user.id)
+  await clearResetState(email).catch(() => {})
+  await invalidateUserCache(user.id).catch(() => {})
+  disconnectUserSockets(user.id)
 
   // Sent, never awaited: the password is already written, and a mail outage must
   // not turn a finished reset into a 500 the user retries with a spent ticket.

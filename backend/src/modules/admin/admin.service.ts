@@ -1,5 +1,12 @@
 import * as adminRepository from './admin.repository.js'
 import type { UserStatusFilter } from './admin.schema.js'
+import RedisClient from '../../infrastructure/cache/redis.client.js'
+import { disconnectUserSockets } from '../game/socket.access.js'
+import { USER_CACHE_PREFIX } from '../user/user.schema.js'
+
+const invalidateProfile = async (id: number) => {
+  await RedisClient.getInstance().del(`${USER_CACHE_PREFIX}:${id}`).catch(() => {})
+}
 
 /** Mirrors the default in AdminSchema, for callers that reach the service directly. */
 const DEFAULT_LIMIT = 20
@@ -23,8 +30,11 @@ export async function getAllUsers(offset = 0, limit = DEFAULT_LIMIT, status: Use
 
 export async function deleteUser(id: number) {
   await adminRepository.deleteUser(id)
+  await invalidateProfile(id)
+  disconnectUserSockets(id)
 }
 
 export async function restoreUser(id: number) {
   await adminRepository.restoreUser(id)
+  await invalidateProfile(id)
 }

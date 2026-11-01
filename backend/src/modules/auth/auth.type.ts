@@ -33,6 +33,7 @@ export interface User {
   deleted_at: string | null
   created_at: string
   updated_at: string
+  session_version: number
 }
 
 export interface RefreshSession {
@@ -43,4 +44,5 @@ export interface RefreshSession {
   refresh_token: string
   expires_at: string
   created_at: string
+  family_id: string
 }

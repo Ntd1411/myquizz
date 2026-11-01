@@ -20,6 +20,7 @@ import { apiRateLimiter, globalRateLimiter } from './shared/middlewares/rate.lim
 import { pool } from './infrastructure/database/connection.js'
 import { startScoringScheduler } from './infrastructure/jobs/scoring.job.js'
 import { adminRouter } from './modules/admin/admin.route.js'
+import { authRepository } from './modules/auth/auth.repository.js'
 
 bootstrapEngine()
 
@@ -112,4 +113,9 @@ httpServer.listen(port, () => {
   // Started after the server is listening so a slow first scoring pass never
   // delays readiness. Failures are logged inside the job, not fatal.
   startScoringScheduler()
+  const cleanup = () => void authRepository.cleanupExpiredTokens().catch((error) => {
+    console.error('Token cleanup failed:', error)
+  })
+  cleanup()
+  setInterval(cleanup, 60 * 60 * 1000).unref()
 })

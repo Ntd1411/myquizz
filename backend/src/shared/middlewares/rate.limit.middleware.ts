@@ -11,15 +11,17 @@ interface RateLimitOptions {
   skipFailedRequests?: boolean // Only count successful requests
   byIp?: boolean // Rate limit by IP address instead of userId
   byBoth?: boolean // Rate limit by both userId and IP
+  fallbackOnRedisError?: boolean
 }
+
+const fallbackAttempts = new Map<string, { count: number; expiresAt: number }>()
 
 /**
  * Rate limit middleware using Redis
  * Limit the number of requests per userId and/or IP within a time window
  *
- * Fails open: when Redis is unreachable the request is allowed through instead
- * of returning 500. Losing rate limiting for a few minutes is cheaper than
- * taking the whole API down, since this middleware runs on every request.
+ * Auth endpoints use a local fallback counter when Redis is unavailable.
+ * Other routes remain available if the Redis counter cannot be reached.
  */
 export function createRateLimiter(options: RateLimitOptions) {
   const {
@@ -29,7 +31,8 @@ export function createRateLimiter(options: RateLimitOptions) {
     skipSuccessfulRequests = false,
     skipFailedRequests = false,
     byIp = false,
-    byBoth = false
+    byBoth = false,
+    fallbackOnRedisError = false
   } = options
 
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -71,12 +74,14 @@ export function createRateLimiter(options: RateLimitOptions) {
       const key = `${keyPrefix}:${identifier}:${windowStart}`
 
       // Get the current number of requests
-      const current = await redis.incr(key)
-
-      // Set TTL for the key if it's the first request
-      if (current === 1) {
-        await redis.pexpire(key, windowMs)
-      }
+      const current = Number(await redis.eval(
+        `local n = redis.call('INCR', KEYS[1])
+         if n == 1 or redis.call('PTTL', KEYS[1]) < 0 then
+           redis.call('PEXPIRE', KEYS[1], ARGV[1])
+         end
+         return n`,
+        1, key, windowMs
+      ))
 
       // Check if the limit has been exceeded
       if (current > maxRequests) {
@@ -105,8 +110,7 @@ export function createRateLimiter(options: RateLimitOptions) {
 
       // If need to rollback when request fails/succeeds
       if (skipSuccessfulRequests || skipFailedRequests) {
-        const originalSend = res.json.bind(res)
-        res.json = function (body) {
+        res.once('finish', () => {
           const statusCode = res.statusCode
           const isSuccess = statusCode >= 200 && statusCode < 300
 
@@ -120,8 +124,7 @@ export function createRateLimiter(options: RateLimitOptions) {
             })
           }
 
-          return originalSend(body)
-        }
+        })
       }
 
       next()
@@ -132,9 +135,18 @@ export function createRateLimiter(options: RateLimitOptions) {
         return next(error)
       }
 
-      // Anything else means Redis itself is unavailable. Let the request
-      // through unlimited rather than failing every single call.
-      console.error('Rate limiter unavailable, allowing request through:', error)
+      if (fallbackOnRedisError) {
+        const now = Date.now()
+        const key = `${keyPrefix}:${req.ip || req.socket.remoteAddress || 'unknown'}`
+        const previous = fallbackAttempts.get(key)
+        const entry = previous && previous.expiresAt > now
+          ? previous
+          : { count: 0, expiresAt: now + windowMs }
+        entry.count++
+        fallbackAttempts.set(key, entry)
+        if (entry.count > maxRequests)
+          return next(new AppError(429, 'Too many requests', 'RATE_LIMITED'))
+      }
       next()
     }
   }
@@ -167,7 +179,7 @@ export const authRateLimiter = createRateLimiter({
   maxRequests: 5,
   keyPrefix: 'rate_limit:auth',
   byIp: true,
-  skipSuccessfulRequests: true // Only count failed requests
+  fallbackOnRedisError: true
 })
 
 export const resetPasswordRateLimiter = createRateLimiter({
@@ -175,12 +187,12 @@ export const resetPasswordRateLimiter = createRateLimiter({
   maxRequests: 5,
   keyPrefix: 'rate_limit:reset-password',
   byIp: true,
-  skipFailedRequests: true // Only count successful requests
+  fallbackOnRedisError: true
 })
 
 /**
  * Guards the proof step of the password reset: POST /users/password-reset/verify
- * and GET /users/password-reset/ticket.
+ * and POST /users/password-reset/ticket.
  *
  * Unlike the limiters above this one charges every attempt, successful or not.
  * A code guesser only ever produces failures, so excusing them would leave the
@@ -190,5 +202,6 @@ export const resetVerifyRateLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000, // 10 minutes
   maxRequests: 20,
   keyPrefix: 'rate_limit:reset-verify',
-  byIp: true
+  byIp: true,
+  fallbackOnRedisError: true
 })

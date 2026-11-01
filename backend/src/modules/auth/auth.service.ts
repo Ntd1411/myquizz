@@ -89,7 +89,7 @@ export async function loginService(
   }
 
   // Generate tokens
-  const tokens = generateTokens(user.id)
+  const tokens = generateTokens(user.id, user.session_version)
 
   const hashedRefreshToken = hashToken(tokens.refreshToken)
 
@@ -123,29 +123,19 @@ export async function refreshTokenService(refreshToken: string) {
     throw new AppError(403, 'Account is deactivated', 'USER_DEACTIVATED')
   }
 
+  if (decoded.sv !== user.session_version)
+    throw new AppError(401, 'Refresh token revoked', 'AUTH_REFRESH_INVALID')
+
   const hashedRefreshToken = hashToken(refreshToken)
 
-  const refreshSession =
-    await authRepository.findRefreshToken(hashedRefreshToken)
-
-  if (!refreshSession) {
-    await authRepository.revokeUserSessions(decoded.userId)
-    throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
-  }
-
-  await authRepository.revokeRefreshToken(hashedRefreshToken)
-
-  // Generate new tokens
-  const tokens = generateTokens(decoded.userId)
-
-  await authRepository.saveRefreshToken(
+  const tokens = generateTokens(decoded.userId, user.session_version)
+  const rotated = await authRepository.rotateRefreshToken(
+    hashedRefreshToken,
     decoded.userId,
-    refreshSession.device_name,
-    refreshSession.ip_address,
     hashToken(tokens.refreshToken),
     new Date(Date.now() + ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue))
   )
-
+  if (!rotated) throw new AppError(401, 'Invalid refresh token', 'AUTH_REFRESH_INVALID')
   return tokens
 }
 

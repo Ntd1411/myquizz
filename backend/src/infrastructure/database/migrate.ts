@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename)
 // Table used to track which migration files have already run
 const MIGRATIONS_TABLE = 'schema_migrations'
 
-async function initMigrationsTable() {
+async function initMigrationsTable(client: import('pg').PoolClient) {
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
       id SERIAL PRIMARY KEY,
@@ -17,29 +17,45 @@ async function initMigrationsTable() {
       executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `
-  await pool.query(createTableSQL)
+  await client.query(createTableSQL)
 }
 
-async function getMigratedFiles(): Promise<Set<string>> {
-  const result = await pool.query<{ filename: string }>(
+async function getMigratedFiles(client: import('pg').PoolClient): Promise<Set<string>> {
+  const result = await client.query<{ filename: string }>(
     `SELECT filename FROM ${MIGRATIONS_TABLE}`
   )
   return new Set(result.rows.map(r => r.filename))
 }
 
-async function recordMigration(filename: string) {
-  await pool.query(
+async function recordMigration(client: import('pg').PoolClient, filename: string) {
+  await client.query(
     `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES ($1)`,
     [filename]
   )
 }
 
 export async function runMigrations() {
+  const client = await pool.connect()
   try {
     console.log('Starting database migrations...\n')
+    await client.query('SELECT pg_advisory_lock(hashtext(\'myquizz:migrations\'))')
+    await initMigrationsTable(client)
+    const migratedFiles = await getMigratedFiles(client)
 
-    await initMigrationsTable()
-    const migratedFiles = await getMigratedFiles()
+    const applyFile = async (directory: string, file: string) => {
+      if (migratedFiles.has(file)) return
+      const sql = fs.readFileSync(path.join(directory, file), 'utf8')
+      await client.query('BEGIN')
+      try {
+        await client.query(sql)
+        await recordMigration(client, file)
+        await client.query('COMMIT')
+        migratedFiles.add(file)
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      }
+    }
 
     // Run the base schema files first
     const schemaDir = path.join(__dirname, 'schema')
@@ -47,17 +63,7 @@ export async function runMigrations() {
 
     console.log('Schema files:')
     for (const file of schemaFiles) {
-      if (!migratedFiles.has(file)) {
-        const filePath = path.join(schemaDir, file)
-        const sql = fs.readFileSync(filePath, 'utf8')
-
-        console.log(`  Running: ${file}`)
-        await pool.query(sql)
-        await recordMigration(file)
-        console.log(` ${file} completed`)
-      } else {
-        console.log(` ${file} (already run)`)
-      }
+      await applyFile(schemaDir, file)
     }
 
     // Then the incremental migration files
@@ -67,24 +73,17 @@ export async function runMigrations() {
 
       console.log('\nMigration files:')
       for (const file of migrationFiles) {
-        if (!migratedFiles.has(file)) {
-          const filePath = path.join(migrationsDir, file)
-          const sql = fs.readFileSync(filePath, 'utf8')
-
-          console.log(`  Running: ${file}`)
-          await pool.query(sql)
-          await recordMigration(file)
-          console.log(`  ${file} completed`)
-        } else {
-          console.log(`  ${file} (already run)`)
-        }
+        await applyFile(migrationsDir, file)
       }
     }
 
     console.log('\n All migrations completed!')
   } catch (error) {
     console.error(' Migration failed:', error)
-    process.exit(1)
+    throw error
+  } finally {
+    await client.query('SELECT pg_advisory_unlock(hashtext(\'myquizz:migrations\'))')
+    client.release()
   }
 }
 

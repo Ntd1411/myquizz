@@ -124,7 +124,8 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
     psid: player.id,
     gsid: session.id,
     code: session.session_code,
-    role: 'player'
+    role: 'player',
+    ...(input.player_id ? { sv: await repo.getUserSessionVersion(input.player_id) ?? undefined } : {})
   })
   return { player, socketToken }
 }
@@ -141,7 +142,8 @@ export const issueHostToken = async (gameId: number, hostId: number) => {
       psid: null,
       gsid: session.id,
       code: session.session_code,
-      role: 'host'
+      role: 'host',
+      sv: await repo.getUserSessionVersion(hostId) ?? undefined
     })
   }
 }

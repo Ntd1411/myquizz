@@ -23,13 +23,13 @@ export async function verifyPassword(
 }
 
 // Token generation
-export function generateTokens(userId: number) {
-  const accessToken = jwt.sign({ userId, type: 'access' }, env.JWT_SECRET, {
+export function generateTokens(userId: number, sessionVersion: number) {
+  const accessToken = jwt.sign({ userId, type: 'access', sv: sessionVersion, jti: crypto.randomUUID() }, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN as ms.StringValue
   })
 
   const refreshToken = jwt.sign(
-    { userId, type: 'refresh' },
+    { userId, type: 'refresh', sv: sessionVersion, jti: crypto.randomUUID() },
     env.JWT_REFRESH_SECRET,
     {
       expiresIn: env.JWT_REFRESH_EXPIRES_IN as ms.StringValue
@@ -39,10 +39,10 @@ export function generateTokens(userId: number) {
   return { accessToken, refreshToken }
 }
 
-export function verifyToken(token: string, type: 'access' | 'refresh'): { userId: number; type: string } | null {
+export function verifyToken(token: string, type: 'access' | 'refresh'): { userId: number; type: string; sv: number } | null {
   try {
     const secret = type === 'access' ? env.JWT_SECRET : env.JWT_REFRESH_SECRET
-    return jwt.verify(token, secret) as { userId: number; type: string }
+    return jwt.verify(token, secret) as { userId: number; type: string; sv: number }
   } catch {
     return null
   }

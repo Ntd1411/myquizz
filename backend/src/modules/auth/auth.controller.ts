@@ -141,8 +141,7 @@ export async function googleCallback(
     }
 
     if (error) {
-      res.redirect(`${env.FRONTEND_URL}/auth/callback?error=${encodeURIComponent(error)}`)
-      throw new AppError(401, `Google OAuth error: ${error}`, 'AUTH_GOOGLE_FAILED')
+      return res.redirect(`${env.FRONTEND_URL}/auth/callback?error=${encodeURIComponent(error)}`)
     }
     if (!code || !state) {
       throw new AppError(400, 'Missing authorization code or state', 'AUTH_GOOGLE_FAILED')
@@ -159,7 +158,7 @@ export async function googleCallback(
     const user = await loginWithGoogle(code)
 
     // Issue tokens exactly like loginService
-    const tokens = generateTokens(user.id)
+    const tokens = generateTokens(user.id, user.session_version)
 
     const deviceName = req.headers['user-agent'] || 'Unknown Device'
     const ipAddress = req.ip || req.socket.remoteAddress || 'unknown'
@@ -199,7 +198,7 @@ export async function googleOneTap(
     const user = await loginWithGoogleCredential(credential)
 
     // Issue tokens exactly like the redirect flow
-    const tokens = generateTokens(user.id)
+    const tokens = generateTokens(user.id, user.session_version)
     const deviceName = req.headers['user-agent'] || 'Unknown Device'
     const ipAddress = req.ip || req.socket.remoteAddress || 'unknown'
 

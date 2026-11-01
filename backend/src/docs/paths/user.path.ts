@@ -269,7 +269,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Send a password reset code',
       description:
-        'First of the three steps of a reset. Emails a six-digit code and a link, both valid for 2 minutes, and neither of them can set a password on its own: whichever one reaches the user is exchanged for a ticket at POST /users/password-reset/verify, and only that ticket is accepted by POST /users/password-reset/complete. The answer carries two instants: data.resetTime is when the next code may be requested, one minute after the send, and data.expiresAt is when the current code and link stop working. Asking again inside that first minute is not an error and sends nothing, it simply repeats the deadlines of the code already outstanding. Only digests of the code and of the link token are stored, so a dump of the cache cannot be replayed against this API. Accounts created through Google have no password to reset.',
+        'First of the three steps of a reset. For a resettable account, emails a six-digit code and a link, both valid for 2 minutes. The response has the same shape for unknown, deactivated and Google-only accounts, and does not confirm whether an email exists.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object({ email: { type: 'string', format: 'email' } }, ['email']),
@@ -291,16 +291,9 @@ export const userPaths: PathMap = {
             expiresAt: '2026-08-12T03:02:00.000Z'
           })
         }),
-        400: errorResponse('The account signs in with Google', [
-          'VALIDATION_ERROR',
-          'AUTH_GOOGLE_ONLY'
-        ]),
-        404: errorResponse('No account with that email', [
-          'USER_EMAIL_NOT_FOUND'
-        ]),
-        410: errorResponse('The account was deactivated', ['USER_DEACTIVATED']),
+        400: errorResponse('Invalid email format', ['VALIDATION_ERROR']),
         429: errorResponse(
-          'The IP hit authRateLimiter (5 requests per 2 minutes, successful sends excluded). A code that is still valid is no longer an error: it answers 200 carrying the deadlines of the outstanding code.',
+          'The IP hit authRateLimiter (5 requests per 2 minutes).',
           ['RATE_LIMITED']
         )
       }
@@ -423,7 +416,7 @@ export const userPaths: PathMap = {
     post: {
       summary: 'Reset the password with a ticket',
       description:
-        'Third step, and the only place that writes a password. It takes the ticket handed out by POST /users/password-reset/verify and never the code or the emailed token. The ticket is single use, the new password must differ from the current one, and the account is checked again here because minutes pass between the two steps. Every refresh token of the account is revoked, so a session opened by whoever locked the owner out does not survive the reset; access tokens already issued stay valid until they expire. A notification email is sent afterwards and cannot fail the request.',
+        'Third step, and the only place that writes a password. It takes a single-use ticket from POST /users/password-reset/verify. Password replacement increments session_version and revokes every refresh session; previously issued access and signed-in socket tokens then fail validation. A notification email is sent afterwards and cannot fail the request.',
       tags: [userTag.name],
       requestBody: jsonBody(
         object(

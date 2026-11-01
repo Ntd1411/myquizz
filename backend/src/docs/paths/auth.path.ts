@@ -172,7 +172,7 @@ export const authPaths: PathMap = {
           'AUTH_REFRESH_INVALID'
         ]),
         401: errorResponse(
-          'The refresh token is invalid, already rotated, or its user is gone. Every session of that user is revoked when an unknown token is replayed.',
+          'The refresh token is invalid, already rotated, or its user is gone. Reuse after a ten-second concurrency grace revokes that token family.',
           ['AUTH_REFRESH_INVALID', 'USER_NOT_FOUND']
         ),
         403: errorResponse('The account was deactivated', [

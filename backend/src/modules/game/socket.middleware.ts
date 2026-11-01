@@ -11,6 +11,7 @@ export interface CustomSocketData {
   code?: string
   role?: 'player' | 'host'
   playerSessionId?: number | null
+  userId?: number
 }
 
 export interface SocketTokenPayload {
@@ -18,6 +19,7 @@ export interface SocketTokenPayload {
   gsid: number
   code: string
   role: 'player' | 'host'
+  sv?: number
 }
 
 export const signSocketToken = (payload: SocketTokenPayload) => {
@@ -47,6 +49,7 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
       return next(new Error('GAME_ROOM_NOT_FOUND'))
 
     const socketData = socket.data as CustomSocketData
+    const userId = payload.role === 'host' ? session.session_host : undefined
 
     if (payload.role === 'player') {
       if (payload.psid === null) return next(new Error('GAME_TOKEN_INVALID'))
@@ -56,7 +59,12 @@ export const socketAuth = async (socket: Socket, next: (err?: Error) => void) =>
       if (!player || player.game_session_id !== payload.gsid)
         return next(new Error('GAME_PLAYER_NOT_FOUND'))
       socketData.player = player
+      socketData.userId = player.player_id ?? undefined
     }
+
+    if (userId) socketData.userId = userId
+    if (socketData.userId && (await repo.getUserSessionVersion(socketData.userId)) !== payload.sv)
+      return next(new Error('USER_DEACTIVATED'))
 
     socketData.gameId = payload.gsid
     socketData.code = payload.code

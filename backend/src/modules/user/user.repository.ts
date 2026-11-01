@@ -1,4 +1,4 @@
-import { pool } from '../../infrastructure/database/connection.js'
+import { pool, withTransaction } from '../../infrastructure/database/connection.js'
 import type { User } from '../auth/auth.type.js'
 
 export class UserRepository {
@@ -7,12 +7,15 @@ export class UserRepository {
     userId: number,
     newPasswordHash: string
   ): Promise<boolean> {
-    const result = await pool.query(
-      'UPDATE users SET password = $1 WHERE id = $2',
-      [newPasswordHash, userId]
-    )
-
-    return result.rowCount !== null && result.rowCount > 0
+    return withTransaction(async (client) => {
+      const result = await client.query(
+        'UPDATE users SET password = $1, session_version = session_version + 1 WHERE id = $2',
+        [newPasswordHash, userId]
+      )
+      if (!result.rowCount) return false
+      await client.query('DELETE FROM refresh_sessions WHERE user_id = $1', [userId])
+      return true
+    })
   }
 
   // Update profile user

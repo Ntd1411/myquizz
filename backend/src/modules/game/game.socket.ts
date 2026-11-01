@@ -1,5 +1,6 @@
 import type { Namespace, Server, Socket } from 'socket.io'
 import { socketAuth, type CustomSocketData } from './socket.middleware.js'
+import { registerGameNamespace } from './socket.access.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import { getModeHandler } from './engine/registry.js'
 import * as cache from './game.cache.js'
@@ -93,6 +94,7 @@ export class GameSocket {
 
   constructor(io: Server) {
     this.nsp = io.of('/game')
+    registerGameNamespace(this.nsp)
     this.init()
   }
 

@@ -19,10 +19,10 @@
 ## Điểm cần xác minh và hoàn thiện
 
 - `socket.middleware.ts`: TTL socket hiện đổi sang giây và có regression test; các token phát hành trước bản sửa cần xoay secret nếu phải thu hồi ngay.
-- Refresh đang đọc/xóa/tạo phiên bằng nhiều truy vấn; cần xử lý cạnh tranh và thêm định danh JWT duy nhất.
-- Ticket reset đọc trước, cập nhật mật khẩu rồi mới xóa: cần đảm bảo một lần sử dụng khi request đồng thời.
-- Rate limiter HTTP cho qua khi Redis lỗi; cần chính sách riêng cho login/reset. Không thay thế rate limit sự kiện socket.
-- Reset thu hồi refresh session nhưng access token đã cấp vẫn có thể sống tới hạn; quyết định rõ yêu cầu thu hồi tức thời.
+- Refresh dùng transaction với token family; JWT có `jti`, access token gắn `session_version`. Cần test tranh chấp trên PostgreSQL thật.
+- Vé reset được claim bằng Redis trước khi ghi mật khẩu; lỗi DB sẽ khôi phục vé trong TTL còn lại. Cần test lỗi hai kho dữ liệu thật.
+- Auth có giới hạn trong bộ nhớ khi Redis lỗi; các route khác còn chính sách fail-open. Không thay thế rate limit sự kiện socket.
+- Đổi/reset mật khẩu tăng `session_version`, thu hồi refresh và ngắt socket trong process. Cần kiểm tra nhiều instance và token cũ khi rollout.
 - Trigram index tìm kiếm trong migration 007 đang được comment; chỉ bật sau đo truy vấn và kiểm tra quyền extension.
 
 Xem [kế hoạch](backend-plan.md) để triển khai theo từng nhánh, không coi danh sách này là kết quả pentest.

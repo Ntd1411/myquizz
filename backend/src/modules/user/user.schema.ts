@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const USER_CACHE_TTL = 5 * 60 // 5 minutes
-export const USER_CACHE_PREFIX = 'user:profile'
+export const USER_CACHE_PREFIX = 'user:profile:v2'
 export const RESET_TTL = 2 * 60 // 2 minutes: lifetime of the OTP and of the emailed link
 export const RESET_RESEND_TTL = 60 // 1 minute between two sends
 export const RESET_TICKET_TTL = 10 * 60 // 10 minutes to type the new password

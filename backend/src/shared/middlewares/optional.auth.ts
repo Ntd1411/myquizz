@@ -40,6 +40,8 @@ export async function optionalAuthMiddleware(
       return next()
     }
 
+    if (decoded.sv !== user.session_version) return next()
+
     req.token = token
     req.user = user
     next()

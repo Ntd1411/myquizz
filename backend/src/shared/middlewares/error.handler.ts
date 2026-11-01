@@ -19,6 +19,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ) {
+  if (err?.type === 'entity.parse.failed') return fail(res, 'VALIDATION_ERROR', 400)
   // AppError instances
   if (err instanceof AppError) {
     // An expected refusal is not a defect: log the reason, not a stack trace.

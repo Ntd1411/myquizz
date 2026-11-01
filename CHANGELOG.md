@@ -2,6 +2,16 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:15:49 GMT+7
+
+### Đợt 2: phiên và tài khoản
+
+- Thêm `jti` cho JWT, xoay refresh token trong transaction với token family và thời gian đệm 10 giây cho request đồng thời; tăng `session_version` khi đổi/reset mật khẩu để thu hồi access và socket token cũ.
+- Claim proof và ticket reset bằng Redis theo thao tác nguyên tử, có khôi phục ticket trong TTL còn lại nếu ghi PostgreSQL lỗi; phản hồi forgot-password không xác nhận email có tồn tại.
+- Dùng cache projection tối thiểu cho profile công khai, invalidation khi admin khóa/mở tài khoản, ngắt socket trong process khi tài khoản bị khóa hoặc đổi mật khẩu.
+- Giới hạn auth bằng bộ đếm dự phòng trong RAM khi Redis lỗi, tăng Redis counter và TTL bằng Lua, giới hạn refresh/Google; dọn token hết hạn định kỳ và thêm migration `012`–`013`.
+- Gộp test mới vào `pnpm test`; xác minh backend build, lint và 32/32 test. Chưa chạy test tích hợp PostgreSQL/Redis vì Docker daemon không sẵn có; chính sách socket disconnect hiện chỉ áp dụng trong một process.
+
 ## 2026-11-01 22:05:54 GMT+7
 
 ### Đợt 1: quyền truy cập và dữ liệu công khai

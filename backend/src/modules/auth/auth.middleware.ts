@@ -40,6 +40,9 @@ export async function authMiddleware(
       throw new AppError(403, 'Account is deactivated', 'USER_DEACTIVATED')
     }
 
+    if (decoded.sv !== user.session_version)
+      throw new AppError(401, 'Access token revoked', 'AUTH_TOKEN_INVALID')
+
     req.token = token
     req.user = user
     next()

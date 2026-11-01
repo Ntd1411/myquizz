@@ -14,12 +14,12 @@ authRouter.post('/login', validateBody(loginSchema), authRateLimiter, login)
 
 authRouter.post('/register', validateBody(registerSchema), authRateLimiter, register)
 
-authRouter.post('/refresh', refreshToken)
+authRouter.post('/refresh', authRateLimiter, refreshToken)
 
 authRouter.post('/logout', authMiddleware, logout)
 
 authRouter.get('/google', googleRedirect)
 
-authRouter.get('/google/callback', googleCallback)
+authRouter.get('/google/callback', authRateLimiter, googleCallback)
 
-authRouter.post('/google/one-tap', googleOneTap)
+authRouter.post('/google/one-tap', authRateLimiter, googleOneTap)

@@ -5,6 +5,17 @@ import type { GameSessionRow, PlayerSessionRow, LeaderboardRow, QuestionStatRow,
 import type { HistoryCursor } from './game.history.cursor.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
+export const isActiveUser = async (userId: number) => {
+  return (await getUserSessionVersion(userId)) !== null
+}
+
+export const getUserSessionVersion = async (userId: number): Promise<number | null> => {
+  const result = await pool.query<{ session_version: number }>(
+    'SELECT session_version FROM users WHERE id = $1 AND deleted_at IS NULL', [userId]
+  )
+  return result.rows[0]?.session_version ?? null
+}
+
 // Quiz snapshot: snapshot the quiz at the time of game creation
 export const createQuizSnapshot = async (quizId: number, hostId: number) => {
   const { rows } = await pool.query<{ id: number; total_questions: number }>(
