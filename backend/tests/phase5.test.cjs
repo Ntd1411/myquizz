@@ -58,6 +58,7 @@ test('answer claim registers keys for marathon cleanup', async () => {
   let args
   const cache = load('modules/game/game.cache.ts', {
     '../../infrastructure/cache/redis.client.js': { redisClient: {
+      status: 'ready',
       eval: async (...values) => { args = values; return 1 }
     } }
   })
@@ -65,4 +66,14 @@ test('answer claim registers keys for marathon cleanup', async () => {
   assert.equal(args[1], 2)
   assert.equal(args[2], 'game:5:answers:150')
   assert.equal(args[3], 'game:5:answer_keys')
+})
+
+test('answer claim fails promptly while Redis is disconnected', async () => {
+  const cache = load('modules/game/game.cache.ts', {
+    '../../infrastructure/cache/redis.client.js': { redisClient: { status: 'reconnecting' } }
+  })
+  await assert.rejects(
+    () => cache.recordAnswer(5, 0, 1, { answer: 1, isCorrect: true, timeTaken: 1, scoreEarned: 10 }),
+    error => error.code === 'SERVICE_UNAVAILABLE' && error.statusCode === 503
+  )
 })

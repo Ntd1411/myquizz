@@ -870,6 +870,7 @@ export class GameSocket {
   // sends the next one without waiting for a timer or host action.
   private async onPlayerNext(socket: Socket) {
     const { gameId, psid } = this.requirePlayer(socket)
+    cache.requireGameState()
     const session = await this.loadSession(gameId)
     if (session.config.flow.pacing !== 'self')
       throw new AppError(409, 'question:next is only for self-paced modes', 'GAME_PACING_MISMATCH')
@@ -971,6 +972,7 @@ export class GameSocket {
   // answering
   private async onAnswer(socket: Socket, payload: unknown, ack?: Ack) {
     const { gameId } = this.requirePlayer(socket)
+    cache.requireGameState()
     const session = await this.loadSession(gameId)
     if (session.config.flow.pacing === 'self') return this.acceptAnswer(socket, payload, ack)
     return this.inQuestionOrder(gameId, () => this.acceptAnswer(socket, payload, ack))

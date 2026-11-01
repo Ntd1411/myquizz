@@ -21,9 +21,15 @@ export const key = {
   clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`
 }
 
+export const requireGameState = () => {
+  if (redis.status !== 'ready')
+    throw new AppError(503, 'Game state is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+}
+
 // Host controls must serialize across sockets, including when they land on
 // different server processes. A failed Redis claim stops the transition.
 export const withHostTransition = async <T>(gameId: number, work: () => Promise<T>): Promise<T> => {
+  requireGameState()
   const lock = `game:${gameId}:host-transition`
   const token = randomUUID()
   let claimed: string | null
@@ -172,6 +178,7 @@ export const recordAnswer = async (
   data: CachedAnswer,
   allowChange = false
 ) => {
+  requireGameState()
   const k = key.answers(gameId, qIndex)
   const field = String(playerId)
   const payload = JSON.stringify(data)
@@ -244,6 +251,7 @@ export interface PlayerClock {
 }
 
 export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) => {
+  requireGameState()
   try {
     await redis.set(key.clock(gameId, playerId), JSON.stringify(clock), 'EX', TTL.session)
     return clock

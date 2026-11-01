@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 23:21:50 GMT+7
+
+### Redis gián đoạn khi chơi
+
+- Kiểm tra trạng thái Redis trước khi nhận answer, player-next, host transition và ghi player clock; trả `SERVICE_UNAVAILABLE` ngay khi Redis đã mất kết nối.
+- Docker test ngắt Redis giữa câu: trước sửa answer không phản hồi trong 15 giây, sau sửa nhận lỗi 503 kịp thời; khởi động lại Redis và readiness phục hồi 200.
+- Xác minh: backend lint/build/test và smoke Docker. Giới hạn: các đường ghi game khác vẫn cần fail-closed; claim answer và cập nhật player chưa nguyên tử với nhau.
+
 ## 2026-11-01 23:18:19 GMT+7
 
 ### Kiểm thử Docker và chuyển trạng thái host
