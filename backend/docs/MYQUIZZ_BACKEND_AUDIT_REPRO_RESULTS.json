@@ -1,0 +1,50 @@
+[
+  {
+    "name": "B01 socket 1h TTL becomes 3600000 seconds instead of 3600",
+    "reproduced": true
+  },
+  {
+    "name": "B06 same-user JWTs collide in same second",
+    "reproduced": true
+  },
+  {
+    "name": "B23 question schema accepts absent options and out-of-range correct answer",
+    "reproduced": true
+  },
+  {
+    "name": "B24 schema accepts quiz_description longer than database varchar(255)",
+    "reproduced": true
+  },
+  {
+    "name": "B25 date query accepts impossible calendar date",
+    "reproduced": true
+  },
+  {
+    "name": "B10 join accepts finished room when late joining enabled",
+    "reproduced": true
+  },
+  {
+    "name": "B11 room-full test prevents existing player rejoining",
+    "reproduced": true
+  },
+  {
+    "name": "B02 lobby leaks full cached player including guest bearer identity and answers",
+    "reproduced": true
+  },
+  {
+    "name": "B03 createGame snapshots arbitrary quiz without permission query",
+    "reproduced": true
+  },
+  {
+    "name": "B26 unchanged phone number is rejected as taken",
+    "reproduced": true
+  },
+  {
+    "name": "B27 setting identical avatar deletes the still-referenced object",
+    "reproduced": true
+  },
+  {
+    "name": "B28 malformed JSON returns SERVER_ERROR 500",
+    "reproduced": true
+  }
+]

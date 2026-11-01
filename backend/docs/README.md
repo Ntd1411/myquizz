@@ -7,6 +7,7 @@ Bộ tài liệu phục vụ các phiên phát triển sau. Đọc mã nguồn �
 - [Kiến trúc và hiện trạng](architecture.md): thành phần, luồng xử lý và giới hạn đã biết.
 - [Phát triển và kiểm thử](development.md): môi trường, lệnh và tình huống kiểm tra.
 - [Kế hoạch backend](backend-plan.md): bảo mật, hiệu năng và tiêu chí nghiệm thu.
+- [Rà soát backend chi tiết](MYQUIZZ_BACKEND_AUDIT.md): bug, rủi ro, mức ưu tiên, cách sửa và nghiệm thu.
 - `android-plan.local.md`: kế hoạch Android riêng, chỉ lưu local và được Git ignore; không có trong checkout mới.
 - [Ngữ cảnh frontend](../../frontend/docs/README.md) và [kế hoạch frontend](../../frontend/docs/frontend-plan.md).
 - [Quy trình cộng tác](../../AGENTS.md) và [nhật ký](../../CHANGELOG.md).

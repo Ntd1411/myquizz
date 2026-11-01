@@ -153,4 +153,6 @@ DESIGN.md
 .impeccable
 /docs/*
 !/docs/*.md
+!/docs/MYQUIZZ_BACKEND_AUDIT_REPRO.cjs
+!/docs/MYQUIZZ_BACKEND_AUDIT_REPRO_RESULTS.json
 /docs/android-plan.local.md
