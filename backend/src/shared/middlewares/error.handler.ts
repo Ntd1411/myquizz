@@ -22,11 +22,11 @@ export function errorHandler(
   // AppError instances
   if (err instanceof AppError) {
     // An expected refusal is not a defect: log the reason, not a stack trace.
-    console.warn(`${err.code} on ${req.method} ${req.originalUrl}: ${err.message}`)
+    console.warn(`${err.code} on ${req.method} ${req.path}: ${err.message}`)
     return fail(res, err.code, err.statusCode)
   }
 
-  console.error(`Error on ${req.method} ${req.originalUrl}:`, err)
+  console.error(`Error on ${req.method} ${req.path}:`, err)
 
   // Zod validation errors. The per-field reasons stay in the log: the client already
   // validates the same shapes, so a body that fails here is a client bug, not

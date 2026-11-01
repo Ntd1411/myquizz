@@ -192,7 +192,7 @@ export async function getResetTicket(
   next: NextFunction
 ) {
   try {
-    const { ticket } = req.query as { ticket?: string }
+    const { ticket } = req.body as { ticket?: string }
 
     if (!ticket) {
       throw new AppError(400, 'Ticket is required', 'RESET_TICKET_INVALID')

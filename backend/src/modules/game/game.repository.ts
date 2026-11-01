@@ -6,7 +6,7 @@ import type { HistoryCursor } from './game.history.cursor.js'
 import { AppError } from '../../shared/errors/AppError.js'
 
 // Quiz snapshot: snapshot the quiz at the time of game creation
-export const createQuizSnapshot = async (quizId: number) => {
+export const createQuizSnapshot = async (quizId: number, hostId: number) => {
   const { rows } = await pool.query<{ id: number; total_questions: number }>(
     `INSERT INTO quiz_snapshots (quiz_id, snapshot_data, total_questions)
      SELECT
@@ -19,9 +19,10 @@ export const createQuizSnapshot = async (quizId: number) => {
      FROM quizzes q
      LEFT JOIN questions qs ON qs.quiz_id = q.id AND qs.deleted_at IS NULL
      WHERE q.id = $1 AND q.deleted_at IS NULL
+       AND (q.is_public = true OR q.quiz_owner = $2)
      GROUP BY q.id
      RETURNING id, total_questions`,
-    [quizId]
+    [quizId, hostId]
   )
   if (!rows[0]) throw new AppError(404, `Quiz #${quizId} not found`, 'QUIZ_NOT_FOUND')
   return rows[0]

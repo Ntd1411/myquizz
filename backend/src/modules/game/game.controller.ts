@@ -106,7 +106,7 @@ export const getHostToken = async (req: AuthRequest, res: Response, next: NextFu
 
 export const getLeaderboard = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const leaderboard = await gameService.getLeaderboard(Number(req.params['id']))
+    const leaderboard = await gameService.getLeaderboard(Number(req.params['id']), req.user?.id)
     return success(res, { leaderboard })
   } catch (e) {
     next(e)
@@ -115,7 +115,7 @@ export const getLeaderboard = async (req: AuthRequest, res: Response, next: Next
 
 export const getResults = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const results = await gameService.getResults(Number(req.params['id']))
+    const results = await gameService.getResults(Number(req.params['id']), req.user?.id)
     return success(res, { results })
   } catch (e) {
     next(e)
@@ -165,7 +165,7 @@ export const getMyAnswers = async (req: AuthRequest, res: Response, next: NextFu
 
 export const getReview = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const token = (req.header('x-socket-token') ?? req.query['token']) as string | undefined
+    const token = req.header('x-socket-token')
     const review = await gameService.getPlayerReview(Number(req.params['id']), token)
     return success(res, { review })
   } catch (e) {

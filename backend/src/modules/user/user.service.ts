@@ -3,7 +3,7 @@ import { userRepository } from './user.repository.js'
 import { hashPassword, hashToken, verifyPassword } from '../auth/auth.util.js'
 import { authRepository } from '../auth/auth.repository.js'
 import RedisClient from '../../infrastructure/cache/redis.client.js'
-import { deleteFileService } from '../storage/storage.service.js'
+import { assertOwnedUpload, deleteFileService, extractKeyFromUrl } from '../storage/storage.service.js'
 import { mailService } from '../../infrastructure/mail/mail.service.js'
 import { env } from '../../infrastructure/config/envconfig.js'
 import {
@@ -110,8 +110,9 @@ export async function uploadAvatarService(
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND')
   }
-  if (user.avatar)
-    await deleteFileService(user.avatar)
+  const newKey = await assertOwnedUpload(avatarUrl, 'avatars', userId)
+  const oldKey = user.avatar ? extractKeyFromUrl(user.avatar) : undefined
+  if (oldKey === newKey) return avatarUrl
 
   const isAvatarUploaded = await userRepository.uploadAvatar(userId, avatarUrl)
 
@@ -120,6 +121,14 @@ export async function uploadAvatarService(
   }
 
   await invalidateUserCache(userId)
+
+  if (oldKey?.startsWith(`avatars/${userId}/`)) {
+    try {
+      await deleteFileService(user.avatar as string)
+    } catch (error) {
+      console.warn('Could not remove previous avatar', error)
+    }
+  }
 
   return avatarUrl
 }

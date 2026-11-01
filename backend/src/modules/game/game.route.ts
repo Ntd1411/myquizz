@@ -24,9 +24,9 @@ router.post('/:id/host-token', authMiddleware, controller.getHostToken) // Host 
 
 router.post('/:code/join', optionalAuthMiddleware, controller.joinGame) // Join game
 
-router.get('/:id/leaderboard', controller.getLeaderboard) // Get leaderboard
+router.get('/:id/leaderboard', optionalAuthMiddleware, controller.getLeaderboard) // Get leaderboard
 
-router.get('/:id/results', controller.getResults) // Get results
+router.get('/:id/results', optionalAuthMiddleware, controller.getResults) // Get results
 
 router.get('/:id/review', controller.getReview) // Player's own answer sheet (socket token)
 

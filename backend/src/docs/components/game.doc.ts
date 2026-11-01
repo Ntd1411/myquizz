@@ -238,7 +238,7 @@ export const gameSchemas: SchemaMap = {
     properties: {
       id: { type: 'integer' },
       player_name: { type: 'string' },
-      player_score: { type: 'integer' },
+      player_avatar: { type: 'string', nullable: true },
       status: { type: 'string' }
     }
   },

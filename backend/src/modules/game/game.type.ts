@@ -42,7 +42,9 @@ export interface AuthSocket extends Socket {
   user?: User
 }
 
-export type LobbyPlayer = Pick<PlayerSessionRow, 'id' | 'player_name' | 'player_score' | 'status'>
+export type LobbyPlayer = Pick<PlayerSessionRow, 'id' | 'player_name' | 'status'> & {
+  player_avatar: string | null
+}
 
 export interface LeaderboardRow {
   id: number

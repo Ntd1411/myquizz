@@ -20,8 +20,12 @@ export interface SocketTokenPayload {
   role: 'player' | 'host'
 }
 
-export const signSocketToken = (payload: SocketTokenPayload) =>
-  jwt.sign(payload, env.SOCKET_JWT_SECRET, { expiresIn: ms(env.SOCKET_TOKEN_TTL as ms.StringValue) })
+export const signSocketToken = (payload: SocketTokenPayload) => {
+  const ttlMs = ms(env.SOCKET_TOKEN_TTL as ms.StringValue)
+  if (!Number.isFinite(ttlMs) || ttlMs < 1000 || ttlMs % 1000 !== 0)
+    throw new Error('SOCKET_TOKEN_TTL must be a positive whole number of seconds')
+  return jwt.sign(payload, env.SOCKET_JWT_SECRET, { expiresIn: ttlMs / 1000 })
+}
 
 export const verifySocketToken = (token: string) =>
   jwt.verify(token, env.SOCKET_JWT_SECRET) as SocketTokenPayload

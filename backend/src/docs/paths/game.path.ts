@@ -270,7 +270,7 @@ export const gamePaths: PathMap = {
                 {
                   id: 11,
                   player_name: 'Guest Player',
-                  player_score: 0,
+                  player_avatar: null,
                   status: 'connected'
                 }
               ],
@@ -448,13 +448,13 @@ export const gamePaths: PathMap = {
     get: {
       summary: 'Retrieve the leaderboard',
       description:
-        'Current standings of a running session, read from Redis while the match is live and from Postgres once it is over. The two paths do not rank identically: the Redis sorted set returns the top 100 players ordered by score alone, while Postgres returns every player ordered by score and then by correct answers. This route runs no authentication.',
+        'Final standings of a finished session. When showLeaderboard is never, only the signed-in host may read this route.',
       tags: [gameTag.name],
       parameters: [idParam],
       responses: {
         200: successResponse({
           description:
-            'Standings, best first. An unknown id answers with an empty array rather than a 404.',
+            'Final standings, best first.',
           data: object({ leaderboard: arrayOf('LeaderboardEntry') }, [
             'leaderboard'
           ])
@@ -467,7 +467,7 @@ export const gamePaths: PathMap = {
     get: {
       summary: 'Retrieve the results',
       description:
-        'Final standings plus the per-question breakdown, shaped as data.results = { session, leaderboard, perQuestion }. The stats always come from Postgres, never from the cache. This route runs no authentication.',
+        'Final standings plus the per-question breakdown, shaped as data.results = { session, leaderboard, perQuestion }. Available only after the match finishes. When showLeaderboard is never, only the signed-in host may read it.',
       tags: [gameTag.name],
       parameters: [idParam],
       responses: {

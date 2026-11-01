@@ -18,7 +18,7 @@
 
 ## Điểm cần xác minh và hoàn thiện
 
-- `socket.middleware.ts`: `ms(...)` trả mili giây nhưng `expiresIn` dạng số nhận giây; cần sửa và test thời hạn.
+- `socket.middleware.ts`: TTL socket hiện đổi sang giây và có regression test; các token phát hành trước bản sửa cần xoay secret nếu phải thu hồi ngay.
 - Refresh đang đọc/xóa/tạo phiên bằng nhiều truy vấn; cần xử lý cạnh tranh và thêm định danh JWT duy nhất.
 - Ticket reset đọc trước, cập nhật mật khẩu rồi mới xóa: cần đảm bảo một lần sử dụng khi request đồng thời.
 - Rate limiter HTTP cho qua khi Redis lỗi; cần chính sách riêng cho login/reset. Không thay thế rate limit sự kiện socket.

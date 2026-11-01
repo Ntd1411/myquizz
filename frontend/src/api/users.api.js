@@ -102,7 +102,7 @@ export async function verifyResetLink(token) {
  * the password has been typed twice. Answers { email, expiresAt }.
  */
 export async function getResetTicket(ticket) {
-  const res = await http.get('/users/password-reset/ticket', { params: { ticket } })
+  const res = await http.post('/users/password-reset/ticket', { ticket })
   return unwrap(res.data)
 }
 

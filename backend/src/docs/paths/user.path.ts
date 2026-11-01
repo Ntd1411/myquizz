@@ -380,20 +380,19 @@ export const userPaths: PathMap = {
   },
 
   '/users/password-reset/ticket': {
-    get: {
+    post: {
       summary: 'Read a reset ticket',
       description:
         'Reads a ticket without spending it, so the reset page can decide what to render before it shows a form. A ticket that expired answers 400 here rather than after the user has typed a new password twice.',
       tags: [userTag.name],
-      parameters: [
-        {
-          in: 'query',
-          name: 'ticket',
-          required: true,
-          schema: { type: 'string' },
-          example: 'x7Yb1_QpTn4mS0aVw9ZcR2eJhLkGdFuI8oPqNrTvWxY'
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: object({ ticket: { type: 'string' } }, ['ticket'])
+          }
         }
-      ],
+      },
       responses: {
         200: successResponse({
           description: 'The ticket is still alive.',
@@ -409,7 +408,7 @@ export const userPaths: PathMap = {
             expiresAt: '2026-08-12T03:10:00.000Z'
           })
         }),
-        400: errorResponse('No ticket in the query, or one that is gone', [
+        400: errorResponse('No ticket in the body, or one that is gone', [
           'RESET_TICKET_INVALID'
         ]),
         429: errorResponse(

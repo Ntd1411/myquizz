@@ -2,6 +2,16 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:05:54 GMT+7
+
+### Đợt 1: quyền truy cập và dữ liệu công khai
+
+- Sửa thời hạn JWT socket, giới hạn tạo phòng từ quiz riêng tư, lọc trường player trả bởi lobby và chặn đọc kết quả trước khi trận kết thúc hoặc khi bảng xếp hạng bị ẩn.
+- Kiểm tra URL và object avatar thuộc tài khoản trước khi gắn vào profile; cập nhật DB trước khi dọn ảnh cũ; tránh xóa avatar đang dùng khi gửi lại cùng URL.
+- Bỏ token review khỏi query, chuyển kiểm tra reset ticket sang POST body, tránh ghi query chứa secret vào error log; cập nhật frontend và tài liệu API.
+- Xác minh: 7/7 backend regression tests, backend lint/build, frontend lint/build. Frontend full test: 208/213 đạt; 5 lỗi hiện hữu ở GameResultsView, useGameSocket, envelope không liên quan thay đổi API ticket. Node 26 cần `--no-experimental-webstorage` cho Vitest; production dùng Node 22.
+- Giới hạn: chưa chạy test tích hợp với PostgreSQL, Redis, S3 hoặc Android; token socket đã cấp trước bản sửa vẫn còn hạn theo giá trị cũ đến khi secret được xoay vòng.
+
 ## 2026-11-01 21:33:53 GMT+7
 
 ### Rà soát backend

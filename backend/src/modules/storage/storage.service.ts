@@ -1,7 +1,8 @@
 import {
   S3Client,
   PutObjectCommand,
-  DeleteObjectCommand
+  DeleteObjectCommand,
+  HeadObjectCommand
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { v4 as uuidv4 } from 'uuid'
@@ -37,22 +38,33 @@ function getPublicUrl(key: string): string {
 }
 
 // Extract key from public URL
-function extractKeyFromUrl(fileUrl: string): string | undefined {
+export function extractKeyFromUrl(fileUrl: string): string | undefined {
   try {
     const url = new URL(fileUrl)
-    const pathname = url.pathname
-
-    // Oracle Cloud format: /n/{namespace}/b/{bucket}/o/{key}
-    const oracleMatch = pathname.match(/\/n\/[^/]+\/b\/[^/]+\/o\/(.+)/)
-    if (oracleMatch && oracleMatch[1]) {
-      return decodeURIComponent(oracleMatch[1])
-    }
-
-    // DigitalOcean Spaces format: /{key}
-    return pathname.startsWith('/') ? pathname.slice(1) : pathname
+    if (url.search || url.hash || url.username || url.password) return undefined
+    const base = new URL(`${(storageConfig.publicUrl || `${storageConfig.endpoint}/${bucketName}`).replace(/\/$/, '')}/`)
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) return undefined
+    const key = decodeURIComponent(url.pathname.slice(base.pathname.length))
+    if (!key || key.includes('..') || key.includes('\\') || key.startsWith('/')) return undefined
+    return key
   } catch {
     return undefined
   }
+}
+
+export async function assertOwnedUpload(fileUrl: string, folder: AllowedFolder, userId: number): Promise<string> {
+  const key = extractKeyFromUrl(fileUrl)
+  if (!key || !new RegExp(`^${folder}/${userId}/[0-9a-f-]{36}$`, 'i').test(key))
+    throw new AppError(400, 'Upload does not belong to this account', 'FILE_FIELD_INVALID')
+  try {
+    const result = await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }))
+    if (!result.ContentType?.startsWith('image/') || !result.ContentLength || result.ContentLength > MAX_FILE_SIZE)
+      throw new AppError(400, 'Uploaded file is invalid', 'FILE_FIELD_INVALID')
+  } catch (error) {
+    if (error instanceof AppError) throw error
+    throw new AppError(400, 'Uploaded file was not found', 'FILE_FIELD_INVALID')
+  }
+  return key
 }
 
 // Check if the folder is allowed
@@ -117,7 +129,6 @@ export async function deleteFileService(fileUrl: string): Promise<void> {
 
   const key = extractKeyFromUrl(fileUrl)
   if (!key) {
-    console.log(`Cannot extract key from URL: ${fileUrl}`)
     return
   }
 

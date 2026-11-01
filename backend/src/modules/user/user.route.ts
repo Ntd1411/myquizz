@@ -48,6 +48,6 @@ userRouter.post( '/forgot-password', authRateLimiter, validateBody(forgotPasswor
 // step touches the password, and it never sees the code or the emailed token.
 userRouter.post( '/password-reset/verify', resetVerifyRateLimiter, validateBody(verifyResetSchema), verifyReset)
 
-userRouter.get('/password-reset/ticket', resetVerifyRateLimiter, getResetTicket)
+userRouter.post('/password-reset/ticket', resetVerifyRateLimiter, getResetTicket)
 
 userRouter.post( '/password-reset/complete', resetPasswordRateLimiter, validateBody(completeResetSchema), completeReset)

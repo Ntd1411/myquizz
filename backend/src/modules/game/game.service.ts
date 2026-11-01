@@ -43,7 +43,7 @@ export const createGame = async (input: CreateGameInput, hostId: number) => {
   const handler = getModeHandler(input.mode) // 400 if mode not found
   const { config, ignored } = buildConfig(input.mode, handler.defaultConfig(), input.config)
 
-  const snapshot = await repo.createQuizSnapshot(input.quiz_id) // snapshot at the time of creation
+  const snapshot = await repo.createQuizSnapshot(input.quiz_id, hostId)
   const session = await repo.createGameSession({
     quiz_snapshot_id: snapshot.id,
     session_name: input.session_name,
@@ -60,8 +60,13 @@ export const createGame = async (input: CreateGameInput, hostId: number) => {
 export const getLobby = async (code: string) => {
   const session = await loadSessionByCode(code)
   if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
-  const players: LobbyPlayer[] =
-    (await cache.getPlayers(session.id)) ?? (await repo.listPlayers(session.id))
+  const rows = (await cache.getPlayers(session.id)) ?? (await repo.listPlayers(session.id))
+  const players: LobbyPlayer[] = rows.map((player) => ({
+    id: player.id,
+    player_name: player.player_name,
+    player_avatar: player.player_avatar ?? null,
+    status: player.status
+  }))
   return { session, players, config: session.config }
 }
 
@@ -142,14 +147,25 @@ export const issueHostToken = async (gameId: number, hostId: number) => {
 }
 
 // GET /games/:id/leaderboard — Redis ZSET when playing, fallback Postgres
-export const getLeaderboard = async (gameId: number) =>
-  (await cache.getLeaderboard(gameId)) ?? repo.getLeaderboard(gameId)
+export const getLeaderboard = async (gameId: number, viewerId?: number) => {
+  const session = await loadSessionById(gameId)
+  if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (session.session_status !== 'finished')
+    throw new AppError(409, 'Results are not ready', 'GAME_ALREADY_STARTED')
+  if (session.config.flow.showLeaderboard === 'never' && session.session_host !== viewerId)
+    throw new AppError(403, 'Leaderboard is hidden', 'GAME_NOT_HOST')
+  return repo.getLeaderboard(gameId)
+}
 
 // GET /games/:id/results
-export const getResults = async (gameId: number) => {
+export const getResults = async (gameId: number, viewerId?: number) => {
   // Get session meta from cache, but always read final stats from Postgres
   const session = await loadSessionById(gameId)
   if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
+  if (session.session_status !== 'finished')
+    throw new AppError(409, 'Results are not ready', 'GAME_ALREADY_STARTED')
+  if (session.config.flow.showLeaderboard === 'never' && session.session_host !== viewerId)
+    throw new AppError(403, 'Results are hidden', 'GAME_NOT_HOST')
   return {
     session,
     leaderboard: await repo.getLeaderboard(gameId),
