@@ -120,7 +120,7 @@ export class GameSocket {
       this.on(socket, 'lobby:leave', () => this.onLeave(socket))
       this.on(socket, 'lobby:config-update', (p, ack) => this.onConfigUpdate(socket, p, ack))
       this.on(socket, 'game:start', () => this.onStart(socket))
-      this.on(socket, 'game:next', () => this.onNext(socket))
+      this.on(socket, 'game:next', (p) => this.onNext(socket, p))
       this.on(socket, 'game:pause', () => this.onPause(socket))
       this.on(socket, 'game:resume', () => this.onResume(socket))
       this.on(socket, 'game:end', () => this.onEndByHost(socket))
@@ -622,6 +622,10 @@ export class GameSocket {
   // start
   private async onStart(socket: Socket) {
     const { gameId } = this.requireHost(socket)
+    return cache.withHostTransition(gameId, () => this.startGame(gameId))
+  }
+
+  private async startGame(gameId: number) {
     const current = await this.loadSession(gameId)
     if (current.session_status !== 'lobby')
       throw new AppError(409, 'game already started', 'GAME_ALREADY_STARTED')
@@ -834,8 +838,16 @@ export class GameSocket {
     })
   }
 
-  private async onNext(socket: Socket) {
+  private async onNext(socket: Socket, payload: unknown) {
     const { gameId } = this.requireHost(socket)
+    const expected = payload as { index?: unknown; phase?: unknown } | null
+    if (!expected || !Number.isInteger(expected.index) ||
+      !['question_active', 'showing_results'].includes(String(expected?.phase)))
+      throw new AppError(400, 'Current question and phase are required', 'VALIDATION_ERROR')
+    return cache.withHostTransition(gameId, () => this.advanceGame(gameId, expected))
+  }
+
+  private async advanceGame(gameId: number, expected: { index?: unknown; phase?: unknown }) {
     const session = await this.loadSession(gameId)
     if (session.config.flow.pacing !== 'host')
       throw new AppError(409, 'self-paced modes have no host advance', 'GAME_PACING_MISMATCH')
@@ -845,6 +857,8 @@ export class GameSocket {
       throw new AppError(409, 'countdown in progress, cannot advance manually', 'GAME_ADVANCE_NOT_ALLOWED')
     if (session.config.timing.autoAdvance)
       throw new AppError(409, 'autoAdvance is enabled, host cannot advance manually', 'GAME_ADVANCE_NOT_ALLOWED')
+    if (session.current_question_index !== expected.index || session.current_phase !== expected.phase)
+      throw new AppError(409, 'Question has already moved', 'GAME_ADVANCE_NOT_ALLOWED')
 
     this.clearTimer(gameId)
     if (session.current_phase === 'question_active') return this.lockQuestion(gameId, false)
@@ -880,6 +894,10 @@ export class GameSocket {
 
   private async onPause(socket: Socket) {
     const { gameId } = this.requireHost(socket)
+    return cache.withHostTransition(gameId, () => this.pauseGame(gameId))
+  }
+
+  private async pauseGame(gameId: number) {
     const session = await this.loadSession(gameId)
     if (session.session_status !== 'active')
       throw new AppError(409, 'game is not active', 'GAME_NOT_ACTIVE')
@@ -899,6 +917,10 @@ export class GameSocket {
 
   private async onResume(socket: Socket) {
     const { gameId } = this.requireHost(socket)
+    return cache.withHostTransition(gameId, () => this.resumeGame(gameId))
+  }
+
+  private async resumeGame(gameId: number) {
     const session = await this.loadSession(gameId)
     if (session.session_status !== 'paused')
       throw new AppError(409, 'game is not paused', 'GAME_NOT_PAUSED')
@@ -933,6 +955,10 @@ export class GameSocket {
 
   private async onEndByHost(socket: Socket) {
     const { gameId } = this.requireHost(socket)
+    return cache.withHostTransition(gameId, () => this.endGameByHost(gameId))
+  }
+
+  private async endGameByHost(gameId: number) {
     const session = await this.loadSession(gameId)
     // ending from the lobby would write finished_at on a match that never started
     if (session.session_status === 'lobby')

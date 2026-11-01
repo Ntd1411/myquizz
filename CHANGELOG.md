@@ -2,6 +2,15 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 23:18:19 GMT+7
+
+### Kiểm thử Docker và chuyển trạng thái host
+
+- Dựng Compose trên volume mới; PostgreSQL ghi nhận 23 schema/migration và lần chạy migration thứ hai không thêm bản ghi. Backend/frontend/PostgreSQL/Redis chạy; health/ready 200.
+- Smoke API/Socket.IO qua đăng ký, tạo quiz/phòng, join, trả lời/chặn trùng, kết thúc và quyền kết quả ẩn. 20 yêu cầu join đồng thời chỉ nhận đủ 2 ghế; rejoin khi đầy và từ chối join sau khi kết thúc hoạt động đúng.
+- Tái hiện hai host socket phát trùng `game:started`; thêm Redis lock cho thao tác host và payload `index`/`phase` cho `game:next`. Thử lại hai host đồng thời cho start/next/end, mỗi chuyển trạng thái chỉ phát một lần.
+- Xác minh: backend lint/build/test và frontend lint/build; chưa thử nhiều backend instance, timer cạnh tranh với host, restart/recovery hoặc S3.
+
 ## 2026-11-01 23:05:14 GMT+7
 
 ### Kết quả phòng đã đóng trên frontend

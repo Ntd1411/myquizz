@@ -1,6 +1,7 @@
 import { redisClient as redis } from '../../infrastructure/cache/redis.client.js'
 import type { CachedAnswer, GameSessionRow, PlayerSessionRow } from './game.type.js'
 import { AppError } from '../../shared/errors/AppError.js'
+import { randomUUID } from 'node:crypto'
 
 const TTL = {
   session: 60 * 60 * 6,
@@ -18,6 +19,37 @@ export const key = {
   answerKeys: (gameId: number) => `game:${gameId}:answer_keys`,
   codeToId: (code: string) => `game:code:${code.toUpperCase()}`,
   clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`
+}
+
+// Host controls must serialize across sockets, including when they land on
+// different server processes. A failed Redis claim stops the transition.
+export const withHostTransition = async <T>(gameId: number, work: () => Promise<T>): Promise<T> => {
+  const lock = `game:${gameId}:host-transition`
+  const token = randomUUID()
+  let claimed: string | null
+  try {
+    claimed = await redis.set(lock, token, 'PX', 60_000, 'NX')
+  } catch {
+    throw new AppError(503, 'Game state is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+  }
+  if (claimed !== 'OK')
+    throw new AppError(409, 'Another host action is in progress', 'GAME_ADVANCE_NOT_ALLOWED')
+
+  try {
+    return await work()
+  } finally {
+    try {
+      await redis.eval(
+        `if redis.call('GET', KEYS[1]) == ARGV[1] then
+           return redis.call('DEL', KEYS[1])
+         end
+         return 0`,
+        1, lock, token
+      )
+    } catch (error) {
+      console.error('[game.cache] Could not release host transition lock:', error)
+    }
+  }
 }
 
 // safe function

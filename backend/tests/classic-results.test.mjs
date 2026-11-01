@@ -4,6 +4,7 @@ import { mock, test } from 'node:test'
 let session, players, questions, persisted, slots
 const copy = (value) => structuredClone(value)
 const cache = {
+  withHostTransition: async (_id, work) => work(),
   getPlayerClock: async () => null,
   getSession: async () => copy(session),
   patchSession: async (_id, patch) => copy(session = { ...session, ...patch }),

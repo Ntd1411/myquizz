@@ -138,7 +138,11 @@ export const gameChannels: Record<string, OpenApiObject> = {
     audience: 'host',
     summary: 'Move to the next question',
     description:
-      'Host only, host-paced rooms. Used when timing.autoAdvance is false, or to cut the results screen short.'
+      'Host only, host-paced rooms with timing.autoAdvance=false. The expected index and phase prevent a second host socket from advancing a newer question.',
+    payload: object({
+      index: int('Current zero-based question index from game:state or question:started.'),
+      phase: { type: 'string', enum: ['question_active', 'showing_results'] }
+    })
   }),
 
   'game:pause': clientEvent({

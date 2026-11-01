@@ -133,7 +133,7 @@ export function useGameSocket() {
   const joinLobby = () => emitGameEvent('lobby:join')
   const sync = () => emitGameEvent('player:sync')
   const start = () => emitGameEvent('game:start')
-  const next = () => emitGameEvent('game:next')
+  const next = () => emitGameEvent('game:next', { index: game.index, phase: game.currentPhase })
   const pause = () => emitGameEvent('game:pause')
   const resume = () => emitGameEvent('game:resume')
   const endGame = () => emitGameEvent('game:end')

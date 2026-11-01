@@ -1,12 +1,12 @@
 # Tiến độ triển khai audit backend
 
-Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Môi trường hiện tại không có Docker daemon hoặc PostgreSQL/Redis chạy cục bộ; chưa chạy migration, test API/Socket.IO tích hợp, S3 HEAD, thử restart, benchmark hoặc restore backup.
+Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Đã chạy Compose với PostgreSQL/Redis mới, migration và smoke API/Socket.IO. Chưa chạy S3 HEAD, restart/recovery, benchmark hoặc restore backup.
 
 | Nhóm | Trạng thái |
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
 | B16 | Chưa triển khai checkpoint và phục hồi toàn bộ timer/game state sau restart. |
-| B17 | Chưa có CAS cho mọi host transition; hai host socket vẫn có thể cạnh tranh. |
+| B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end; `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end trên một backend instance; chưa test nhiều instance hoặc timer cạnh tranh với host. |
 | B20 | Answer và player clock fail-closed; các đường ghi cache game khác vẫn có thể fail-open. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
 | B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
@@ -24,7 +24,7 @@ Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C11 | Có request ID/log JSON không ghi query; chưa có monitoring tập trung. |
 | C12 | Kiểm tra nonempty JWT secrets, port và TTL; cần xác minh trên cấu hình production thực. |
 | C13 | Giới hạn JSON, headers và timeout; cần test reverse proxy và IP gốc. |
-| C14 | Container backend chạy non-root, PostgreSQL/Redis chỉ bind loopback mặc định; chưa chạy thử image/deployment. |
+| C14 | Đã chạy Compose: backend container non-root, PostgreSQL/Redis bind loopback và health/readiness 200. Chưa thử reverse proxy production. |
 | C15 | Scoring job có advisory lock liên process; chưa đo query plan hoặc làm incremental stats. |
 | C16 | Answer key marathon được ghi vào set và xóa khi room kết thúc. |
 | C17 | Bỏ index refresh token trùng unique index; chưa benchmark index/retention lịch sử. |
@@ -34,7 +34,7 @@ Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 - Backend `pnpm lint`, `pnpm test` (build và 41 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
-- `docker compose config --quiet` qua; Docker daemon không chạy nên chưa build/chạy container.
+- `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua.
 
 ## Việc bắt buộc trước khi triển khai
 
