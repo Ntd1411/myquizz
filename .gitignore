@@ -5,3 +5,6 @@
 .vscode/tasks.json
 design
 .env.prod
+
+# Local Android planning context; intentionally excluded from commits
+/backend/docs/android-plan.local.md

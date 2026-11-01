@@ -151,4 +151,6 @@ tests
 PRODUCT.md
 DESIGN.md
 .impeccable
-/docs
+/docs/*
+!/docs/*.md
+/docs/android-plan.local.md
