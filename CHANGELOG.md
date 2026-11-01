@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 23:23:18 GMT+7
+
+### URL API cho frontend Compose
+
+- Compose truyền URL API và Google client ID vào build frontend; mặc định API đúng `/v1` thay vì mẫu `/api/v1`. Sửa FRONTEND_URL và callback URL trong `.env.example` theo cổng/route hiện tại.
+- Xác minh: `docker compose config --quiet`, build lại image frontend và kiểm tra bundle dùng `/v1`; chưa xác nhận OAuth với nhà cung cấp thật.
+
 ## 2026-11-01 23:21:50 GMT+7
 
 ### Redis gián đoạn khi chơi

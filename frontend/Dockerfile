@@ -23,6 +23,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod=false
 
 COPY . .
+ARG VITE_API_BASE_URL=http://localhost:3000/v1
+ARG VITE_GOOGLE_CLIENT_ID=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 RUN pnpm build
 
 # ---- Runtime stage ----

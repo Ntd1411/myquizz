@@ -11,6 +11,7 @@ Khi phòng đã kết thúc, trang người chơi/host dùng trạng thái REST 
 ## Phát triển và kiểm thử
 
 Trong frontend: `pnpm install --frozen-lockfile`, `pnpm dev` (5173), `pnpm lint`, `pnpm test`, `pnpm build`; `pnpm test --coverage` thu thập V8 coverage. Dùng `.env.example` của frontend; backend cần cho phép origin local để cookie hoạt động.
+Compose truyền `VITE_API_BASE_URL` và `VITE_GOOGLE_CLIENT_ID` qua build args; URL API mặc định là `http://localhost:3000/v1`. Đổi URL này trong root `.env` trước khi build image cho domain khác, vì Vite đóng giá trị vào bundle lúc build.
 Test trong `tests/**/*.spec.js` với Vitest, Vue Test Utils, happy-dom; mirror cây src. Chưa có ngưỡng coverage số. CI build.yml hiện chạy lint/build, chưa chạy frontend test.
 
 Xem [kế hoạch](frontend-plan.md), [backend](../../backend/docs/README.md) và [quy trình](../../AGENTS.md). Đây là ngữ cảnh mã nguồn, chưa phải kết quả kiểm thử trình duyệt thực tế.

@@ -4,7 +4,7 @@ import { socketErrorMessage } from './errors'
 export const GAME_NAMESPACE = '/game'
 
 // Socket.IO is not served under the REST path prefix: VITE_API_BASE_URL may be
-// 'http://localhost:3000/api' while the namespace lives on the bare origin.
+// 'http://localhost:3000/v1' while the namespace lives on the bare origin.
 function apiOrigin() {
   const base = import.meta.env.VITE_API_BASE_URL
   if (!base) return window.location.origin
