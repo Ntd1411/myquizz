@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:49:44 GMT+7
+
+### Định dạng nhập bảng tính
+
+- Chỉ cho chọn `.xlsx` trong giao diện; `.xls` nhận lỗi hướng dẫn chuyển sang `.xlsx` hoặc `.csv`, vì bộ đọc mới chỉ hỗ trợ XLSX.
+- Xác minh: frontend lint/build; chưa thử bằng trình duyệt thực.
+
 ## 2026-11-01 22:48:46 GMT+7
 
 ### Dependency production

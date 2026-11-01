@@ -127,9 +127,12 @@ async function onFilePicked(event) {
   working.value = true
 
   try {
-    if (/\.(xlsx|xls)$/i.test(file.name)) {
+    if (/\.xlsx$/i.test(file.name)) {
       handOver(await parseSpreadsheet(file), {}, 'xlsx')
       return
+    }
+    if (/\.xls$/i.test(file.name)) {
+      throw new Error('Save the spreadsheet as .xlsx or .csv before importing it.')
     }
 
     const text = await file.text()
@@ -275,7 +278,7 @@ async function onFilePicked(event) {
           {{ working ? 'Reading…' : 'Choose a file' }}
           <input
             type="file"
-            accept=".csv,.xlsx,.xls,.json,.txt,text/csv,application/json"
+            accept=".csv,.xlsx,.json,.txt,text/csv,application/json"
             class="hidden"
             @change="onFilePicked"
           >
