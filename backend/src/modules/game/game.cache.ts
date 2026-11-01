@@ -15,6 +15,7 @@ export const key = {
   playersComplete: (gameId: number) => `game:${gameId}:players:complete`,
   leaderboard: (gameId: number) => `game:${gameId}:leaderboard`,
   answers: (gameId: number, qIndex: number) => `game:${gameId}:answers:${qIndex}`,
+  answerKeys: (gameId: number) => `game:${gameId}:answer_keys`,
   codeToId: (code: string) => `game:code:${code.toUpperCase()}`,
   clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`
 }
@@ -153,8 +154,10 @@ export const recordAnswer = async (
          accepted = redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2])
        end
        redis.call('EXPIRE', KEYS[1], ARGV[4])
+       redis.call('SADD', KEYS[2], KEYS[1])
+       redis.call('EXPIRE', KEYS[2], ARGV[5])
        return accepted`,
-      1, k, field, payload, allowChange ? '1' : '0', TTL.answers
+      2, k, key.answerKeys(gameId), field, payload, allowChange ? '1' : '0', TTL.answers, TTL.session
     )
     return accepted === 1
   } catch {
@@ -191,9 +194,8 @@ export const clearGame = async (session: GameSessionRow) =>
       .del(key.playersComplete(session.id))
       .del(key.leaderboard(session.id))
       .del(key.codeToId(session.session_code))
-    for (let i = 0; i < session.total_questions; i++) {
-      pipeline.del(key.answers(session.id, i))
-    }
+    for (const answerKey of await redis.smembers(key.answerKeys(session.id))) pipeline.del(answerKey)
+    pipeline.del(key.answerKeys(session.id))
     for (const p of (await getPlayers(session.id)) ?? [])
       pipeline.del(key.clock(session.id, p.id))
     await pipeline.exec()

@@ -206,8 +206,8 @@ export class QuizRepository {
   }
 
   /** Hide a quiz while preserving snapshots, active rooms and match history. */
-  async deleteQuiz(quizId: number): Promise<Quiz | null> {
-    const result = await pool.query<Quiz>(
+  async deleteQuiz(quizId: number, client: PoolClient | typeof pool = pool): Promise<Quiz | null> {
+    const result = await client.query<Quiz>(
       `UPDATE quizzes SET deleted_at = now(), is_public = false
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *`,

@@ -288,7 +288,9 @@ export async function getContinuePlaying(
       ${OWNER_JOIN}
       where ps.player_id = $1
         and ps.deleted_at is null
-        and ps.status <> 'finished'
+        and ps.status in ('connected', 'disconnected')
+        and gs.session_status in ('lobby', 'active', 'paused')
+        and gs.deleted_at is null
         and q.deleted_at is null
         and q.question_count > 0
         and (q.is_public = true or q.quiz_owner = $1)

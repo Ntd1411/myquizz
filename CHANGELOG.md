@@ -2,6 +2,16 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:43:26 GMT+7
+
+### Đợt 5: một phần vận hành và bảo mật
+
+- Bổ sung lọc continue-playing, projection session công khai, giới hạn Socket.IO, kiểm tra Origin cho cookie mutation, request ID/log JSON, env validation và HTTP headers/timeout.
+- Dùng cache generation trong PostgreSQL để invalidation home/feed sau quiz CRUD; dọn answer keys marathon; scoring job có advisory lock; bỏ index refresh token trùng.
+- Chạy backend image bằng user không có quyền root và bind DB/Redis vào loopback trong Compose.
+- Xác minh: backend lint/build và 41/41 test, `docker compose config --quiet`; quét `pnpm audit --prod` phát hiện backend 1 critical/8 high/16 moderate/2 low, frontend 15 high/5 moderate. Chưa sửa dependency trong phần này.
+- Giới hạn: không đo p50/p95, EXPLAIN, CPU/RAM, backup restore hoặc test nhiều instance vì Docker daemon/PostgreSQL/Redis không có trong môi trường; chi tiết ở `backend/docs/MYQUIZZ_BACKEND_AUDIT_PROGRESS.md`.
+
 ## 2026-11-01 22:35:48 GMT+7
 
 ### Đợt 4: dữ liệu quiz, upload và khởi động

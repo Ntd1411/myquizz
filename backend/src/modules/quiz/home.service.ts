@@ -10,12 +10,20 @@ import type {
   HomeSectionConfig,
   QuizCard
 } from './home.type.js'
+import { pool } from '../../infrastructure/database/connection.js'
 
 /**
  * Cache key version prefix. Bump it whenever the payload shape changes, so a
  * deploy cannot serve old-shaped JSON to a new client for up to five minutes.
  */
 const CACHE_VERSION = 'v1'
+
+const currentGeneration = async () => {
+  const result = await pool.query<{ generation: string }>(
+    'SELECT generation::text FROM quiz_cache_generation WHERE id = 1'
+  )
+  return result.rows[0]?.generation ?? '1'
+}
 
 /**
  * Resolves the items of one configured row.
@@ -89,10 +97,11 @@ async function buildHomeSections(
 export async function getHomeService(
   userId: number | undefined
 ): Promise<{ sections: HomeSection[]; cached: boolean }> {
+  const generation = await currentGeneration()
   const cacheKey =
     userId === undefined
-      ? `home:${CACHE_VERSION}:anon`
-      : `home:${CACHE_VERSION}:user:${userId}`
+      ? `home:${CACHE_VERSION}:${generation}:anon`
+      : `home:${CACHE_VERSION}:${generation}:user:${userId}`
 
   const { value, cached } = await getOrSetCache(
     cacheKey,
@@ -115,12 +124,13 @@ export async function getFeedService(query: {
   cursor?: string | undefined;
   limit: number;
 }): Promise<{ page: FeedPage; cached: boolean }> {
+  const generation = await currentGeneration()
   const cursor = query.cursor ? decodeFeedCursor(query.cursor) : null
 
   const position = cursor ? `${cursor.hotScore}|${cursor.id}` : 'first'
   const topic = query.topic ?? 'all'
   const cacheKey =
-    `feed:${CACHE_VERSION}:topic:${topic}:limit:${query.limit}:at:${position}`
+    `feed:${CACHE_VERSION}:${generation}:topic:${topic}:limit:${query.limit}:at:${position}`
 
   const { value, cached } = await getOrSetCache<FeedPage>(
     cacheKey,

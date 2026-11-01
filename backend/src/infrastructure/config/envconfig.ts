@@ -1,16 +1,24 @@
 import 'dotenv/config'
 import { z } from 'zod'
+import ms from 'ms'
+
+const port = z.coerce.number().int().min(1).max(65535)
+const duration = z.string().refine((value) => {
+  const parsed = ms(value as ms.StringValue)
+  return typeof parsed === 'number' && Number.isFinite(parsed) && parsed > 0
+}, 'Invalid duration')
 
 const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test']),
-  PORT: z.string().transform(Number),
-  JWT_SECRET: z.string(),
-  JWT_EXPIRES_IN: z.string(),
-  JWT_REFRESH_SECRET: z.string(),
-  JWT_REFRESH_EXPIRES_IN: z.string(),
-  SOCKET_JWT_SECRET: z.string(),
-  SOCKET_TOKEN_TTL: z.string(),
+  PORT: port,
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+  JWT_SECRET: z.string().min(1),
+  JWT_EXPIRES_IN: duration,
+  JWT_REFRESH_SECRET: z.string().min(1),
+  JWT_REFRESH_EXPIRES_IN: duration,
+  SOCKET_JWT_SECRET: z.string().min(1),
+  SOCKET_TOKEN_TTL: duration,
   ALLOW_ORIGIN: z.string(),
   FRONTEND_URL: z.url(),
   // Public origin of this API, e.g. https://api.example.com (no trailing slash).
@@ -19,7 +27,7 @@ const envSchema = z.object({
   DB_USER: z.string(),
   DB_PASSWORD: z.string(),
   DB_HOST: z.string(),
-  DB_PORT: z.string().transform(Number),
+  DB_PORT: port,
   DB_NAME: z.string(),
   DB_POOL_MAX: z.string().transform(Number),
   DB_IDLE_TIMEOUT: z.string().transform(Number),
@@ -28,7 +36,7 @@ const envSchema = z.object({
   // files keep working; set to 0 to disable the scheduler entirely.
   SCORING_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(30),
   REDIS_HOST: z.string(),
-  REDIS_PORT: z.string().transform(Number),
+  REDIS_PORT: port,
   REDIS_PASSWORD: z.string(),
   SPACES_ACCESS_KEY: z.string(),
   SPACES_SECRET_KEY: z.string(),
@@ -37,7 +45,7 @@ const envSchema = z.object({
   SPACES_ENDPOINT: z.string(),
   SPACES_PUBLIC_URL: z.string(),
   SMTP_HOST: z.string(),
-  SMTP_PORT: z.string().transform(Number),
+  SMTP_PORT: port,
   SMTP_USER: z.string(),
   SMTP_PASSWORD: z.string(),
   MAIL_FROM: z.string(),
@@ -49,7 +57,9 @@ const envSchema = z.object({
 const envParsed = envSchema.safeParse(process.env)
 
 if (!envParsed.success) {
-  console.error('Invalid environment variables:', envParsed.error.format())
+  console.error('Invalid environment variables:', envParsed.error.issues.map((issue) => ({
+    path: issue.path.join('.'), code: issue.code
+  })))
   process.exit(1)
 }
 

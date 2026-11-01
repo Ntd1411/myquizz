@@ -101,6 +101,9 @@ export class GameSocket {
   private init() {
     // socketAuth is async -> wrap and void it to match the middleware signature
     this.nsp.use((socket, next) => {
+      const connections = [...this.nsp.sockets.values()]
+        .filter((active) => active.handshake.address === socket.handshake.address).length
+      if (connections >= 100) return next(new Error('RATE_LIMITED'))
       void socketAuth(socket, next)
     })
 
@@ -139,6 +142,18 @@ export class GameSocket {
     handler: (payload: unknown, ack?: Ack) => Promise<void>
   ) {
     socket.on(event, (payload: unknown, ack?: Ack) => {
+      const now = Date.now()
+      const data = socket.data as CustomSocketData & { eventWindow?: number; eventCount?: number }
+      if (!data.eventWindow || now - data.eventWindow >= 10_000) {
+        data.eventWindow = now
+        data.eventCount = 0
+      }
+      data.eventCount = (data.eventCount ?? 0) + 1
+      if (data.eventCount > 50 || JSON.stringify(payload ?? null).length > 16_384) {
+        if (typeof ack === 'function') ack({ error: { code: 'RATE_LIMITED' } })
+        else socket.emit('error', { event, code: 'RATE_LIMITED' })
+        return
+      }
       if ((socket.data as CustomSocketData).left && event !== 'lobby:join') {
         if (typeof ack === 'function') ack({ error: { code: 'GAME_PLAYER_NOT_FOUND' } })
         else socket.emit('error', { event, code: 'GAME_PLAYER_NOT_FOUND' })

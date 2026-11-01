@@ -33,6 +33,25 @@ const loadSessionById = async (gameId: number) => {
   return session
 }
 
+const publicSession = (session: GameSessionRow) => {
+  const host = session as GameSessionRow & { session_host_name?: string; session_host_avatar?: string | null }
+  return {
+    id: session.id,
+    session_name: session.session_name,
+    session_code: session.session_code,
+    session_host_name: host.session_host_name ?? null,
+    session_host_avatar: host.session_host_avatar ?? null,
+    game_mode: session.game_mode,
+    session_status: session.session_status,
+    total_players: session.total_players,
+    total_questions: session.total_questions,
+    current_question_index: session.current_question_index,
+    current_phase: session.current_phase,
+    phase_ends_at: session.phase_ends_at,
+    config: session.config
+  }
+}
+
 // GET /game-modes
 // listModes() returns mode names, so the handler has to be looked up per mode
 export const listGameModes = () =>
@@ -67,7 +86,7 @@ export const getLobby = async (code: string) => {
     player_avatar: player.player_avatar ?? null,
     status: player.status
   }))
-  return { session, players, config: session.config }
+  return { session: publicSession(session), players, config: session.config }
 }
 
 // PATCH /games/:id/config — only host, only when in lobby
@@ -157,7 +176,7 @@ export const getResults = async (gameId: number, viewerId?: number) => {
   if (session.config.flow.showLeaderboard === 'never' && session.session_host !== viewerId)
     throw new AppError(403, 'Results are hidden', 'GAME_NOT_HOST')
   return {
-    session,
+    session: publicSession(session),
     leaderboard: await repo.getLeaderboard(gameId),
     perQuestion: await repo.getQuestionStats(gameId)
   }

@@ -47,4 +47,7 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 # copied into the runtime image.
 COPY --from=builder /myquizz/dist ./dist
 
+RUN addgroup -S app && adduser -S -G app app
+USER app
+
 CMD [ "node", "./dist/app.js" ]

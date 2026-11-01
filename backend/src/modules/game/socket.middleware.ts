@@ -5,6 +5,8 @@ import * as repo from './game.repository.js'
 import { env } from '../../infrastructure/config/envconfig.js'
 import ms from 'ms'
 
+const handshakes = new Map<string, { count: number; until: number }>()
+
 export interface CustomSocketData {
   player?: unknown
   gameId?: number
@@ -38,6 +40,18 @@ export const verifySocketToken = (token: string) =>
 // error code itself: the client turns the code into a sentence in the reader's language.
 export const socketAuth = async (socket: Socket, next: (err?: Error) => void) => {
   try {
+    const ip = socket.handshake.address || 'unknown'
+    const now = Date.now()
+    const previous = handshakes.get(ip)
+    const window = previous && previous.until > now ? previous : { count: 0, until: now + 60_000 }
+    window.count++
+    handshakes.set(ip, window)
+    if (handshakes.size > 10_000) {
+      for (const [address, entry] of handshakes) {
+        if (entry.until <= now) handshakes.delete(address)
+      }
+    }
+    if (window.count > 120) return next(new Error('RATE_LIMITED'))
     const token = socket.handshake.auth?.['token'] as string | undefined
     if (!token) return next(new Error('GAME_TOKEN_INVALID'))
 

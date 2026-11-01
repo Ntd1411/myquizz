@@ -1,5 +1,6 @@
 import { pool } from '../database/connection.js'
 import { env } from '../config/envconfig.js'
+import type { PoolClient } from 'pg'
 
 /**
  * Periodic quiz scoring.
@@ -95,9 +96,9 @@ export type ScoringResult = {
  * updatedCount is the number of quizzes whose score moved by more than
  * SCORE_CHANGE_THRESHOLD, not the number of quizzes that changed rank.
  */
-export async function runQuizScoring(): Promise<ScoringResult> {
+export async function runQuizScoring(client: PoolClient | typeof pool = pool): Promise<ScoringResult> {
   const startedAt = Date.now()
-  const result = await pool.query(SCORING_SQL, [SCORE_CHANGE_THRESHOLD])
+  const result = await client.query(SCORING_SQL, [SCORE_CHANGE_THRESHOLD])
 
   return {
     updatedCount: result.rowCount ?? 0,
@@ -105,8 +106,8 @@ export async function runQuizScoring(): Promise<ScoringResult> {
   }
 }
 
-// Guards against a slow run overlapping the next tick. A single process is
-// assumed; running several API instances would need a database advisory lock.
+// Guards against overlapping runs inside this process; PostgreSQL also gates
+// runs across processes.
 let isRunning = false
 let timer: NodeJS.Timeout | null = null
 
@@ -117,14 +118,27 @@ async function tick() {
   }
 
   isRunning = true
+  let client: PoolClient | undefined
   try {
-    const { updatedCount, durationMs } = await runQuizScoring()
+    client = await pool.connect()
+    const lock = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_lock(hashtext(\'myquizz:scoring\')) AS locked'
+    )
+    if (!lock.rows[0]?.locked) return
+    const { updatedCount, durationMs } = await runQuizScoring(client)
     console.log(`Quiz scoring done: ${updatedCount} quizzes updated in ${durationMs}ms`)
   } catch (error) {
     // Boundary catch on purpose: a rejected timer callback would take down the
     // whole API process. The original error is logged, not swallowed.
     console.error('Quiz scoring failed:', error)
   } finally {
+    if (client) {
+      try {
+        await client.query('SELECT pg_advisory_unlock(hashtext(\'myquizz:scoring\'))')
+      } finally {
+        client.release()
+      }
+    }
     isRunning = false
   }
 }

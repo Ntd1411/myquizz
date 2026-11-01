@@ -21,6 +21,8 @@ import { pool, testConnection, closePool } from './infrastructure/database/conne
 import { startScoringScheduler, stopScoringScheduler } from './infrastructure/jobs/scoring.job.js'
 import { adminRouter } from './modules/admin/admin.route.js'
 import { authRepository } from './modules/auth/auth.repository.js'
+import { AppError } from './shared/errors/AppError.js'
+import { randomUUID } from 'node:crypto'
 
 bootstrapEngine()
 
@@ -37,13 +39,24 @@ try {
 }
 
 const app = express()
-app.set('trust proxy', 1)
+app.disable('x-powered-by')
+app.set('trust proxy', env.TRUST_PROXY_HOPS)
 const httpServer = createServer(app)
+httpServer.requestTimeout = 30_000
+httpServer.headersTimeout = 15_000
+httpServer.keepAliveTimeout = 5_000
 const io = new Server(httpServer, {
   cors: {
     origin: [env.FRONTEND_URL, ...env.ALLOW_ORIGIN.split(',').map((o) => o.trim())],
     credentials: true
   }
+})
+
+app.use((_req, res, next) => {
+  const requestId = randomUUID()
+  res.locals['requestId'] = requestId
+  res.setHeader('X-Request-ID', requestId)
+  next()
 })
 
 app.use(
@@ -55,16 +68,37 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
-        callback(new Error('Not allowed by CORS'))
+        callback(new AppError(403, 'Origin is not allowed', 'FORBIDDEN'))
       }
     },
     credentials: true
   })
 )
 
-app.use(express.json())
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin'
+  })
+  next()
+})
+
+app.use(express.json({ limit: '100kb' }))
 
 app.use(cookieParser())
+
+app.use((req, _res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next()
+  const cookies = req.cookies as Record<string, unknown> | undefined
+  if (!cookies?.['accessToken'] && !cookies?.['refreshToken']) return next()
+  const origin = req.get('Origin')
+  if (!origin) return next() // native clients do not send Origin
+  const allowed = [env.FRONTEND_URL, ...env.ALLOW_ORIGIN.split(',').map((value) => value.trim())]
+  if (!allowed.includes(origin))
+    return next(new AppError(403, 'Origin is not allowed', 'FORBIDDEN'))
+  next()
+})
 
 // Health check stays above the rate limiter so monitoring keeps working even
 // when Redis is down.
