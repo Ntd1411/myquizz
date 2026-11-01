@@ -17,7 +17,7 @@ const timingSchema = z.object({
   countdownSeconds: z.number().default(3),
   perQuestionSeconds: z.number().nullable().default(null), // null = use time_limit of question
   autoAdvance: z.boolean().default(true),
-  showResultsSeconds: z.number().default(2),
+  showResultsSeconds: z.number().default(5),
   totalMatchSeconds: z.number().nullable().default(null)
 })
 

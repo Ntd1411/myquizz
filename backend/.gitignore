@@ -144,10 +144,6 @@ vite.config.ts.timestamp-*
 
 .cursor
 
-tests
-!/tests/
-/tests/*
-!/tests/phase1.test.cjs
 .codegraph
 .vscode
 .github/skills

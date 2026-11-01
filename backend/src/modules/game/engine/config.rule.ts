@@ -234,7 +234,7 @@ export const normalizeConfig = (cfg: GameConfig, mode: string): GameConfig => {
   if (out.flow.reviewMode) out.flow.showCorrectAnswer = true
   // marathon: fast feedback loop — lock the result window and always reveal the answer
   if (mode === 'marathon') {
-    out.timing.showResultsSeconds = 2
+    out.timing.showResultsSeconds = 5
     out.flow.showCorrectAnswer = true
   }
   if (!spec.scored) {

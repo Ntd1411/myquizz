@@ -97,6 +97,8 @@ const description = [
   '  clock and compute the countdowns from `endsAt`, never from a local timer.',
   '- `game:state` is a full snapshot, so a client that reconnects sends',
   '  `player:sync` instead of replaying the events it missed.',
+  '- Classic emits `question:personal-results` privately after closure when reveal is enabled.',
+  '  `game:state.personal_result` restores that contract only during `showing_results`.',
   '- The answer sheet is not an event: it is `GET /games/{id}/review`,',
   '  authenticated by the same socket token.',
   '',
