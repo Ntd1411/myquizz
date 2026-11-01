@@ -298,10 +298,6 @@ async function onFilePicked(event) {
             Download .json
           </button>
         </div>
-        <p class="mt-xs text-caption text-ink-faint">
-          XLSX reading and writing needs the optional "xlsx" package; the CSV template works in
-          Excel and Google Sheets either way.
-        </p>
       </div>
     </section>
 

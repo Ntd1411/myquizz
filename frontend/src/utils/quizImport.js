@@ -327,25 +327,12 @@ export function parseCsv(text) {
 }
 
 /**
- * XLSX needs SheetJS, which is an optional dependency here: the import is lazy so
- * the rest of the app never pays for it, and a missing package is reported clearly.
+ * Load the spreadsheet parser only when someone imports a workbook.
  */
 export async function parseSpreadsheet(file) {
-  let XLSX
-  try {
-    XLSX = await import('xlsx')
-  } catch {
-    throw new Error('XLSX import needs the "xlsx" package. Run: pnpm add xlsx (or use CSV instead).')
-  }
-  const buffer = await file.arrayBuffer()
-  const workbook = XLSX.read(buffer, { type: 'array' })
-  const sheetName = workbook.SheetNames[0]
-  if (!sheetName) throw new Error('The workbook has no sheet.')
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-    header: 1,
-    blankrows: false,
-    defval: '',
-  })
+  const { readSheet } = await import('read-excel-file/browser')
+  const rows = await readSheet(file)
+  if (!rows.length) throw new Error('The workbook has no rows.')
   return rowsToDrafts(rows)
 }
 
@@ -633,7 +620,7 @@ function saveBlob(blob, filename) {
 
 /**
  * Downloads the template for one import kind. The XLSX template is generated with
- * SheetJS when available and falls back to CSV otherwise.
+ * a spreadsheet writer and falls back to CSV if generation fails.
  */
 export async function downloadTemplate(kind) {
   if (kind === 'text') {
@@ -653,26 +640,18 @@ export async function downloadTemplate(kind) {
   }
   if (kind === 'xlsx') {
     try {
-      const XLSX = await import('xlsx')
+      const { default: writeExcelFile } = await import('write-excel-file/browser')
       const rows = [
         TABLE_COLUMNS,
         ['Which planet is known as the red planet?', 'Earth', 'Mars', 'Venus', 'Jupiter', 'B', 20],
         ['Which of these are programming languages?', 'Python', 'Rust', 'Photoshop', 'Illustrator', 'A,B', 30],
         ['What is the capital of Japan?', '', '', '', '', 'Tokyo', 30],
       ]
-      const worksheet = XLSX.utils.aoa_to_sheet(rows)
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Questions')
-      const output = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-      saveBlob(
-        new Blob([output], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        }),
-        'myquizz-template.xlsx',
-      )
+      const blob = await writeExcelFile(rows).toBlob()
+      saveBlob(blob, 'myquizz-template.xlsx')
       return
     } catch {
-      // SheetJS is missing: a CSV template opens in Excel just as well.
+      // A CSV template opens in Excel if workbook generation fails.
       saveBlob(new Blob([CSV_TEMPLATE], { type: 'text/csv;charset=utf-8' }), 'myquizz-template.csv')
       return
     }

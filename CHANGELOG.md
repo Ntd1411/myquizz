@@ -2,6 +2,15 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-01 22:48:46 GMT+7
+
+### Dependency production
+
+- Cập nhật backend Express, Nodemailer, Socket.IO, Zod và dependency gián tiếp; gỡ Joi không dùng.
+- Cập nhật frontend Axios, Vue, Socket.IO client và các dependency gián tiếp; thay SheetJS `xlsx` bằng `read-excel-file` và `write-excel-file` cho nhập/xuất mẫu XLSX.
+- Xác minh: backend lint/build và 41/41 test qua; frontend lint/build qua, vòng đọc/ghi XLSX mẫu qua; `pnpm audit --prod` báo 0 advisory ở cả hai gói.
+- Giới hạn: frontend Vitest còn 6 test thất bại ở GameResultsView, envelope và useGameSocket do fixture/contract cũ; chưa kiểm thử XLSX trên trình duyệt thực hoặc các dịch vụ tích hợp.
+
 ## 2026-11-01 22:43:26 GMT+7
 
 ### Đợt 5: một phần vận hành và bảo mật

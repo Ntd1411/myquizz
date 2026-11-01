@@ -27,7 +27,6 @@ class MailService {
 
   // Send email, return messageId
   async sendMail(options: MailOptions): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const info = await this.transporter.sendMail({
       from: env.MAIL_FROM,
       to: options.to,
@@ -39,7 +38,6 @@ class MailService {
       html: options.html
     })
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
     return info.messageId ?? ''
   }
 

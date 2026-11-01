@@ -28,7 +28,7 @@ Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C15 | Scoring job có advisory lock liên process; chưa đo query plan hoặc làm incremental stats. |
 | C16 | Answer key marathon được ghi vào set và xóa khi room kết thúc. |
 | C17 | Bỏ index refresh token trùng unique index; chưa benchmark index/retention lịch sử. |
-| C18 | Đã quét `pnpm audit --prod`: backend 1 critical, 8 high, 16 moderate, 2 low; frontend 15 high, 5 moderate. Chưa sửa dependency, chưa chạy secret scanner hoặc backup restore. |
+| C18 | Đã cập nhật dependency và thay `xlsx`; `pnpm audit --prod` hiện báo 0 advisory ở backend và frontend. Chưa chạy secret scanner hoặc backup restore. |
 
 ## Kiểm tra đã chạy
 
@@ -41,4 +41,4 @@ Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 1. Dùng PostgreSQL/Redis/S3 cô lập để chạy migration `012`–`017`, rà soát seat trùng trước `014`, test refresh/reset/join/timeout/restart và thay avatar.
 2. Chốt thiết kế B16/B17/B20/C03/C04, hoàn thiện mã và kiểm thử nhiều instance.
 3. Đo baseline p50/p95, CPU/RAM và query plan trên dữ liệu đủ lớn trước khi quyết định C06/C07/C15/C17.
-4. Rà soát dependency advisories, proxy, restore backup và kịch bản rollback trên môi trường triển khai thực.
+4. Kiểm tra lại dependency advisories định kỳ; kiểm tra proxy, restore backup và kịch bản rollback trên môi trường triển khai thực.
