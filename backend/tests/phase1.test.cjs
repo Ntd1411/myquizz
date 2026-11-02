@@ -61,13 +61,14 @@ function gameService(session, players, repoOverrides = {}) {
   })
 }
 
-test('public lobby explicitly projects cached player fields', async () => {
-  const session = { id: 1, session_code: 'TEST' }
+test('public lobby explicitly projects cached player fields and host identity', async () => {
+  const session = { id: 1, session_code: 'TEST', session_host: 7 }
   const service = gameService(session, [{
     id: 3, player_name: 'Guest', player_avatar: null, status: 'connected',
     player_score: 10, player_guest_id: 'secret', answered_questions: [{ answer: 2 }]
   }])
   const result = await service.getLobby('TEST')
+  assert.equal(result.session.session_host, 7)
   assert.deepEqual(result.players, [{ id: 3, player_name: 'Guest', player_avatar: null, status: 'connected' }])
 })
 

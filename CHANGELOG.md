@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:17:29 GMT+7
+
+### Chủ phòng trong lobby công khai
+
+- Bổ sung `session_host` vào projection session công khai để frontend nhận diện người mở link phòng của chính mình và chuyển sang màn host; trường này đã có trong tài liệu API.
+- Xác minh: backend lint/build/test và response lobby trên Docker; frontend không đổi mã.
+
 ## 2026-11-02 12:14:54 GMT+7
 
 ### Phục hồi deadline game sau backend restart

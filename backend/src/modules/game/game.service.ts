@@ -39,6 +39,7 @@ const publicSession = (session: GameSessionRow) => {
     id: session.id,
     session_name: session.session_name,
     session_code: session.session_code,
+    session_host: session.session_host,
     session_host_name: host.session_host_name ?? null,
     session_host_avatar: host.session_host_avatar ?? null,
     game_mode: session.game_mode,
