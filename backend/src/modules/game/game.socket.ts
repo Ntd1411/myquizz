@@ -109,12 +109,23 @@ export class GameSocket {
   // player clocks while PostgreSQL identifies rooms that were not closed.
   public async recover() {
     const gameIds = await repo.listRecoverableSessionIds()
+    let healthy = true
     if (gameIds.length) cache.requireGameState()
     for (const gameId of gameIds) {
       const loaded = (await cache.getSession(gameId)) ?? (await repo.getSessionById(gameId))
-      if (!loaded) continue
+      if (!loaded) {
+        healthy = false
+        continue
+      }
       const session = normalizeSessionDates(loaded)
       await cache.setSession(session)
+      if (session.session_status === 'paused') {
+        if (session.paused_remaining_ms === null || session.paused_remaining_ms === undefined) {
+          console.error(`[game.socket] Cannot recover paused room ${gameId}: remaining time is missing`)
+          healthy = false
+        }
+        continue
+      }
       if (session.session_status !== 'active') continue
 
       if (session.config.flow.pacing === 'self') {
@@ -123,6 +134,7 @@ export class GameSocket {
           const clock = (await cache.getPlayerClock(gameId, player.id)) ?? player.player_clock
           if (!clock) {
             console.error(`[game.socket] Cannot recover player ${player.id}: clock is missing`)
+            healthy = false
             continue
           }
           await cache.setPlayerClock(gameId, player.id, clock)
@@ -148,6 +160,7 @@ export class GameSocket {
         this.armTimedPhase(session)
       }
     }
+    return { rooms: gameIds.length, healthy }
   }
 
   private init() {

@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:28:54 GMT+7
+
+### Readiness của realtime recovery
+
+- Recovery trả báo cáo health; `/health/ready` chỉ trả 200 khi DB, Redis và checkpoint của các room mở đều phục hồi được. Paused room thiếu remaining time hoặc self-paced player thiếu clock làm realtime readiness fail.
+- Xác minh: backend lint/build và 51/51 test. Docker boot kiểm tra 1 room recovery, log `healthy=true`; readiness trả 200 với `realtime:true`.
+
 ## 2026-11-02 15:27:12 GMT+7
 
 ### Kiểm tra chữ ký nội dung ảnh upload

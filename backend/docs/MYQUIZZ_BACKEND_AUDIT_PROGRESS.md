@@ -9,7 +9,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | B17 | Redis lock tuần tự hóa host action và timer; timer so lại phase/index/deadline sau lock. Socket.IO Redis adapter chia sẻ room/event giữa process. Đã test hai host cạnh tranh và Docker hai backend: host instance 1, player instance 2 chạy trọn start/answer/end. |
 | B20 | Game writes fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Claim answer, player snapshot và leaderboard là một Lua transaction, sau đó checkpoint DB. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms, bật lại Redis join 201; xóa Redis rồi restart vẫn giữ tiến trình qua DB checkpoint. |
 | B38 | Xác nhận key/chủ sở hữu, HEAD size/MIME và đọc range 16 byte để đối chiếu magic bytes JPEG/PNG/GIF/WebP. Unit test MIME giả qua; chưa chạy với provider S3 thật do local dùng placeholder. |
-| B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
+| B41 | Bootstrap DB/migration tường minh, live/ready, shutdown; realtime readiness chỉ true sau khi recovery kiểm tra room/paused clock/self-paced clock. Docker boot với room recoverable trả `realtime:true`. |
 
 | Mục cải thiện | Trạng thái |
 | --- | --- |
@@ -33,7 +33,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Kiểm tra đã chạy
 
-- Backend `pnpm lint`, `pnpm test` (build và 50 test) qua.
+- Backend `pnpm lint`, `pnpm test` (build và 51 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
 - `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Bài `pnpm test:integration` tái lập API create/join, Socket.IO answer/end và history summary. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
 

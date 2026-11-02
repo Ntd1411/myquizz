@@ -309,6 +309,14 @@ test('restart recovery closes an expired host-paced question', async () => {
   assert.equal(message(first, 'question:locked').index, 2)
 })
 
+test('recovery reports an unrecoverable self-paced clock to readiness', async () => {
+  const { game } = setup()
+  session.config.flow.pacing = 'self'
+  session.game_mode = 'solo'
+  const result = await game.recover()
+  assert.deepEqual(result, { rooms: 1, healthy: false })
+})
+
 test('expired timer takes the host lock and ignores a phase paused before it fires', async () => {
   const { game, first, host } = setup()
   let scheduled

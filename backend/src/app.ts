@@ -40,6 +40,7 @@ try {
 }
 
 const app = express()
+let realtimeReady = false
 app.disable('x-powered-by')
 app.set('trust proxy', env.TRUST_PROXY_HOPS)
 const httpServer = createServer(app)
@@ -116,7 +117,7 @@ app.get('/health/live', (req, res) => res.status(200).json({ live: true }))
 app.get('/health/ready', async (req, res) => {
   const db = await pool.query('SELECT 1').then(() => true).catch(() => false)
   const redis = RedisClient.isConnected()
-  res.status(db && redis ? 200 : 503).json({ db, redis, realtime: true })
+  res.status(db && redis && realtimeReady ? 200 : 503).json({ db, redis, realtime: realtimeReady })
 })
 
 app.use(globalRateLimiter)
@@ -148,7 +149,9 @@ router.use('/storage', storageRouter)
 router.use('/admin', adminRouter)
 
 const gameSocket = new GameSocket(io)
-await gameSocket.recover()
+const recovery = await gameSocket.recover()
+realtimeReady = recovery.healthy
+console.log(`Game recovery checked ${recovery.rooms} room(s), healthy=${recovery.healthy}`)
 
 app.use('/v1', apiRateLimiter, router)
 app.use(errorHandler)
