@@ -8,7 +8,7 @@ import * as repo from './game.repository.js'
 import * as gameService from './game.service.js'
 import type { GameConfig } from './game.schema.js'
 import type {
-  AnsweredQuestion, GameSessionRow, PlayerSessionRow, SnapshotQuestion
+  AnsweredQuestion, GameSessionRow, PlayerClock, PlayerSessionRow, SnapshotQuestion
 } from './game.type.js'
 import { seededShuffle } from './game.util.js'
 
@@ -22,6 +22,13 @@ type PlayerSocket = Pick<Socket, 'emit'> & { data: Socket['data'] }
 const LATE_GRACE_MS = 1000
 
 const iso = (ms: number) => new Date(ms).toISOString()
+
+const normalizeSessionDates = (session: GameSessionRow): GameSessionRow => ({
+  ...session,
+  phase_ends_at: session.phase_ends_at
+    ? new Date(session.phase_ends_at).toISOString()
+    : null
+})
 
 // Strip correct_answer before anything leaves the server.
 // optionSeed: session.id for host-paced, session.id + player.id for self-paced.
@@ -104,20 +111,21 @@ export class GameSocket {
     const gameIds = await repo.listRecoverableSessionIds()
     if (gameIds.length) cache.requireGameState()
     for (const gameId of gameIds) {
-      const session = await cache.getSession(gameId)
-      if (!session) {
-        console.error(`[game.socket] Cannot recover room ${gameId}: hot state is missing`)
-        continue
-      }
+      const loaded = (await cache.getSession(gameId)) ?? (await repo.getSessionById(gameId))
+      if (!loaded) continue
+      const session = normalizeSessionDates(loaded)
+      await cache.setSession(session)
       if (session.session_status !== 'active') continue
 
       if (session.config.flow.pacing === 'self') {
         for (const player of await this.loadPlayers(gameId)) {
           if (player.status === 'finished' || player.status === 'eliminated') continue
-          if (!(await cache.getPlayerClock(gameId, player.id))) {
+          const clock = (await cache.getPlayerClock(gameId, player.id)) ?? player.player_clock
+          if (!clock) {
             console.error(`[game.socket] Cannot recover player ${player.id}: clock is missing`)
             continue
           }
+          await cache.setPlayerClock(gameId, player.id, clock)
           const target: PlayerSocket = {
             data: { playerSessionId: player.id },
             emit: (() => true) as Socket['emit']
@@ -277,11 +285,16 @@ export class GameSocket {
 
   // hot fields go to Redis; if the cache is cold, write Postgres and re-warm
   private async patchSession(gameId: number, patch: repo.SessionStatePatch): Promise<GameSessionRow> {
-    const hot = await cache.patchSession(gameId, patch)
-    if (hot) return hot
-    const session = await repo.updateSessionState(gameId, patch)
+    // PostgreSQL is the recovery checkpoint; Redis is the hot copy used by the
+    // realtime state machine. Persist every phase/deadline before publishing it.
+    const session = normalizeSessionDates(await repo.updateSessionState(gameId, patch))
     await cache.setSession(session)
     return session
+  }
+
+  private async setPlayerClock(gameId: number, playerId: number, clock: PlayerClock) {
+    await repo.updatePlayerClock(playerId, clock)
+    await cache.setPlayerClock(gameId, playerId, clock)
   }
 
   // guards: identity always comes from the socket token
@@ -466,7 +479,7 @@ export class GameSocket {
 
       if (mode === 'freeze') {
         if (clock.pausedAt) continue // already frozen
-        await cache.setPlayerClock(session.id, p.id, { ...clock, pausedAt: iso(now) })
+        await this.setPlayerClock(session.id, p.id, { ...clock, pausedAt: iso(now) })
         this.clearMatchTimer(session.id, p.id) // no deadline fires while paused
         continue
       }
@@ -481,7 +494,7 @@ export class GameSocket {
         matchEndsAt: push(clock.matchEndsAt),
         pausedAt: null
       }
-      await cache.setPlayerClock(session.id, p.id, next)
+      await this.setPlayerClock(session.id, p.id, next)
       this.armMatchTimer(session, p, next.matchEndsAt)
     }
   }
@@ -976,8 +989,9 @@ export class GameSocket {
     // host-paced only has the phase timer; self-paced also has one clock per player
     await this.shiftClocks(session, 'freeze')
 
-    const updated = await this.patchSession(gameId, { session_status: 'paused', phase_ends_at: null })
-    await repo.updateSessionState(gameId, { session_status: 'paused' })
+    const updated = await this.patchSession(gameId, {
+      session_status: 'paused', phase_ends_at: null, paused_remaining_ms: Math.max(0, remaining)
+    })
     this.nsp.to(this.room(updated.session_code)).except(this.hostRoom(updated.session_code))
       .emit('game:state', await this.snapshot(updated))
     await this.emitHostState(updated)
@@ -993,7 +1007,8 @@ export class GameSocket {
     if (session.session_status !== 'paused')
       throw new AppError(409, 'game is not paused', 'GAME_NOT_PAUSED')
 
-    const remaining = this.paused.get(gameId) ?? await cache.getPausedRemaining(gameId)
+    const remaining = this.paused.get(gameId) ?? await cache.getPausedRemaining(gameId) ??
+      session.paused_remaining_ms ?? null
     if (remaining === null)
       throw new AppError(503, 'Paused clock is unavailable', 'SERVICE_UNAVAILABLE')
     this.paused.delete(gameId)
@@ -1001,8 +1016,9 @@ export class GameSocket {
     await this.shiftClocks(session, 'resume')
 
     const endsAt = remaining > 0 ? iso(Date.now() + remaining) : null
-    const updated = await this.patchSession(gameId, { session_status: 'active', phase_ends_at: endsAt })
-    await repo.updateSessionState(gameId, { session_status: 'active' })
+    const updated = await this.patchSession(gameId, {
+      session_status: 'active', phase_ends_at: endsAt, paused_remaining_ms: null
+    })
     await cache.clearPausedRemaining(gameId)
     this.nsp.to(this.room(updated.session_code)).except(this.hostRoom(updated.session_code))
       .emit('game:state', await this.snapshot(updated))
@@ -1104,15 +1120,6 @@ export class GameSocket {
     // if late and allowAnswerLate is false, answer is treated as incorrect (timeout)
     const isCorrect = (isLate && !cfg.flow.allowAnswerLate) ? false : grade(q, body.answer)
 
-    // Claim the slot in Redis
-    // allowChange: false, so two sockets racing on the same question cannot both win
-    const accepted = await cache.recordAnswer(
-      gameId, index, psid,
-      { answer: body.answer, isCorrect, timeTaken, scoreEarned: 0 },
-      false
-    )
-    if (!accepted) throw new AppError(409, 'answer already submitted', 'GAME_ANSWER_DUPLICATE')
-
     const handler = getModeHandler(session.game_mode)
     const outcome = handler.evaluateAnswer(
       {
@@ -1149,13 +1156,14 @@ export class GameSocket {
       player.current_question_index = index + 1
     }
 
-    await cache.updatePlayer(gameId, player) // Redis now, Postgres at the end of the question
-    // rewrite the same slot with the real score once the mode has graded it
-    await cache.recordAnswer(
-      gameId, index, psid,
-      { answer: body.answer, isCorrect, timeTaken, scoreEarned: outcome.scoreEarned },
-      true
+    const accepted = await cache.commitAnswer(
+      gameId,
+      index,
+      player,
+      { answer: body.answer, isCorrect, timeTaken, scoreEarned: outcome.scoreEarned }
     )
+    if (!accepted) throw new AppError(409, 'answer already submitted', 'GAME_ANSWER_DUPLICATE')
+    await repo.flushPlayers([player])
 
     const serverTime = iso(Date.now())
 
@@ -1352,12 +1360,6 @@ export class GameSocket {
   !cfg.flow.allowAnswerLate &&
   Date.now() > Date.parse(resume.endsAt) + LATE_GRACE_MS
     ) {
-      const claimed = await cache.recordAnswer(
-        session.id, index, player.id,
-        { answer: null, isCorrect: false, timeTaken: resume.timeLimit, scoreEarned: 0 },
-        false
-      )
-      if (!claimed) return
       player.answered_questions = [
         ...(player.answered_questions ?? []),
     {
@@ -1373,13 +1375,18 @@ export class GameSocket {
       ]
       player.streak = 0 // a timeout breaks the streak, like a wrong answer
       player.current_question_index = index + 1
-      await cache.updatePlayer(session.id, player)
+      const claimed = await cache.commitAnswer(
+        session.id, index, player,
+        { answer: null, isCorrect: false, timeTaken: resume.timeLimit, scoreEarned: 0 }
+      )
+      if (!claimed) return
+      await repo.flushPlayers([player])
       // the stale clock is left untouched on purpose: questionIndex no longer matches
       // the new index, so the next round creates a fresh one
       return this.sendSelfQuestion(socket, session)
     }
 
-    await cache.setPlayerClock(session.id, player.id, clock)
+    await this.setPlayerClock(session.id, player.id, clock)
     this.armMatchTimer(session, player, matchEndsAt)
 
     if (cfg.timing.autoAdvance && limit !== null && limit > 0) {
@@ -1392,13 +1399,6 @@ export class GameSocket {
         if (freshSession.session_status !== 'active') return
         const freshPlayer = await this.loadPlayer(session.id, player.id)
         if (freshPlayer.current_question_index !== index) return // already answered
-
-        const claimed = await cache.recordAnswer(
-          session.id, index, freshPlayer.id,
-          { answer: null, isCorrect: false, timeTaken: limit, scoreEarned: 0 },
-          false
-        )
-        if (!claimed) return
 
         freshPlayer.answered_questions = [
           ...(freshPlayer.answered_questions ?? []),
@@ -1419,7 +1419,12 @@ export class GameSocket {
           if (freshPlayer.lives <= 0) freshPlayer.status = 'eliminated'
         }
         freshPlayer.current_question_index = index + 1
-        await cache.updatePlayer(session.id, freshPlayer)
+        const claimed = await cache.commitAnswer(
+          session.id, index, freshPlayer,
+          { answer: null, isCorrect: false, timeTaken: limit, scoreEarned: 0 }
+        )
+        if (!claimed) return
+        await repo.flushPlayers([freshPlayer])
 
         const over = freshPlayer.status === 'eliminated' || freshPlayer.current_question_index >= questions.length
         const reveal = freshSession.config.flow.showCorrectAnswer
@@ -1481,6 +1486,7 @@ export class GameSocket {
   ) {
     if (player.status !== 'eliminated') player.status = 'finished'
     await cache.updatePlayer(session.id, player)
+    await repo.updatePlayerClock(player.id, null)
     await repo.flushPlayers([player])
     this.clearMatchTimer(session.id, player.id)
     this.clearSelfTimeout(session.id, player.id)

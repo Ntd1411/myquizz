@@ -1,13 +1,13 @@
 # Tiến độ triển khai audit backend
 
-Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Đã chạy Compose với PostgreSQL/Redis mới, migration và smoke API/Socket.IO. Test Docker đã xác nhận phục hồi câu đang mở và pause/resume sau restart backend. Chưa chạy S3 HEAD, benchmark hoặc restore backup.
+Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Đã chạy Compose với PostgreSQL/Redis mới, migration và smoke API/Socket.IO. Test Docker đã xác nhận phục hồi sau restart và sau khi xóa toàn bộ Redis hot state. Chưa chạy S3 thật, benchmark tải lớn hoặc restore backup production.
 
 | Nhóm | Trạng thái |
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
-| B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua. Nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
+| B16 | Phase/deadline, pause remaining, player clock và player progress được checkpoint PostgreSQL; boot rehydrate Redis rồi dựng lại timer. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua; `FLUSHALL` Redis trước restart cũng qua cho classic, solo và paused classic. |
 | B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end và timer countdown/question/results; timer so lại phase/index/deadline sau khi lấy lock. `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end và unit test timer cũ chạy sau pause; chưa test nhiều instance hoặc tranh chấp thật qua Socket.IO. |
-| B20 | Game writes session/player, answer, player-next, host transition, clock và answer stats đều fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms sau sửa rate limiter (trước ~57 giây), bật lại Redis join 201. Claim answer và cập nhật player chưa nguyên tử; Redis mất hot state vẫn có thể mất điểm. |
+| B20 | Game writes fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Claim answer, player snapshot và leaderboard là một Lua transaction, sau đó checkpoint DB. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms, bật lại Redis join 201; xóa Redis rồi restart vẫn giữ tiến trình qua DB checkpoint. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
 | B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
 
@@ -15,7 +15,8 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | --- | --- |
 | C01 | Backend unit và API/Redis/PostgreSQL/Socket.IO smoke test chạy ở CI cho nhánh tính năng và trước deploy `main`; chưa có test nhiều backend instance hoặc tải/race dài hạn. |
 | C02 | Lobby, kết quả, profile và session trong summary lịch sử có projection tường minh; lobby trả host ID, summary trả `finished_at` theo frontend. Còn response DTO khác cần rà soát. |
-| C03–C04 | Chưa hoàn tất nguồn sự thật game/recovery và guest token gắn phòng. |
+| C03 | PostgreSQL là recovery checkpoint; Redis là hot state và lock. Timer dùng deadline chung, boot rehydrate Redis. Chưa kiểm thử adapter/broadcast nhiều backend instance. |
+| C04 | Chưa hoàn tất guest token ký gắn phòng; UUID hiện vẫn là bearer identity cho lịch sử. |
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |
 | C06–C07 | Chưa có benchmark/EXPLAIN và tối ưu trigger theo số liệu. |
 | C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
@@ -32,7 +33,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Kiểm tra đã chạy
 
-- Backend `pnpm lint`, `pnpm test` (build và 46 test) qua.
+- Backend `pnpm lint`, `pnpm test` (build và 48 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
 - `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Bài `pnpm test:integration` tái lập API create/join, Socket.IO answer/end và history summary. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
 

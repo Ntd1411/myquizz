@@ -17,10 +17,11 @@ const cache = {
   updatePlayer: async (_id, player) => { players.set(player.id, copy(player)) },
   setSession: async (value) => { session = copy(value) },
   getAnswerStats: async () => ({ total: 1, correct: 1 }),
-  recordAnswer: async (_id, index, pid, value, allowChange) => {
-    const key = `${index}:${pid}`
-    if (!allowChange && slots.has(key)) return false
+  commitAnswer: async (_id, index, player, value) => {
+    const key = `${index}:${player.id}`
+    if (slots.has(key)) return false
     slots.set(key, copy(value))
+    players.set(player.id, copy(player))
     return true
   }
 }
@@ -29,6 +30,7 @@ mock.module('../dist/modules/game/game.repository.js', { namedExports: {
   listRecoverableSessionIds: async () => [session.id],
   getSnapshotQuestions: async () => copy(questions),
   flushPlayers: async (rows) => { persisted = copy(rows) },
+  updatePlayerClock: async () => {},
   updateSessionState: async (_id, patch) => copy(session = { ...session, ...patch })
 } })
 mock.module('../dist/modules/game/game.service.js', { namedExports: {} })

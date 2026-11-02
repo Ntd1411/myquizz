@@ -1,5 +1,5 @@
 import { redisClient as redis } from '../../infrastructure/cache/redis.client.js'
-import type { CachedAnswer, GameSessionRow, PlayerSessionRow } from './game.type.js'
+import type { CachedAnswer, GameSessionRow, PlayerClock, PlayerSessionRow } from './game.type.js'
 import { AppError } from '../../shared/errors/AppError.js'
 import { randomUUID } from 'node:crypto'
 
@@ -224,6 +224,48 @@ export const recordAnswer = async (
   }
 }
 
+// Claim an answer and publish the resulting player snapshot as one Redis
+// transaction. A process crash can no longer leave an accepted answer without
+// its score/progress update, or update a score for a duplicate answer.
+export const commitAnswer = async (
+  gameId: number,
+  qIndex: number,
+  player: PlayerSessionRow,
+  data: CachedAnswer
+) => {
+  requireGameState()
+  const answerKey = key.answers(gameId, qIndex)
+  try {
+    const accepted = await redis.eval(
+      `if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
+       redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+       redis.call('EXPIRE', KEYS[1], ARGV[5])
+       redis.call('SADD', KEYS[2], KEYS[1])
+       redis.call('EXPIRE', KEYS[2], ARGV[6])
+       redis.call('HSET', KEYS[3], ARGV[1], ARGV[3])
+       redis.call('EXPIRE', KEYS[3], ARGV[7])
+       redis.call('ZADD', KEYS[4], ARGV[4], ARGV[1])
+       redis.call('EXPIRE', KEYS[4], ARGV[7])
+       return 1`,
+      4,
+      answerKey,
+      key.answerKeys(gameId),
+      key.players(gameId),
+      key.leaderboard(gameId),
+      String(player.id),
+      JSON.stringify(data),
+      JSON.stringify(player),
+      player.player_score,
+      TTL.answers,
+      TTL.session,
+      TTL.players
+    )
+    return accepted === 1
+  } catch {
+    throw new AppError(503, 'Game state is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+  }
+}
+
 export const countAnswers = async (gameId: number, qIndex: number) =>
   required(() => redis.hlen(key.answers(gameId, qIndex)))
 
@@ -277,15 +319,6 @@ export const clearGame = async (session: GameSessionRow) =>
   }, undefined)
 
 // Per player timing for self-paced modes (solo / practice / marathon)
-export interface PlayerClock {
-  questionIndex: number
-  startedAt: string
-  endsAt: string | null // null = no per question limit (practice)
-  timeLimit: number
-  matchEndsAt: string | null // marathon: whole match deadline
-  pausedAt?: string | null
-}
-
 export const setPlayerClock = async (gameId: number, playerId: number, clock: PlayerClock) => {
   requireGameState()
   try {

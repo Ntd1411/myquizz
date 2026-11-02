@@ -68,6 +68,26 @@ test('answer claim registers keys for marathon cleanup', async () => {
   assert.equal(args[3], 'game:5:answer_keys')
 })
 
+test('answer claim and player score are committed in one Redis script', async () => {
+  let args
+  const cache = load('modules/game/game.cache.ts', {
+    '../../infrastructure/cache/redis.client.js': { redisClient: {
+      status: 'ready',
+      eval: async (...values) => { args = values; return 1 }
+    } }
+  })
+  const player = { id: 9, player_score: 1200, answered_questions: [{ question_index: 3 }] }
+  assert.equal(await cache.commitAnswer(
+    5, 3, player, { answer: 1, isCorrect: true, timeTaken: 1, scoreEarned: 1200 }
+  ), true)
+  assert.equal(args[1], 4)
+  assert.deepEqual(args.slice(2, 6), [
+    'game:5:answers:3', 'game:5:answer_keys', 'game:5:players', 'game:5:leaderboard'
+  ])
+  assert.match(args[0], /HEXISTS/)
+  assert.match(args[0], /ZADD/)
+})
+
 test('answer claim fails promptly while Redis is disconnected', async () => {
   const cache = load('modules/game/game.cache.ts', {
     '../../infrastructure/cache/redis.client.js': { redisClient: { status: 'reconnecting' } }

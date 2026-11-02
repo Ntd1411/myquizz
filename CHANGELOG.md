@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:47:05 GMT+7
+
+### Checkpoint và phục hồi game sau mất Redis
+
+- Gộp claim đáp án, cập nhật player và leaderboard vào một Lua transaction; checkpoint player xuống PostgreSQL ngay sau answer/timeout. Phase, deadline, thời gian pause và clock self-paced cũng được ghi xuyên xuống PostgreSQL qua migration `018`.
+- Khi boot, backend dựng lại session/clock từ PostgreSQL nếu Redis trống. Chuẩn hóa timestamp PostgreSQL trước khi so deadline để timer không bỏ nhầm phase hợp lệ.
+- Xác minh: backend lint/build và 48/48 test; Docker API/Socket.IO smoke qua. `FLUSHALL` Redis rồi restart backend giữa câu đã tự kết thúc đúng cho classic (room 21), solo (room 22) và pause/resume classic (room 24).
+
 ## 2026-11-02 12:38:18 GMT+7
 
 ### API và Socket.IO integration gate

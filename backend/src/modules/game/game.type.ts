@@ -16,6 +16,7 @@ export interface GameSessionRow {
   current_question_index: number
   current_phase: string
   phase_ends_at: string | null
+  paused_remaining_ms?: number | null
   quiz_id?: number | null
   // Only selected by the history lookup, which has to tell "never existed" (404)
   // from "was deleted" (410) instead of filtering deleted rows away.
@@ -36,6 +37,16 @@ export interface PlayerSessionRow {
   lives: number | null
   current_question_index: number
   status: string
+  player_clock?: PlayerClock | null
+}
+
+export interface PlayerClock {
+  questionIndex: number
+  startedAt: string
+  endsAt: string | null
+  timeLimit: number
+  matchEndsAt: string | null
+  pausedAt?: string | null
 }
 
 export interface AuthSocket extends Socket {

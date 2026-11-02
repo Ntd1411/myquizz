@@ -312,13 +312,23 @@ export const listRecoverableSessionIds = async (): Promise<number[]> => {
 }
 
 export type SessionStatePatch = Partial<
-  Pick<GameSessionRow, 'session_status' | 'current_phase' | 'phase_ends_at' | 'current_question_index'>
+  Pick<GameSessionRow, 'session_status' | 'current_phase' | 'phase_ends_at' | 'current_question_index' | 'paused_remaining_ms'>
 > & { started_at?: string | null; finished_at?: string | null }
 
 const SESSION_STATE_COLUMNS = [
   'session_status', 'current_phase', 'phase_ends_at',
-  'current_question_index', 'started_at', 'finished_at'
+  'current_question_index', 'paused_remaining_ms', 'started_at', 'finished_at'
 ] as const
+
+export const updatePlayerClock = async (
+  playerId: number,
+  clock: PlayerSessionRow['player_clock']
+) => {
+  await pool.query(
+    'UPDATE player_sessions SET player_clock = $2, updated_at = now() WHERE id = $1',
+    [playerId, clock ? JSON.stringify(clock) : null]
+  )
+}
 
 export const updateSessionState = async (
   id: number, patch: SessionStatePatch
