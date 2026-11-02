@@ -38,6 +38,10 @@ export function createRateLimiter(options: RateLimitOptions) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const redis = RedisClient.getInstance()
+      // Waiting for ioredis's offline queue here can stall every HTTP request
+      // for tens of seconds. The catch below already defines each limiter's
+      // local fallback policy.
+      if (redis.status !== 'ready') throw new Error('Redis is unavailable')
       const userId = req.user?.id
       const rawIp = req.ip || req.socket.remoteAddress || 'unknown'
 

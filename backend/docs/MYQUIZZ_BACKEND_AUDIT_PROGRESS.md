@@ -7,7 +7,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
 | B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua. Nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
 | B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end; `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end trên một backend instance; chưa test nhiều instance hoặc timer cạnh tranh với host. |
-| B20 | Game writes session/player, answer, player-next, host transition, clock và answer stats đều fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Docker ngắt Redis: lobby GET 200, join 503, bật lại Redis join 201. HTTP outage hiện mất khoảng 57 giây do rate limiter Redis retry (đang sửa riêng). Claim answer và cập nhật player chưa nguyên tử; Redis mất hot state vẫn có thể mất điểm. |
+| B20 | Game writes session/player, answer, player-next, host transition, clock và answer stats đều fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms sau sửa rate limiter (trước ~57 giây), bật lại Redis join 201. Claim answer và cập nhật player chưa nguyên tử; Redis mất hot state vẫn có thể mất điểm. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
 | B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
 
@@ -20,7 +20,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C06–C07 | Chưa có benchmark/EXPLAIN và tối ưu trigger theo số liệu. |
 | C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
 | C09 | Continue-playing lọc trạng thái room/player. |
-| C10 | Giới hạn handshake, socket/IP, event và payload trong một process; chưa đo ACK p95 hoặc bảo vệ nhiều instance. |
+| C10 | Giới hạn handshake, socket/IP, event và payload trong một process; rate limiter HTTP dùng fallback ngay khi Redis disconnected. Chưa đo ACK p95 hoặc bảo vệ nhiều instance. |
 | C11 | Có request ID/log JSON không ghi query; chưa có monitoring tập trung. |
 | C12 | Kiểm tra nonempty JWT secrets, port và TTL; cần xác minh trên cấu hình production thực. |
 | C13 | Giới hạn JSON, headers và timeout; cần test reverse proxy và IP gốc. |

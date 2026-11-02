@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:24:29 GMT+7
+
+### Rate limiter khi Redis ngắt
+
+- Bỏ chờ hàng đợi retry Redis trong HTTP rate limiter khi client đã disconnected; auth/reset dùng bộ đếm local, các limiter còn lại theo chính sách fallback sẵn có.
+- Docker ngắt Redis: GET lobby 200, POST join 503 trong ~12 ms thay vì ~57 giây; bật lại Redis và join 201. Readiness trở lại 200.
+- Xác minh: backend lint/build và 45/45 test. Chưa đo tải p95 hoặc kiểm tra nhiều instance.
+
 ## 2026-11-02 12:22:42 GMT+7
 
 ### Phân biệt Redis cache đọc và game state bắt buộc

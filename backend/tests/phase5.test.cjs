@@ -89,3 +89,21 @@ test('required game writes fail closed while read-cache warming stays optional',
   assert.equal(await cache.warmSession(session), undefined)
   assert.equal(await cache.getSession(5), null)
 })
+
+test('rate limiting uses the local policy immediately when Redis disconnects', async () => {
+  let redisCalls = 0
+  const { createRateLimiter } = load('shared/middlewares/rate.limit.middleware.ts', {
+    '../../infrastructure/cache/redis.client.js': { default: { getInstance: () => ({
+      status: 'reconnecting',
+      eval: async () => { redisCalls++; throw new Error('should not queue') }
+    }) } }
+  })
+  const middleware = createRateLimiter({ windowMs: 60_000, maxRequests: 1,
+    keyPrefix: 'test:offline', byIp: true, fallbackOnRedisError: true })
+  const request = { ip: '127.0.0.1', socket: { remoteAddress: '127.0.0.1' } }
+  const response = { setHeader: () => {}, once: () => {} }
+  const run = () => new Promise((resolve) => middleware(request, response, resolve))
+  assert.equal(await run(), undefined)
+  assert.equal((await run()).code, 'RATE_LIMITED')
+  assert.equal(redisCalls, 0)
+})
