@@ -79,3 +79,25 @@ test('quiz create rolls back metadata when a question insert fails', async () =>
   }), /question 2/)
   assert.equal(rolledBack, true)
 })
+
+test('uploaded image MIME must match its byte signature', () => {
+  class Command {}
+  const storage = load('modules/storage/storage.service.ts', {
+    '@aws-sdk/client-s3': {
+      S3Client: class { send() {} }, PutObjectCommand: Command, DeleteObjectCommand: Command,
+      HeadObjectCommand: Command, GetObjectCommand: Command
+    },
+    '@aws-sdk/s3-request-presigner': { getSignedUrl: async () => '' },
+    '../../infrastructure/config/storage.js': { storageConfig: {
+      endpoint: 'https://s3.test', region: 'test', credentials: {}, bucket: 'test',
+      publicUrl: 'https://assets.test'
+    } }
+  })
+  assert.equal(storage.matchesImageSignature('image/jpeg', Uint8Array.from([0xff, 0xd8, 0xff])), true)
+  assert.equal(storage.matchesImageSignature('image/png', Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
+  ])), true)
+  assert.equal(storage.matchesImageSignature('image/gif', new TextEncoder().encode('GIF89a')), true)
+  assert.equal(storage.matchesImageSignature('image/webp', new TextEncoder().encode('RIFF1234WEBP')), true)
+  assert.equal(storage.matchesImageSignature('image/png', new TextEncoder().encode('<script>')), false)
+})

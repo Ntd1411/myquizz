@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:27:12 GMT+7
+
+### Kiểm tra chữ ký nội dung ảnh upload
+
+- Sau HEAD metadata, backend đọc range 16 byte đầu object và đối chiếu magic bytes JPEG/PNG/GIF/WebP trước khi cho gắn URL vào dữ liệu.
+- Xác minh: backend lint/build và 50/50 test; test chấp nhận bốn định dạng hợp lệ và từ chối nội dung script khai MIME PNG. Chưa gọi provider S3 thật vì cấu hình local dùng placeholder.
+
 ## 2026-11-02 15:24:41 GMT+7
 
 ### Socket.IO nhiều backend instance

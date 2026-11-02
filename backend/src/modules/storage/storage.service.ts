@@ -2,7 +2,8 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
-  HeadObjectCommand
+  HeadObjectCommand,
+  GetObjectCommand
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { v4 as uuidv4 } from 'uuid'
@@ -19,6 +20,25 @@ const s3Client = new S3Client({
 })
 
 const bucketName = storageConfig.bucket
+
+export function matchesImageSignature(contentType: string, bytes: Uint8Array): boolean {
+  const starts = (...signature: number[]) =>
+    signature.every((value, index) => bytes[index] === value)
+  if (contentType === 'image/jpeg' || contentType === 'image/jpg')
+    return starts(0xff, 0xd8, 0xff)
+  if (contentType === 'image/png')
+    return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+  if (contentType === 'image/gif') {
+    const header = new TextDecoder().decode(bytes.slice(0, 6))
+    return header === 'GIF87a' || header === 'GIF89a'
+  }
+  if (contentType === 'image/webp') {
+    const riff = new TextDecoder().decode(bytes.slice(0, 4))
+    const webp = new TextDecoder().decode(bytes.slice(8, 12))
+    return riff === 'RIFF' && webp === 'WEBP'
+  }
+  return false
+}
 
 // Get public url
 function getPublicUrl(key: string): string {
@@ -58,9 +78,17 @@ export async function assertOwnedUpload(fileUrl: string, folder: AllowedFolder, 
     throw new AppError(400, 'Upload does not belong to this account', 'FILE_FIELD_INVALID')
   try {
     const result = await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }))
-    if (!ALLOWED_MIME_TYPES.includes(result.ContentType as typeof ALLOWED_MIME_TYPES[number]) ||
+    const contentType = result.ContentType
+    if (!contentType ||
+      !ALLOWED_MIME_TYPES.includes(contentType as typeof ALLOWED_MIME_TYPES[number]) ||
       !result.ContentLength || result.ContentLength > MAX_FILE_SIZE)
       throw new AppError(400, 'Uploaded file is invalid', 'FILE_FIELD_INVALID')
+    const object = await s3Client.send(new GetObjectCommand({
+      Bucket: bucketName, Key: key, Range: 'bytes=0-15'
+    }))
+    const bytes = await object.Body?.transformToByteArray()
+    if (!bytes || !matchesImageSignature(contentType, bytes))
+      throw new AppError(400, 'Uploaded file content is invalid', 'FILE_FIELD_INVALID')
   } catch (error) {
     if (error instanceof AppError) throw error
     throw new AppError(400, 'Uploaded file was not found', 'FILE_FIELD_INVALID')
