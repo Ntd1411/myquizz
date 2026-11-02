@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:28:06 GMT+7
+
+### Timer game và thao tác host
+
+- Các timer countdown, hết giờ câu hỏi và tự chuyển câu dùng cùng Redis host lock với thao tác host; kiểm tra phase, index và deadline sau khi lấy lock để bỏ timer cũ sau pause hoặc đổi phase. Khi lock đang bận, timer thử lại sau 100 ms.
+- Backend lint/build và 46/46 test qua, gồm hồi quy timer chạy sau khi host pause. Docker build lại backend và restart giữa câu: phòng 16 tự kết thúc sau deadline. Chưa kiểm tra nhiều backend instance.
+
 ## 2026-11-02 12:24:29 GMT+7
 
 ### Rate limiter khi Redis ngắt

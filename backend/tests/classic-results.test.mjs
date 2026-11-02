@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { mock, test } from 'node:test'
 
-let session, players, questions, persisted, slots
+let session, players, questions, persisted, slots, hostLocks = 0
 const copy = (value) => structuredClone(value)
 const cache = {
   requireGameState: () => {},
-  withHostTransition: async (_id, work) => work(),
+  withHostTransition: async (_id, work) => { hostLocks += 1; return work() },
   setPausedRemaining: async () => {},
   getPausedRemaining: async () => 30_000,
   clearPausedRemaining: async () => {},
@@ -305,6 +305,20 @@ test('restart recovery closes an expired host-paced question', async () => {
   await new Promise((resolve) => setTimeout(resolve, 25))
   assert.equal(session.current_phase, 'showing_results')
   assert.equal(message(first, 'question:locked').index, 2)
+})
+
+test('expired timer takes the host lock and ignores a phase paused before it fires', async () => {
+  const { game, first, host } = setup()
+  let scheduled
+  hostLocks = 0
+  game.timer = (_id, _delay, work) => { scheduled = work }
+  game.armTimedPhase(session)
+  const stale = scheduled
+  await game.onPause(host)
+  await stale()
+  assert.equal(message(first, 'question:results'), undefined)
+  assert.equal(session.session_status, 'paused')
+  assert.equal(hostLocks, 2)
 })
 
 test('a correct answer after a missed question starts a new streak at one', async () => {

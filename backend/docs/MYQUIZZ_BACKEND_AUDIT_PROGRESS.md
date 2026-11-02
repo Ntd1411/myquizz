@@ -6,7 +6,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
 | B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua. Nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
-| B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end; `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end trên một backend instance; chưa test nhiều instance hoặc timer cạnh tranh với host. |
+| B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end và timer countdown/question/results; timer so lại phase/index/deadline sau khi lấy lock. `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end và unit test timer cũ chạy sau pause; chưa test nhiều instance hoặc tranh chấp thật qua Socket.IO. |
 | B20 | Game writes session/player, answer, player-next, host transition, clock và answer stats đều fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms sau sửa rate limiter (trước ~57 giây), bật lại Redis join 201. Claim answer và cập nhật player chưa nguyên tử; Redis mất hot state vẫn có thể mất điểm. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
 | B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
@@ -32,7 +32,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Kiểm tra đã chạy
 
-- Backend `pnpm lint`, `pnpm test` (build và 41 test) qua.
+- Backend `pnpm lint`, `pnpm test` (build và 46 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
 - `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
 

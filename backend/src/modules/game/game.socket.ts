@@ -130,24 +130,14 @@ export class GameSocket {
       const remaining = session.phase_ends_at
         ? Math.max(0, Date.parse(session.phase_ends_at) - Date.now()) : null
       if (session.current_phase === 'countdown' && remaining !== null) {
-        this.timer(gameId, remaining, async () => {
-          const fresh = await this.loadSession(gameId)
-          if (fresh.session_status === 'active' && fresh.current_phase === 'countdown')
-            await this.beginFirstQuestion(fresh)
-        })
+        this.armTimedPhase(session)
       } else if (session.current_phase === 'question_active' && remaining !== null) {
-        this.timer(gameId, remaining, () => this.lockQuestion(gameId, true))
+        this.armTimedPhase(session)
       } else if (session.current_phase === 'question_locked') {
         await this.showResults(session)
       } else if (session.current_phase === 'showing_results' &&
         session.config.timing.autoAdvance && remaining !== null) {
-        this.timer(gameId, remaining, async () => {
-          const fresh = await this.loadSession(gameId)
-          if (fresh.session_status !== 'active' || fresh.current_phase !== 'showing_results') return
-          const questions = await this.loadQuestions(gameId)
-          if (fresh.current_question_index + 1 >= questions.length) await this.endGame(fresh)
-          else await this.startQuestion(fresh, fresh.current_question_index + 1)
-        })
+        this.armTimedPhase(session)
       }
     }
   }
@@ -324,6 +314,51 @@ export class GameSocket {
     const handle = this.timers.get(gameId)
     if (handle) clearTimeout(handle)
     this.timers.delete(gameId)
+  }
+
+  // A timer is a host transition too. Compare the exact deadline after taking
+  // the shared lock so a stale timer cannot advance a paused or replaced phase.
+  private armTimedPhase(session: GameSessionRow) {
+    const deadline = session.phase_ends_at
+    if (!deadline) return
+    const { id, current_phase: phase, current_question_index: index } = session
+    const run = async () => {
+      try {
+        await cache.withHostTransition(id, async () => {
+          const fresh = await this.loadSession(id)
+          if (fresh.session_status !== 'active' || fresh.current_phase !== phase ||
+            fresh.current_question_index !== index || fresh.phase_ends_at !== deadline) return
+          const remaining = Date.parse(deadline) - Date.now()
+          if (remaining > 0) {
+            this.timer(id, remaining, run)
+            return
+          }
+          if (phase === 'countdown') await this.beginFirstQuestion(fresh)
+          else if (phase === 'question_active') await this.lockQuestion(id, true)
+          else if (phase === 'showing_results' && fresh.config.timing.autoAdvance) {
+            const questions = await this.loadQuestions(id)
+            const players = await this.loadPlayers(id)
+            const over = getModeHandler(fresh.game_mode).isGameOver({
+              activePlayers: players.filter((p) => p.status === 'connected').length,
+              noMoreQuestions: index + 1 >= questions.length,
+              allAnswered: true,
+              timeUp: true
+            }, fresh.config)
+            if (over) await this.endGame(fresh)
+            else await this.startQuestion(fresh, index + 1)
+          }
+        })
+      } catch (error) {
+        // Another host action held the lock. Retry once it has had time to
+        // commit; the phase/deadline check above makes a stale retry harmless.
+        if (error instanceof AppError && error.code === 'GAME_ADVANCE_NOT_ALLOWED') {
+          this.timer(id, 100, run)
+          return
+        }
+        throw error
+      }
+    }
+    this.timer(id, Math.max(0, Date.parse(deadline) - Date.now()), run)
   }
 
   // marathon: the match budget must be enforced by the server, not by the next
@@ -717,10 +752,7 @@ export class GameSocket {
       startsAt,
       serverTime: iso(Date.now())
     })
-    this.timer(waiting.id, countdown * 1000, async () => {
-      const fresh = await this.loadSession(waiting.id)
-      await this.beginFirstQuestion(fresh)
-    })
+    this.armTimedPhase(waiting)
   }
 
   // Shared by the direct start and by the end of the countdown timer
@@ -777,7 +809,7 @@ export class GameSocket {
     })
 
     await this.emitLeaderboard(updated)
-    if (limit !== null) this.timer(updated.id, limit * 1000, () => this.lockQuestion(updated.id, true))
+    if (limit !== null) this.armTimedPhase(updated)
   }
 
   // A timeout must not settle streaks halfway through an accepted answer write.
@@ -868,28 +900,8 @@ export class GameSocket {
     if (cfg.flow.showLeaderboard === 'between_questions') await this.emitLeaderboard(session)
     else await this.emitLeaderboard(session, 'host-only')
 
-    const handler = getModeHandler(session.game_mode)
-    const activePlayers = players.filter((p) => p.status === 'connected').length
-    const over = handler.isGameOver(
-      {
-        activePlayers,
-        noMoreQuestions: index + 1 >= questions.length,
-        allAnswered: true,
-        timeUp: true
-      },
-      cfg
-    )
-
     if (!cfg.timing.autoAdvance) return // wait for the host to send game:next
-    const remaining = nextQuestionAt ? Math.max(0, Date.parse(nextQuestionAt) - Date.now()) : 0
-    this.timer(next.id, remaining, async () => {
-      const fresh = await this.loadSession(next.id)
-      if (over) {
-        await this.endGame(fresh)
-      } else {
-        await this.startQuestion(fresh, fresh.current_question_index + 1)
-      }
-    })
+    this.armTimedPhase(next)
   }
 
   private async onNext(socket: Socket, payload: unknown) {
@@ -996,20 +1008,7 @@ export class GameSocket {
       .emit('game:state', await this.snapshot(updated))
     await this.emitHostState(updated)
 
-    if (remaining <= 0) return
-    // a pause during the countdown must resume the countdown, not a question
-    if (updated.current_phase === 'countdown')
-      this.timer(gameId, remaining, async () => {
-        const fresh = await this.loadSession(gameId)
-        await this.beginFirstQuestion(fresh)
-      })
-    else if (updated.current_phase === 'question_active')
-      this.timer(gameId, remaining, () => this.lockQuestion(gameId, true))
-    else if (updated.current_phase === 'showing_results' && updated.config.timing.autoAdvance)
-      this.timer(gameId, remaining, async () => {
-        const fresh = await this.loadSession(gameId)
-        await this.startQuestion(fresh, fresh.current_question_index + 1)
-      })
+    if (remaining > 0 && updated.config.flow.pacing === 'host') this.armTimedPhase(updated)
   }
 
   private async onEndByHost(socket: Socket) {
