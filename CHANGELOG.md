@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:18:54 GMT+7
+
+### Kiểm chứng restart solo
+
+- Docker restart backend giữa câu ở mode solo: clock Redis được dựng lại và trận tự chuyển sang `finished` sau deadline. Stack backend/frontend/PostgreSQL/Redis đang chạy, backend health/ready 200.
+- Xác minh: quan sát trạng thái phòng qua REST sau restart; chưa kiểm thử survival/marathon hoặc Redis mất hot state.
+
 ## 2026-11-02 12:17:29 GMT+7
 
 ### Chủ phòng trong lobby công khai

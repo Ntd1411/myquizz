@@ -5,7 +5,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | Nhóm | Trạng thái |
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
-| B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume qua. Chưa test self-paced restart; nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
+| B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua. Nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
 | B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end; `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end trên một backend instance; chưa test nhiều instance hoặc timer cạnh tranh với host. |
 | B20 | Answer, player-next, host transition và player clock kiểm tra Redis ready trước thao tác; Docker test ngắt Redis giữa câu trả `SERVICE_UNAVAILABLE` thay vì treo quá 15 giây. Các đường ghi cache game khác vẫn có thể fail-open hoặc mất trạng thái nếu Redis hỏng giữa claim và cập nhật player. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
