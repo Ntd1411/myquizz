@@ -1,6 +1,6 @@
 import { http } from './http'
 import { readPagination, unwrap } from './envelope'
-import { useGuestId } from '@/composables/useGuestId'
+import { readGuestToken, saveGuestToken } from '@/composables/useGuestId'
 
 /**
  * Game session endpoints (backend module `game`).
@@ -49,7 +49,12 @@ export async function joinGame(code, { playerName, guestId } = {}) {
   const body = playerName && guestId ? { player_name: playerName, player_guest_id: guestId } : {}
   const res = await http.post(`/games/${encodeURIComponent(code)}/join`, body)
   const data = unwrap(res.data)
-  return { player: data.player ?? null, socketToken: data.socketToken ?? null }
+  if (data.guestToken) saveGuestToken(data.guestToken)
+  return {
+    player: data.player ?? null,
+    socketToken: data.socketToken ?? null,
+    guestToken: data.guestToken ?? null,
+  }
 }
 
 /**
@@ -92,17 +97,17 @@ export async function getGameReview(sessionId, socketToken) {
 }
 
 /*
- * Play history (backend module `game`, cookie or guest id as the identity).
+ * Play history (backend module `game`, cookie or signed guest token as identity).
  *
- * A guest's history is tied to the UUID in their browser, so these three calls send it
- * as `x-guest-id`. It is attached per call rather than in the http interceptor: it is
+ * The token is issued after joining and sent as `x-guest-token`. It is attached per
+ * call rather than in the http interceptor: it is
  * the only secret protecting that history, and there is no reason for it to ride along
  * with every unrelated request. Callers pass `asGuest` because only they know whether
  * a session exists; with a cookie present the backend ignores the header anyway.
  */
 function guestHeaders(asGuest) {
-  // useGuestId() mints a UUID when none exists, so it is only called when it is needed.
-  return asGuest ? { 'x-guest-id': useGuestId() } : undefined
+  const token = asGuest ? readGuestToken() : null
+  return token ? { 'x-guest-token': token } : undefined
 }
 
 /** One cursor page of the reader's matches (`played`) or rooms (`hosted`). */

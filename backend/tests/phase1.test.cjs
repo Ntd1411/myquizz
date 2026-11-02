@@ -21,7 +21,10 @@ function load(file, mocks = {}) {
   return mod.exports
 }
 
-const env = { SOCKET_JWT_SECRET: 'test-only-secret', SOCKET_TOKEN_TTL: '1h' }
+const env = {
+  SOCKET_JWT_SECRET: 'test-only-secret', SOCKET_TOKEN_TTL: '1h',
+  JWT_REFRESH_EXPIRES_IN: '7d'
+}
 const envMock = { '../../infrastructure/config/envconfig.js': { env } }
 
 test('socket token expires after one hour and rejects expired token', () => {
@@ -35,6 +38,20 @@ test('socket token expires after one hour and rejects expired token', () => {
   const decoded = jwt.decode(token)
   assert.equal(decoded.exp - decoded.iat, 3600)
   assert.throws(() => jwt.verify(token, env.SOCKET_JWT_SECRET, { clockTimestamp: decoded.exp + 1 }))
+})
+
+test('guest history token is signed, expires and rejects a socket token', () => {
+  const socket = load('modules/game/socket.middleware.ts', {
+    ...envMock,
+    './game.cache.js': {},
+    './game.repository.js': {}
+  })
+  const token = socket.signGuestHistoryToken('guest-id')
+  const payload = socket.verifyGuestHistoryToken(token)
+  assert.equal(payload.type, 'guest-history')
+  assert.equal(payload.guestId, 'guest-id')
+  const socketToken = socket.signSocketToken({ psid: 1, gsid: 2, code: 'TEST', role: 'player' })
+  assert.throws(() => socket.verifyGuestHistoryToken(socketToken))
 })
 
 function gameService(session, players, repoOverrides = {}) {
@@ -52,7 +69,7 @@ function gameService(session, players, repoOverrides = {}) {
   return load('modules/game/game.service.ts', {
     './game.cache.js': cache,
     './game.repository.js': repo,
-    './socket.middleware.js': { signSocketToken: () => 'token' },
+    './socket.middleware.js': { signSocketToken: () => 'token', signGuestHistoryToken: () => 'guest-token' },
     './engine/registry.js': { getModeHandler: () => ({ defaultConfig: () => ({}) }) },
     './engine/config.rule.js': {
       sanitizeConfigPatch: () => ({ patch: {}, ignored: [] }),

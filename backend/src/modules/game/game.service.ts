@@ -10,7 +10,9 @@ import type {
   LobbyPlayer, PlayerSessionRow, SnapshotQuestion
 } from './game.type.js'
 import { decodeHistoryCursor, encodeHistoryCursor } from './game.history.cursor.js'
-import { signSocketToken, verifySocketToken, type SocketTokenPayload } from './socket.middleware.js'
+import {
+  signGuestHistoryToken, signSocketToken, verifySocketToken, type SocketTokenPayload
+} from './socket.middleware.js'
 import { sanitizeConfigPatch, normalizeConfig, describeModeConfig } from './engine/config.rule.js'
 
 // Read session: Redis first, then PostgreSQL (auto-warm cache on miss)
@@ -151,7 +153,11 @@ export const joinGame = async (code: string, input: JoinGameInput) => {
     role: 'player',
     ...(input.player_id ? { sv: await repo.getUserSessionVersion(input.player_id) ?? undefined } : {})
   })
-  return { player, socketToken }
+  return {
+    player,
+    socketToken,
+    guestToken: input.player_guest_id ? signGuestHistoryToken(input.player_guest_id) : null
+  }
 }
 
 // POST /games/:id/host-token — host get token socket
@@ -354,7 +360,7 @@ export const getPlayHistory = async (
     if (query.include_total) total = await repo.countHostedSessions(userId)
   } else {
     if (viewer.userId === null && viewer.guestId === null)
-      throw new AppError(401, 'History needs a session or a guest id', 'GAME_AUTH_REQUIRED')
+      throw new AppError(401, 'History needs a session or a guest token', 'GAME_AUTH_REQUIRED')
     rows = await repo.listPlayedSessions(viewer, cursor, window)
     if (query.include_total) total = await repo.countPlayedSessions(viewer)
   }
@@ -402,7 +408,7 @@ export const getHistorySummary = async (gameId: number, viewer: HistoryViewer) =
  *
  * The difference is the identity: review authenticates with the socket token, which
  * lives in the sessionStorage of the tab that played, so it is gone in a new tab.
- * Here the cookie or the guest id answers instead.
+ * Here the cookie or signed guest history token answers instead.
  */
 export const getHistoryAnswers = async (gameId: number, viewer: HistoryViewer) => {
   const session = await loadClosedSession(gameId)

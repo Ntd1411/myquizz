@@ -16,7 +16,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C01 | Backend unit và API/Redis/PostgreSQL/Socket.IO smoke test chạy ở CI cho nhánh tính năng và trước deploy `main`; chưa có test nhiều backend instance hoặc tải/race dài hạn. |
 | C02 | Lobby, kết quả, profile và session trong summary lịch sử có projection tường minh; lobby trả host ID, summary trả `finished_at` theo frontend. Còn response DTO khác cần rà soát. |
 | C03 | PostgreSQL là recovery checkpoint; Redis là hot state và lock. Timer dùng deadline chung, boot rehydrate Redis. Chưa kiểm thử adapter/broadcast nhiều backend instance. |
-| C04 | Chưa hoàn tất guest token ký gắn phòng; UUID hiện vẫn là bearer identity cho lịch sử. |
+| C04 | Guest join nhận token lịch sử có chữ ký và TTL; frontend gửi `x-guest-token`. UUID thô chỉ dùng rejoin seat và bị từ chối ở history. Socket token vẫn gắn room/player riêng. |
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |
 | C06–C07 | Chưa có benchmark/EXPLAIN và tối ưu trigger theo số liệu. |
 | C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
@@ -33,7 +33,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Kiểm tra đã chạy
 
-- Backend `pnpm lint`, `pnpm test` (build và 48 test) qua.
+- Backend `pnpm lint`, `pnpm test` (build và 49 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
 - `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Bài `pnpm test:integration` tái lập API create/join, Socket.IO answer/end và history summary. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
 

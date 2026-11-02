@@ -12,7 +12,7 @@ const MAX_TICKETS = 5
  * - the socket token lives in **sessionStorage**, so one tab is one player and a reload
  *   keeps the exact connection without leaking the seat to other tabs;
  * - a small **localStorage** ticket per room (nickname + ids, never the token) survives
- *   closing the tab. Together with the guest id, also in localStorage, it is enough to
+ *   closing the tab. Together with the guest id used for rejoin, it is enough to
  *   call join again and get the same player row back instead of a duplicate.
  *
  * The token is deliberately not persisted in localStorage: it is a bearer credential for

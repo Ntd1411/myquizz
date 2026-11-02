@@ -12,14 +12,17 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) {
 }
 
 let cookie = ''
+const clientIp = `10.20.${Math.floor(Math.random() * 200) + 1}.${Math.floor(Math.random() * 200) + 1}`
 let guestId
+let guestToken
 const call = async (method, path, body, authenticated = true) => {
   const response = await fetch(`${base}/v1${path}`, {
     method,
     headers: {
       origin: 'http://localhost:5173',
+      'x-forwarded-for': clientIp,
       'content-type': 'application/json',
-      ...(path.endsWith('/summary') && guestId ? { 'x-guest-id': guestId } : {}),
+      ...(path.endsWith('/summary') && guestToken ? { 'x-guest-token': guestToken } : {}),
       ...(authenticated && cookie ? { cookie } : {})
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -54,6 +57,8 @@ guestId = randomUUID()
 const joined = await call('POST', `/games/${session.session_code}/join`, {
   player_name: 'Integration Guest', player_guest_id: guestId
 }, false)
+guestToken = joined.guestToken
+assert.equal(typeof guestToken, 'string')
 const hostToken = (await call('POST', `/games/${session.id}/host-token`)).hostToken.socketToken
 const host = io(`${base}/game`, { auth: { token: hostToken }, transports: ['websocket'] })
 const player = io(`${base}/game`, { auth: { token: joined.socketToken }, transports: ['websocket'] })
@@ -78,11 +83,15 @@ try {
   const ended = once(host, 'game:ended')
   host.emit('game:end')
   await ended
+  const rawIdentity = await fetch(`${base}/v1/games/${session.id}/summary`, {
+    headers: { 'x-guest-id': guestId }
+  })
+  assert.equal(rawIdentity.status, 403)
   const summary = await call('GET', `/games/${session.id}/summary`, undefined, false)
   assert.equal(summary.summary.session.session_status, 'finished')
   assert.equal(summary.summary.session.finished_at != null, true)
   assert.equal(summary.summary.leaderboard[0].player_score > 0, true)
-  console.log(JSON.stringify({ room: session.session_code, checks: ['API create/join', 'Socket.IO answer', 'private grading ACK', 'host end', 'history summary'] }))
+  console.log(JSON.stringify({ room: session.session_code, checks: ['API create/join', 'signed guest token', 'raw UUID rejected', 'Socket.IO answer', 'private grading ACK', 'host end', 'history summary'] }))
 } finally {
   host.disconnect()
   player.disconnect()

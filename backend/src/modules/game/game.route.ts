@@ -10,8 +10,7 @@ const router: Router = Router()
 router.get('/game-modes', controller.listGameModes) // Get available game modes
 
 // Declared before GET /:code, or Express reads 'history' as a room code.
-// Optional auth on purpose: a guest's played history is tied to the UUID in their
-// browser, sent as x-guest-id, so the endpoint has to answer without a cookie too.
+// Optional auth on purpose: guests present the signed token issued when they joined.
 router.get('/history', optionalAuthMiddleware, validateQuery(historyQuerySchema), controller.getHistory) // Played / hosted history
 
 router.post('/', authMiddleware, controller.createGame) // Create a new game
@@ -31,7 +30,7 @@ router.get('/:id/results', optionalAuthMiddleware, controller.getResults) // Get
 router.get('/:id/review', controller.getReview) // Player's own answer sheet (socket token)
 
 // History detail. Same answer sheet as /:id/review, but authenticated by cookie or
-// guest id instead of the socket token, which does not survive the tab that played.
+// guest history token instead of the socket token, which does not survive the playing tab.
 router.get('/:id/summary', optionalAuthMiddleware, validateParams(gameIdParamSchema), controller.getHistorySummary) // Past match overview
 
 router.get('/:id/my-answers', optionalAuthMiddleware, validateParams(gameIdParamSchema), controller.getMyAnswers) // Own answers of a past match

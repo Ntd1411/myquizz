@@ -79,8 +79,7 @@ export interface QuestionStatRow {
  * Who is reading a history list or a past match.
  *
  * A signed-in reader is identified by their account; a guest only by the UUID in
- * their browser. Exactly one of the two is ever set: the cookie wins, so pasting
- * someone else's guest id into the header while signed in reads nothing.
+ * their browser. Exactly one of the two is ever set: the cookie wins over a guest token.
  */
 export interface HistoryViewer {
   userId: number | null

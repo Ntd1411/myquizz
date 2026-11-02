@@ -25,6 +25,11 @@ export interface SocketTokenPayload {
   sv?: number
 }
 
+interface GuestHistoryTokenPayload {
+  type: 'guest-history'
+  guestId: string
+}
+
 export const signSocketToken = (payload: SocketTokenPayload) => {
   const ttlMs = ms(env.SOCKET_TOKEN_TTL as ms.StringValue)
   if (!Number.isFinite(ttlMs) || ttlMs < 1000 || ttlMs % 1000 !== 0)
@@ -34,6 +39,19 @@ export const signSocketToken = (payload: SocketTokenPayload) => {
 
 export const verifySocketToken = (token: string) =>
   jwt.verify(token, env.SOCKET_JWT_SECRET) as SocketTokenPayload
+
+export const signGuestHistoryToken = (guestId: string) =>
+  jwt.sign(
+    { type: 'guest-history', guestId } satisfies GuestHistoryTokenPayload,
+    env.SOCKET_JWT_SECRET,
+    { expiresIn: env.JWT_REFRESH_EXPIRES_IN as ms.StringValue }
+  )
+
+export const verifyGuestHistoryToken = (token: string) => {
+  const payload = jwt.verify(token, env.SOCKET_JWT_SECRET) as GuestHistoryTokenPayload
+  if (payload.type !== 'guest-history' || !payload.guestId) throw new Error('Invalid guest token')
+  return payload
+}
 
 // middleware: run one time at handshake, results stored in socket.data.
 // A rejected handshake reaches the browser as an error message, so the message is the

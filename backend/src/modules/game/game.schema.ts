@@ -154,8 +154,6 @@ export const gameIdParamSchema = z.object({
  * A guest's history is protected by nothing but this UUID, so a header that is not
  * one is dropped rather than passed on as an identity.
  */
-export const guestIdHeaderSchema = z.string().uuid()
-
 export type HistoryQuery = z.infer<typeof historyQuerySchema>
 export type GameIdParams = z.infer<typeof gameIdParamSchema>
 export type CreateGameInput = z.infer<typeof createGameSchema>

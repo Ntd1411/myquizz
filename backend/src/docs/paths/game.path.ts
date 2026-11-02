@@ -12,7 +12,7 @@
  * The three play-history routes read a match that is already over rather than a
  * live room, so they authenticate differently again: GET /games/history,
  * GET /games/{id}/summary and GET /games/{id}/my-answers take the cookie when
- * there is one and the x-guest-id header otherwise. That is what makes a match
+ * there is one and the signed x-guest-token header otherwise. That makes a match
  * readable in a new tab or days later, when the socket token of the tab that
  * played is long gone.
  *
@@ -399,13 +399,18 @@ export const gamePaths: PathMap = {
       ),
       responses: {
         201: successResponse({
-          description: 'The player row and its socket token.',
+          description: 'The player row, socket token and signed guest history token.',
           data: object(
             {
               player: ref('PlayerSession'),
-              socketToken: { type: 'string' }
+              socketToken: { type: 'string' },
+              guestToken: {
+                type: 'string',
+                nullable: true,
+                description: 'Signed history credential for a guest; null for an account.'
+              }
             },
-            ['player', 'socketToken']
+            ['player', 'socketToken', 'guestToken']
           ),
           example: successExample({
             player: {
@@ -423,7 +428,8 @@ export const gamePaths: PathMap = {
               status: 'connected'
             },
             socketToken:
-              'eyJhbGciOiJIUzI1NiJ9.eyJwc2lkIjoxMSwiZ3NpZCI6MSwicm9sZSI6InBsYXllciJ9.REDACTED'
+              'eyJhbGciOiJIUzI1NiJ9.eyJwc2lkIjoxMSwiZ3NpZCI6MSwicm9sZSI6InBsYXllciJ9.REDACTED',
+            guestToken: 'eyJhbGciOiJIUzI1NiJ9.eyJ0eXBlIjoiZ3Vlc3QtaGlzdG9yeSJ9.REDACTED'
           })
         }),
         400: errorResponse('A guest body that does not validate', [
@@ -526,17 +532,16 @@ export const gamePaths: PathMap = {
   '/games/history': {
     get: {
       summary: 'List my past matches',
-      description: `Closed matches (finished or cancelled) the caller took part in, newest first, paged by keyset cursor. ${OPTIONAL_AUTH_NOTE} Without a session the identity is the x-guest-id header, which is what makes a guest's own history readable; role=hosted needs an account and answers 401 otherwise. Ordering is coalesce(finished_at, created_at) then id, both descending, because a room cancelled before it ever ended has no finished_at. A cursor is bound to the role it was issued for and replaying it on the other tab is refused.`,
+      description: `Closed matches (finished or cancelled) the caller took part in, newest first, paged by keyset cursor. ${OPTIONAL_AUTH_NOTE} Without a session the identity is the signed x-guest-token issued by join; role=hosted needs an account and answers 401 otherwise. Ordering is coalesce(finished_at, created_at) then id, both descending, because a room cancelled before it ever ended has no finished_at. A cursor is bound to the role it was issued for and replaying it on the other tab is refused.`,
       tags: [gameTag.name],
       parameters: [
         {
           in: 'header',
-          name: 'x-guest-id',
+          name: 'x-guest-token',
           required: false,
-          schema: { type: 'string', format: 'uuid' },
+          schema: { type: 'string' },
           description:
-            'Guest identity, the same UUID sent as player_guest_id when joining. Read only when there is no session; a cookie always wins.',
-          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+            'Signed guest history token returned by join. Read only when there is no session; a cookie always wins.'
         },
         {
           in: 'query',
@@ -644,17 +649,16 @@ export const gamePaths: PathMap = {
   '/games/{id}/summary': {
     get: {
       summary: 'Retrieve one past match',
-      description: `Overview of a closed match: a projected room, the quiz as it was played (from the snapshot), the final standings, and perQuestion for the host only, since per-question accuracy describes the room rather than one player. ${OPTIONAL_AUTH_NOTE} Guests are identified by the x-guest-id header. Only the host of that match and the players who held a seat in it may read it: a session id is a small number, so a stranger is refused rather than shown somebody else's match. Unlike GET /{id}/review this needs no socket token, which is what makes a match readable in a new tab or days later.`,
+      description: `Overview of a closed match: a projected room, the quiz as it was played (from the snapshot), the final standings, and perQuestion for the host only. ${OPTIONAL_AUTH_NOTE} Guests use the signed x-guest-token returned by join. Only the host and players who held a seat may read it.`,
       tags: [gameTag.name],
       parameters: [
         idParam,
         {
           in: 'header',
-          name: 'x-guest-id',
+          name: 'x-guest-token',
           required: false,
-          schema: { type: 'string', format: 'uuid' },
-          description: 'Guest identity. Read only when there is no session.',
-          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+          schema: { type: 'string' },
+          description: 'Signed guest history token. Read only when there is no session.'
         }
       ],
       responses: {
@@ -713,17 +717,16 @@ export const gamePaths: PathMap = {
   '/games/{id}/my-answers': {
     get: {
       summary: 'Retrieve my answer sheet of a past match',
-      description: `The same payload as GET /games/{id}/review, so one component renders both, with a different identity: the cookie or the x-guest-id header instead of the socket token, which lives in the sessionStorage of the tab that played and is gone in a new one. The room config must still have flow.reviewMode enabled, and a host has no answers of their own. ${OPTIONAL_AUTH_NOTE}`,
+      description: `The same payload as GET /games/{id}/review, using the cookie or signed x-guest-token. The room config must still have flow.reviewMode enabled, and a host has no answers of their own. ${OPTIONAL_AUTH_NOTE}`,
       tags: [gameTag.name],
       parameters: [
         idParam,
         {
           in: 'header',
-          name: 'x-guest-id',
+          name: 'x-guest-token',
           required: false,
-          schema: { type: 'string', format: 'uuid' },
-          description: 'Guest identity. Read only when there is no session.',
-          example: 'b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+          schema: { type: 'string' },
+          description: 'Signed guest history token. Read only when there is no session.'
         }
       ],
       responses: {

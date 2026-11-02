@@ -63,7 +63,7 @@ export const ERROR_CODES = [
   'GAME_STILL_RUNNING',
 
   // Play history: a reader who is neither the host nor a player of that match, a
-  // reader with no identity at all (no cookie and no guest id), and a cursor that
+  // reader with no identity at all (no cookie and no guest token), and a cursor that
   // does not belong to the list being paged.
   'GAME_FORBIDDEN',
   'GAME_AUTH_REQUIRED',

@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'player_guest_id'
+const TOKEN_KEY = 'player_guest_token'
 
 /**
  * Guests are identified by a UUID persisted in localStorage. The backend uses it to
@@ -11,6 +12,14 @@ export function useGuestId() {
     localStorage.setItem(STORAGE_KEY, id)
   }
   return id
+}
+
+export function readGuestToken() {
+  return window.localStorage.getItem(TOKEN_KEY) || null
+}
+
+export function saveGuestToken(token) {
+  if (token) window.localStorage.setItem(TOKEN_KEY, token)
 }
 
 function fallbackUuid() {

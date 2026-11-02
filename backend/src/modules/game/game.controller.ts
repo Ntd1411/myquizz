@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from 'express'
 import {
-  createGameSchema, guestIdHeaderSchema, joinGameSchema, updateConfigSchema,
+  createGameSchema, joinGameSchema, updateConfigSchema,
   type GameIdParams, type HistoryQuery, type JoinGameInput
 } from './game.schema.js'
 import * as gameService from './game.service.js'
@@ -8,19 +8,24 @@ import { AppError } from '../../shared/errors/AppError.js'
 import type { AuthRequest } from '../auth/auth.type.js'
 import type { HistoryViewer } from './game.type.js'
 import { success } from '../../shared/utils/response.js'
+import { verifyGuestHistoryToken } from './socket.middleware.js'
 
 /**
  * Identity of a history reader.
  *
  * A cookie always wins: a signed-in reader must not be able to read another
- * browser's guest history by pasting its UUID into the header. The guest id travels
- * in a header rather than the query string because it is the only secret protecting
- * that history, and query strings end up in access logs and referrers.
+ * browser's guest history by presenting a guest token. The signed token travels in
+ * a header because query strings end up in access logs and referrers.
  */
 const historyViewer = (req: AuthRequest): HistoryViewer => {
   if (req.user) return { userId: req.user.id, guestId: null }
-  const parsed = guestIdHeaderSchema.safeParse(req.header('x-guest-id'))
-  return { userId: null, guestId: parsed.success ? parsed.data : null }
+  const token = req.header('x-guest-token')
+  if (!token) return { userId: null, guestId: null }
+  try {
+    return { userId: null, guestId: verifyGuestHistoryToken(token).guestId }
+  } catch {
+    throw new AppError(401, 'Guest token is invalid or expired', 'GAME_AUTH_REQUIRED')
+  }
 }
 
 export const listGameModes = (_req: AuthRequest, res: Response) =>
@@ -87,8 +92,8 @@ export const joinGame = async (req: AuthRequest, res: Response, next: NextFuncti
         .required({ player_guest_id: true })
         .parse(req.body)
     }
-    const { player, socketToken } = await gameService.joinGame(code, input)
-    return success(res, { player, socketToken }, 201)
+    const { player, socketToken, guestToken } = await gameService.joinGame(code, input)
+    return success(res, { player, socketToken, guestToken }, 201)
   } catch (e) {
     next(e)
   }

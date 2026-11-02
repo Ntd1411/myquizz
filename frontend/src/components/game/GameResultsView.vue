@@ -241,7 +241,7 @@ async function openReview() {
       </RouterLink>
       <!--
         The same match, minus the socket token: the history page identifies the reader
-        by cookie or guest id, so this link keeps working in a new tab and tomorrow.
+        by cookie or signed guest token, so this link keeps working in a new tab.
       -->
       <RouterLink
         v-if="game.sessionId"

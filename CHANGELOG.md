@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:20:39 GMT+7
+
+### Guest token cho lịch sử trận
+
+- Join guest trả token lịch sử có chữ ký và hạn bằng refresh TTL; frontend lưu token trong localStorage và gửi riêng qua `x-guest-token` cho history/summary/my-answers.
+- UUID guest chỉ dùng để rejoin seat, không còn đủ quyền đọc lịch sử. Cookie tài khoản vẫn ưu tiên nếu đồng thời có guest token.
+- Xác minh: backend lint/build và 49/49 test, frontend lint/build, Docker API/Socket.IO smoke qua; UUID thô bị từ chối 403 còn signed token đọc summary thành công.
+
 ## 2026-11-02 12:47:05 GMT+7
 
 ### Checkpoint và phục hồi game sau mất Redis
