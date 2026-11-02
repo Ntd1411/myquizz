@@ -13,7 +13,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 | Mục cải thiện | Trạng thái |
 | --- | --- |
-| C01 | Backend test script và CI gate đã có; chưa có PostgreSQL/Redis/Socket.IO integration gate. |
+| C01 | Backend `pnpm test` chạy ở CI cho nhánh tính năng và trước deploy `main`; chưa có PostgreSQL/Redis/Socket.IO integration gate. |
 | C02 | Lobby, kết quả, profile và session trong summary lịch sử có projection tường minh; lobby trả host ID, summary trả `finished_at` theo frontend. Còn response DTO khác cần rà soát. |
 | C03–C04 | Chưa hoàn tất nguồn sự thật game/recovery và guest token gắn phòng. |
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |

@@ -42,9 +42,9 @@ jobs:
         working-directory: ./backend
         run: pnpm lint
 
-      - name: Build
+      - name: Test and build
         working-directory: ./backend
-        run: pnpm build
+        run: pnpm test
 
   build-frontend:
     name: Build Frontend

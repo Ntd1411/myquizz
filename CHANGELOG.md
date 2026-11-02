@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:32:47 GMT+7
+
+### Backend test gate trước deploy
+
+- Workflow `main` chạy `pnpm test` (bao gồm build và 47 test backend) trước job deploy; workflow nhánh tính năng đã dùng lệnh này.
+- Xác minh: backend `pnpm test` 47/47 qua ở checkout hiện tại; kiểm tra lệnh trong hai workflow và `git diff --check`. Chưa có integration gate cho PostgreSQL/Redis/Socket.IO trong CI.
+
 ## 2026-11-02 12:31:44 GMT+7
 
 ### Projection phòng lịch sử
