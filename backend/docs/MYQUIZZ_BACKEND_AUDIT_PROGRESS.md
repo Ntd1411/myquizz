@@ -18,7 +18,8 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C03 | PostgreSQL là recovery checkpoint; Redis là hot state, lock và Socket.IO pub/sub adapter. Timer dùng deadline chung, boot rehydrate Redis. Docker hai backend đã xác nhận cross-instance broadcast; PM2 vẫn 1 instance chờ sticky session cho polling fallback. |
 | C04 | Guest join nhận token lịch sử có chữ ký và TTL; frontend gửi `x-guest-token`. UUID thô chỉ dùng rejoin seat và bị từ chối ở history. Socket token vẫn gắn room/player riêng. |
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |
-| C06–C07 | Chưa có benchmark/EXPLAIN và tối ưu trigger theo số liệu. |
+| C06 | Có baseline local 500 request và EXPLAIN recovery trên 10.028 room; cần lặp home/feed/search/history với dữ liệu production đại diện. |
+| C07 | Insert/replace question dùng một batch statement; trigger question_count cập nhật cộng/trừ. 500 câu giảm tổng 75,649 xuống 29,436 ms, trigger giảm 65,590 xuống 19,166 ms. |
 | C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
 | C09 | Continue-playing lọc trạng thái room/player. |
 | C10 | Giới hạn handshake, socket/IP, event và payload; HTTP limiter fallback ngay khi Redis disconnected. Redis adapter chia sẻ event nhiều instance; counter socket vẫn theo process. Chưa đo ACK p95 tải lớn. |
@@ -29,7 +30,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C15 | Scoring job có advisory lock liên process; chưa đo query plan hoặc làm incremental stats. |
 | C16 | Answer key marathon được ghi vào set và xóa khi room kết thúc. |
 | C17 | Bỏ index refresh token trùng unique index; chưa benchmark index/retention lịch sử. |
-| C18 | Đã cập nhật dependency và thay `xlsx`; `pnpm audit --prod` hiện báo 0 advisory ở backend và frontend. Chưa chạy secret scanner hoặc backup restore. |
+| C18 | Dependency production 0 advisory; scan pattern secret trên file tracked 0 match. PostgreSQL dump/restore sang DB tạm qua và đối chiếu count; chưa diễn tập rollback trên production. |
 
 ## Kiểm tra đã chạy
 

@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:32:47 GMT+7
+
+### Batch câu hỏi và baseline vận hành
+
+- Insert/replace câu hỏi bằng một statement; migration `019` đổi trigger question_count từ đếm lại toàn bộ sang cộng/trừ nguyên tử.
+- Docker 500 câu: tổng 75,649 → 29,436 ms; riêng trigger 65,590 → 19,166 ms. Recovery query 10.028 room chạy 1,819 ms; HTTP health 500 request concurrency 25 đạt p50 17,87 ms, p95 29,91 ms.
+- PostgreSQL dump/restore vào DB tạm qua; production dependency audit 0 advisory hai package, scan pattern secret tracked 0 match. Chi tiết ở tài liệu baseline audit.
+
 ## 2026-11-02 15:28:54 GMT+7
 
 ### Readiness của realtime recovery

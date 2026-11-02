@@ -9,6 +9,7 @@ Bộ tài liệu phục vụ các phiên phát triển sau. Đọc mã nguồn �
 - [Kế hoạch backend](backend-plan.md): bảo mật, hiệu năng và tiêu chí nghiệm thu.
 - [Rà soát backend chi tiết](MYQUIZZ_BACKEND_AUDIT.md): bug, rủi ro, mức ưu tiên, cách sửa và nghiệm thu.
 - [Tiến độ triển khai audit](MYQUIZZ_BACKEND_AUDIT_PROGRESS.md): phần đã sửa, kiểm tra đã chạy và việc còn mở.
+- [Baseline hiệu năng audit](MYQUIZZ_BACKEND_AUDIT_BENCHMARK.md): p50/p95, query plan, trigger trước/sau và kiểm tra restore.
 - `android-plan.local.md`: kế hoạch Android riêng, chỉ lưu local và được Git ignore; không có trong checkout mới.
 - [Ngữ cảnh frontend](../../frontend/docs/README.md) và [kế hoạch frontend](../../frontend/docs/frontend-plan.md).
 - [Quy trình cộng tác](../../AGENTS.md) và [nhật ký](../../CHANGELOG.md).

@@ -101,3 +101,33 @@ test('uploaded image MIME must match its byte signature', () => {
   assert.equal(storage.matchesImageSignature('image/webp', new TextEncoder().encode('RIFF1234WEBP')), true)
   assert.equal(storage.matchesImageSignature('image/png', new TextEncoder().encode('<script>')), false)
 })
+
+test('question import uses one batch statement and incremental counter migration', async () => {
+  let calls = 0
+  let sql
+  let values
+  const repoModule = load('modules/quiz/quiz.repository.ts', {
+    '../../infrastructure/database/connection.js': { pool: {} },
+    './quiz.mapper.js': { toQuizDetail: value => value }
+  })
+  const client = { query: async (query, params) => {
+    calls++
+    sql = query
+    values = params
+    return { rows: [{ id: 1 }, { id: 2 }] }
+  } }
+  const questions = [1, 2].map((id) => ({
+    question_type: 'short_answer', question_text: `Question ${id}`,
+    correct_answer: 'A', time_limit: 30
+  }))
+  const rows = await new repoModule.QuizRepository().insertQuestions(7, questions, client)
+  assert.equal(calls, 1)
+  assert.equal(rows.length, 2)
+  assert.match(sql, /\$1.*\$9.*\$10.*\$18/s)
+  assert.equal(values.length, 18)
+  const migration = fs.readFileSync(path.join(
+    base, 'src/infrastructure/database/migrations/019_incremental_question_count.sql'
+  ), 'utf8')
+  assert.doesNotMatch(migration, /select count/i)
+  assert.match(migration, /question_count = question_count \+ 1/)
+})

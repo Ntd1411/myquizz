@@ -23,16 +23,7 @@ function buildAnswerOptions(
 }
 
 /*
- * One statement for both write paths. They already drifted apart once over the
- * shape of answer_options, so the column list, the parameter order and the JSON
- * encoding now live in a single place.
- */
-const INSERT_QUESTION_SQL = `INSERT INTO questions (quiz_id, question_type, question_text,
-  time_limit, question_image, question_hint, explanation, answer_options, correct_answer)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`
-
-/*
- * The parameters of INSERT_QUESTION_SQL, as a named tuple: the statement is
+ * The parameters of the batch insert, as a named tuple: the statement is
  * positional, so the compiler checks the order and arity against the column list
  * above rather than leaving it to a careful read. The optional slots are the
  * columns that stay NULL, including answer_options for the typed-answer types.
@@ -91,17 +82,16 @@ export class QuizRepository {
     questions: CreateQuestionRequest[],
     client: PoolClient | typeof pool = pool
   ): Promise<Question[]> {
-    const insertedQuestions: Question[] = []
-    for (const question of questions) {
-      const result = await client.query<Question>(
-        INSERT_QUESTION_SQL,
-        questionValues(quizId, question)
-      )
-      if (result.rows[0]) {
-        insertedQuestions.push(result.rows[0])
-      }
-    }
-    return insertedQuestions
+    if (questions.length === 0) return []
+    const columns = `INSERT INTO questions (quiz_id, question_type, question_text,
+      time_limit, question_image, question_hint, explanation, answer_options, correct_answer) VALUES `
+    const groups = questions.map((_, questionIndex) => {
+      const first = questionIndex * 9 + 1
+      return `(${Array.from({ length: 9 }, (_value, offset) => `$${first + offset}`).join(', ')})`
+    })
+    const values = questions.flatMap((question) => questionValues(quizId, question))
+    const result = await client.query<Question>(`${columns}${groups.join(', ')} RETURNING *`, values)
+    return result.rows
   }
 
   async getQuizById(quizId: number): Promise<Quiz | null> {
@@ -182,19 +172,7 @@ export class QuizRepository {
       [quizId]
     )
 
-    // Insert new questions
-    const newQuestions: Question[] = []
-    for (const question of questions) {
-      const result = await client.query<Question>(
-        INSERT_QUESTION_SQL,
-        questionValues(quizId, question)
-      )
-      if (result.rows[0]) {
-        newQuestions.push(result.rows[0])
-      }
-    }
-
-    return newQuestions
+    return this.insertQuestions(quizId, questions, client)
   }
 
   async checkQuizOwnership(quizId: number, userId: number): Promise<boolean> {
