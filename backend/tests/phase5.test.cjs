@@ -77,3 +77,15 @@ test('answer claim fails promptly while Redis is disconnected', async () => {
     error => error.code === 'SERVICE_UNAVAILABLE' && error.statusCode === 503
   )
 })
+
+test('required game writes fail closed while read-cache warming stays optional', async () => {
+  const cache = load('modules/game/game.cache.ts', {
+    '../../infrastructure/cache/redis.client.js': { redisClient: { status: 'reconnecting' } }
+  })
+  const session = { id: 5, session_code: 'TEST' }
+  await assert.rejects(() => cache.setSession(session), error => error.code === 'SERVICE_UNAVAILABLE')
+  await assert.rejects(() => cache.updatePlayer(5, { id: 1, player_score: 0 }),
+    error => error.code === 'SERVICE_UNAVAILABLE')
+  assert.equal(await cache.warmSession(session), undefined)
+  assert.equal(await cache.getSession(5), null)
+})

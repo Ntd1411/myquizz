@@ -239,7 +239,7 @@ export class GameSocket {
     const hot = await cache.getPlayers(gameId)
     if (hot) return hot
     const rows = await repo.listPlayerSessions(gameId) // re-warm after a Redis restart
-    for (const p of rows) await cache.updatePlayer(gameId, p)
+    for (const p of rows) await cache.warmPlayer(gameId, p)
     await cache.markPlayersComplete(gameId)
     return rows
   }

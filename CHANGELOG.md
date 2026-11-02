@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:22:42 GMT+7
+
+### Phân biệt Redis cache đọc và game state bắt buộc
+
+- Game writes session/player và đọc clock/answer stats fail-closed với `SERVICE_UNAVAILABLE`; cache warming ở đường REST đọc vẫn fallback PostgreSQL. Kiểm tra cả lỗi được trả về trong Redis MULTI.
+- Docker ngắt Redis: GET lobby 200, POST join 503, sau khi bật lại Redis join 201 và readiness 200. Đường HTTP mất khoảng 57 giây do rate limiter retry Redis, sẽ xử lý ở phần riêng.
+- Xác minh: backend lint/build và 44/44 test. Giới hạn: claim answer và cập nhật player chưa nguyên tử, DB chưa checkpoint đầy đủ nếu Redis mất hot state.
+
 ## 2026-11-02 12:18:54 GMT+7
 
 ### Kiểm chứng restart solo

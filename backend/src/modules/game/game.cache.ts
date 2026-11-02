@@ -61,6 +61,7 @@ export const withHostTransition = async <T>(gameId: number, work: () => Promise<
 
 // safe function
 const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+  if (redis.status !== 'ready') return fallback
   try {
     return await fn()
   } catch (e) {
@@ -69,14 +70,27 @@ const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
   }
 }
 
+const required = async <T>(fn: () => Promise<T>): Promise<T> => {
+  requireGameState()
+  try {
+    return await fn()
+  } catch {
+    throw new AppError(503, 'Game state is temporarily unavailable', 'SERVICE_UNAVAILABLE')
+  }
+}
+
 // session
 export const setSession = async (session: GameSessionRow) =>
-  safe(async () => {
-    await redis.multi()
+  required(async () => {
+    const result = await redis.multi()
       .set(key.session(session.id), JSON.stringify(session), 'EX', TTL.session)
       .set(key.codeToId(session.session_code), String(session.id), 'EX', TTL.session)
       .exec()
-  }, undefined)
+    if (!result || result.some(([error]) => error !== null)) throw new Error('Redis session write failed')
+  })
+
+export const warmSession = async (session: GameSessionRow) =>
+  safe(() => setSession(session), undefined)
 
 export const getSession = async (gameId: number) =>
   safe(async () => {
@@ -91,24 +105,28 @@ export const getGameIdByCode = async (code: string) =>
   }, null)
 
 export const patchSession = async (gameId: number, patch: Partial<GameSessionRow>) =>
-  safe(async () => {
-    const current = await getSession(gameId)
-    if (!current) return null
-    const next = { ...current, ...patch }
+  required(async () => {
+    const raw = await redis.get(key.session(gameId))
+    if (!raw) return null
+    const next = { ...(JSON.parse(raw) as GameSessionRow), ...patch }
     await redis.set(key.session(gameId), JSON.stringify(next), 'EX', TTL.session)
     return next
-  }, null)
+  })
 
 // players
 export const updatePlayer = async (gameId: number, player: PlayerSessionRow) =>
-  safe(async () => {
-    await redis.multi()
+  required(async () => {
+    const result = await redis.multi()
       .hset(key.players(gameId), String(player.id), JSON.stringify(player))
       .expire(key.players(gameId), TTL.players)
       .zadd(key.leaderboard(gameId), player.player_score, String(player.id))
       .expire(key.leaderboard(gameId), TTL.players)
       .exec()
-  }, undefined)
+    if (!result || result.some(([error]) => error !== null)) throw new Error('Redis player write failed')
+  })
+
+export const warmPlayer = async (gameId: number, player: PlayerSessionRow) =>
+  safe(() => updatePlayer(gameId, player), undefined)
 
 export const getPlayer = async (gameId: number, playerId: number) =>
   safe(async () => {
@@ -136,12 +154,13 @@ export const countPlayers = async (gameId: number) =>
   }, null)
 
 export const removePlayer = async (gameId: number, playerId: number) =>
-  safe(async () => {
-    await redis.multi()
+  required(async () => {
+    const result = await redis.multi()
       .hdel(key.players(gameId), String(playerId))
       .zrem(key.leaderboard(gameId), String(playerId))
       .exec()
-  }, undefined)
+    if (!result || result.some(([error]) => error !== null)) throw new Error('Redis player removal failed')
+  })
 
 // leaderboard
 export const getLeaderboard = async (gameId: number, limit = 100) =>
@@ -206,7 +225,7 @@ export const recordAnswer = async (
 }
 
 export const countAnswers = async (gameId: number, qIndex: number) =>
-  safe(() => redis.hlen(key.answers(gameId, qIndex)), 0)
+  required(() => redis.hlen(key.answers(gameId, qIndex)))
 
 export const setPausedRemaining = async (gameId: number, remainingMs: number) => {
   requireGameState()
@@ -225,7 +244,7 @@ export const clearPausedRemaining = async (gameId: number) => {
 
 // stats for each question (use with question:results)
 export const getAnswerStats = async (gameId: number, qIndex: number) =>
-  safe(async () => {
+  required(async () => {
     const all = await redis.hgetall(key.answers(gameId, qIndex))
     const answers = Object.values(all).map((v) => JSON.parse(v) as CachedAnswer)
     const distribution: Record<string, number> = {}
@@ -238,7 +257,7 @@ export const getAnswerStats = async (gameId: number, qIndex: number) =>
       correct: answers.filter((a) => a.isCorrect).length,
       distribution
     }
-  }, { total: 0, correct: 0, distribution: {} })
+  })
 
 // cleanup: call after game:ended, after flush Postgres
 export const clearGame = async (session: GameSessionRow) =>
@@ -278,7 +297,7 @@ export const setPlayerClock = async (gameId: number, playerId: number, clock: Pl
 }
 
 export const getPlayerClock = async (gameId: number, playerId: number) =>
-  safe(async () => {
+  required(async () => {
     const raw = await redis.get(key.clock(gameId, playerId))
     return raw ? (JSON.parse(raw) as PlayerClock) : null
-  }, null)
+  })

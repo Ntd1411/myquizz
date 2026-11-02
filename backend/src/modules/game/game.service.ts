@@ -21,7 +21,7 @@ const loadSessionByCode = async (code: string) => {
     if (hit) return hit
   }
   const session = await repo.getSessionByCode(code)
-  if (session) await cache.setSession(session)
+  if (session) await cache.warmSession(session)
   return session
 }
 
@@ -29,7 +29,7 @@ const loadSessionById = async (gameId: number) => {
   const hit = await cache.getSession(gameId)
   if (hit) return hit
   const session = await repo.getSessionById(gameId)
-  if (session) await cache.setSession(session)
+  if (session) await cache.warmSession(session)
   return session
 }
 
@@ -60,6 +60,7 @@ export const listGameModes = () =>
 
 // POST /games
 export const createGame = async (input: CreateGameInput, hostId: number) => {
+  cache.requireGameState()
   const handler = getModeHandler(input.mode) // 400 if mode not found
   const { config, ignored } = buildConfig(input.mode, handler.defaultConfig(), input.config)
 
@@ -106,6 +107,7 @@ export const updateGameConfig = async (
 
 // POST /games/:code/join — for both user and guest
 export const joinGame = async (code: string, input: JoinGameInput) => {
+  cache.requireGameState()
   const session = await loadSessionByCode(code)
   if (!session) throw new AppError(404, 'Room not found', 'GAME_ROOM_NOT_FOUND')
   const config = session.config

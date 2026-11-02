@@ -63,7 +63,7 @@ test('finished room rejects joins even when late joining is enabled', async () =
   const session = { id: 1, session_code: 'TEST', session_status: 'finished', session_host: 9,
     config: { lobby: { allowLateJoin: true, allowGuests: true } } }
   const service = load('modules/game/game.service.ts', {
-    './game.cache.js': { getGameIdByCode: async () => 1, getSession: async () => session },
+    './game.cache.js': { requireGameState: () => {}, getGameIdByCode: async () => 1, getSession: async () => session },
     './game.repository.js': { joinPlayerSession: async () => { throw new Error('must not be called') } },
     './socket.middleware.js': { signSocketToken: () => 'token' },
     './engine/registry.js': { getModeHandler: () => ({ defaultConfig: () => ({}) }) },
