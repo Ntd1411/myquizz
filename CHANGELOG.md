@@ -2,6 +2,15 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 17:16:47 GMT+7
+
+### Tài liệu bàn giao audit
+
+- Thêm hướng dẫn chi tiết các thay đổi trong năm đợt audit, smoke test ưu tiên, test case theo từng nhóm và kết quả mong đợi.
+- Phân biệt kiểm tra đã tự động hóa với phần bắt buộc chạy trên S3, OAuth, email, reverse proxy, dữ liệu production và monitoring thật.
+- Ghi lệnh xác minh backend/frontend/Compose, cảnh báo dữ liệu khi test Redis/integration và mẫu báo cáo kiểm thử thủ công.
+- Xác minh: kiểm tra liên kết mục lục, Markdown diff và `git diff --check`; không chạy lại test ứng dụng vì chỉ thay đổi tài liệu.
+
 ## 2026-11-02 15:36:18 GMT+7
 
 ### Invalidation cache quiz đầy đủ
