@@ -46,6 +46,20 @@ jobs:
         working-directory: ./backend
         run: pnpm test
 
+      - name: Configure disposable Docker environment
+        run: cp .env.example .env
+
+      - name: Run API and Socket.IO integration test
+        env:
+          MYQUIZZ_INTEGRATION_DISPOSABLE: '1'
+        run: |
+          docker compose up -d --build --wait backend
+          cd backend && pnpm test:integration
+
+      - name: Stop disposable Docker environment
+        if: always()
+        run: docker compose down -v
+
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest

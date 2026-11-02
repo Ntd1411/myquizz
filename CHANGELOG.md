@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:38:18 GMT+7
+
+### API và Socket.IO integration gate
+
+- Thêm `pnpm test:integration`: kịch bản localhost tạo tài khoản, quiz, phòng; join guest; chơi qua Socket.IO; xác minh ACK không tiết lộ kết quả và xem summary cuối trận. Yêu cầu cờ xác nhận DB disposable.
+- CI nhánh và workflow deploy chạy smoke test trên PostgreSQL/Redis/backend Compose riêng, dọn volumes trong runner sau job.
+- Xác minh: Docker Compose local chạy API create/join, Socket.IO answer, host end và history summary thành công; backend lint và `git diff --check` qua. Chưa kiểm tra Socket.IO trên nhiều instance.
+
 ## 2026-11-02 12:32:47 GMT+7
 
 ### Backend test gate trước deploy
