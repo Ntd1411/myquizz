@@ -43,7 +43,6 @@ export async function createQuizService(
     const createdQuestions = await quizRepository.insertQuestions(inserted.id, questions, client)
     if (createdQuestions.length !== questions.length)
       throw new AppError(500, 'Failed to create all questions', 'SERVER_ERROR')
-    await client.query('UPDATE quiz_cache_generation SET generation = generation + 1 WHERE id = 1')
     return inserted
   })
 
@@ -121,7 +120,11 @@ export async function updateQuizService(
     }
     if (hasQuestionsUpdate && questions)
       await quizRepository.replaceQuizQuestions(quizId, questions, client)
-    await client.query('UPDATE quiz_cache_generation SET generation = generation + 1 WHERE id = 1')
+    // Metadata updates already invalidate through the quizzes trigger. A
+    // question-only replacement changes question_count once per question, so
+    // invalidate exactly once after the complete batch instead.
+    if (hasQuestionsUpdate && !hasMetadataUpdate)
+      await client.query('UPDATE quiz_cache_generation SET generation = generation + 1 WHERE id = 1')
   })
 
   // Always re-read the final state. Stitching the two partial results together
@@ -146,10 +149,7 @@ export async function deleteQuizService(
 
   // Keep snapshots and match history when removing a quiz from listings.
   const deletedQuiz = await withTransaction(async (client) => {
-    const deleted = await quizRepository.deleteQuiz(quizId, client)
-    if (deleted)
-      await client.query('UPDATE quiz_cache_generation SET generation = generation + 1 WHERE id = 1')
-    return deleted
+    return quizRepository.deleteQuiz(quizId, client)
   })
   if (!deletedQuiz) {
     throw new AppError(404, 'Quiz not found or already deleted', 'QUIZ_NOT_FOUND')

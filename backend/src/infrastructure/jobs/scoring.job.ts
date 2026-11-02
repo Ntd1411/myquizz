@@ -66,7 +66,8 @@ scores as (
   left join recent r on r.quiz_id = q.id
   left join completion c on c.quiz_id = q.id
   where q.deleted_at is null
-)
+),
+updated as (
 update quizzes q
 set hot_score = s.hot_score,
     completion_rate = s.completion_rate,
@@ -83,6 +84,15 @@ where q.id = s.id
     or abs(q.hot_score - s.hot_score)
        > $1::double precision * greatest(abs(q.hot_score), abs(s.hot_score))
   )
+returning q.id
+),
+generation as (
+  update quiz_cache_generation
+  set generation = generation + 1
+  where id = 1 and exists (select 1 from updated)
+  returning generation
+)
+select count(*)::integer as updated_count from updated
 `
 
 export type ScoringResult = {
@@ -98,10 +108,13 @@ export type ScoringResult = {
  */
 export async function runQuizScoring(client: PoolClient | typeof pool = pool): Promise<ScoringResult> {
   const startedAt = Date.now()
-  const result = await client.query(SCORING_SQL, [SCORE_CHANGE_THRESHOLD])
+  const result = await client.query<{ updated_count: number }>(
+    SCORING_SQL,
+    [SCORE_CHANGE_THRESHOLD]
+  )
 
   return {
-    updatedCount: result.rowCount ?? 0,
+    updatedCount: Number(result.rows[0]?.updated_count ?? 0),
     durationMs: Date.now() - startedAt
   }
 }

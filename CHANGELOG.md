@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:36:18 GMT+7
+
+### Invalidation cache quiz đầy đủ
+
+- Migration `020` tăng cache generation ở tầng PostgreSQL khi quiz được tạo/xóa hoặc thay đổi nội dung, public/private, featured và play count; question batch chỉ invalidation một lần.
+- Scoring và generation được cập nhật trong cùng một statement, chỉ khi thực sự có score thay đổi, nên home/feed không giữ thứ tự cũ đến hết TTL.
+- Xác minh: backend lint/build và 53/53 test; Compose áp migration, readiness 200; transaction featured tăng generation và rollback sạch; scoring sửa 1 quiz rồi tăng generation; Docker API/Socket.IO integration qua.
+
 ## 2026-11-02 15:32:47 GMT+7
 
 ### Batch câu hỏi và baseline vận hành

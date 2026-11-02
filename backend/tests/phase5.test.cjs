@@ -54,6 +54,26 @@ test('home cache key changes after quiz generation advances', async () => {
   assert.notEqual(keys[0], keys[1])
 })
 
+test('quiz listing mutations and scoring invalidate public caches', async () => {
+  const migration = fs.readFileSync(path.join(
+    base,
+    'src/infrastructure/database/migrations/020_quiz_cache_invalidation.sql'
+  ), 'utf8')
+  assert.match(migration, /UPDATE OF[\s\S]*is_public[\s\S]*is_featured[\s\S]*deleted_at/)
+
+  let scoringSql
+  const scoring = load('infrastructure/jobs/scoring.job.ts', {
+    '../database/connection.js': { pool: {} },
+    '../config/envconfig.js': { env: { SCORING_INTERVAL_MINUTES: 0 } }
+  })
+  const result = await scoring.runQuizScoring({ query: async sql => {
+    scoringSql = sql
+    return { rows: [{ updated_count: 3 }], rowCount: 1 }
+  } })
+  assert.deepEqual(result.updatedCount, 3)
+  assert.match(scoringSql, /update quiz_cache_generation[\s\S]*exists \(select 1 from updated\)/i)
+})
+
 test('answer claim registers keys for marathon cleanup', async () => {
   let args
   const cache = load('modules/game/game.cache.ts', {

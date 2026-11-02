@@ -20,7 +20,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |
 | C06 | Có baseline local 500 request và EXPLAIN recovery trên 10.028 room; cần lặp home/feed/search/history với dữ liệu production đại diện. |
 | C07 | Insert/replace question dùng một batch statement; trigger question_count cập nhật cộng/trừ. 500 câu giảm tổng 75,649 xuống 29,436 ms, trigger giảm 65,590 xuống 19,166 ms. |
-| C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
+| C08 | Hoàn tất: trigger DB tăng cache generation khi quiz được tạo/xóa hoặc thay đổi nội dung, visibility, featured và play count; question-only update tăng một lần sau batch; scoring tăng generation một lần nếu có score đổi. Docker xác nhận featured và scoring đều làm generation tăng. |
 | C09 | Continue-playing lọc trạng thái room/player. |
 | C10 | Giới hạn handshake, socket/IP, event và payload; HTTP limiter fallback ngay khi Redis disconnected. Redis adapter chia sẻ event nhiều instance; counter socket vẫn theo process. Chưa đo ACK p95 tải lớn. |
 | C11 | Có request ID/log JSON không ghi query; chưa có monitoring tập trung. |
@@ -34,13 +34,13 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Kiểm tra đã chạy
 
-- Backend `pnpm lint`, `pnpm test` (build và 51 test) qua.
+- Backend `pnpm lint`, `pnpm test` (build và 53 test) qua.
 - Frontend lint/build qua sau thay đổi liên quan; suite Vitest có các lỗi cũ ở GameResultsView, useGameSocket và envelope. Node 26 cần tắt experimental webstorage; CI dùng Node 22.
-- `docker compose up -d --build` qua trên volume mới; backend/frontend/PostgreSQL/Redis chạy, 23 schema/migration được ghi nhận và chạy lại idempotent. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Bài `pnpm test:integration` tái lập API create/join, Socket.IO answer/end và history summary. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
+- `docker compose up -d --build` qua; backend/frontend/PostgreSQL/Redis chạy và migration `020` được ghi nhận. Smoke register/login, quiz/game CRUD cơ bản, Socket.IO start/answer/end, quyền kết quả ẩn và 20 join đồng thời qua. Bài `pnpm test:integration` tái lập API create/join, signed guest token, Socket.IO answer/end và history summary. Ngắt Redis giữa câu trả lời xác nhận fail-closed; Redis khởi động lại và health phục hồi.
 
 ## Việc bắt buộc trước khi triển khai
 
-1. Trên PostgreSQL/Redis/S3 cô lập, tiếp tục test refresh/reset/timeout/restart, seat trùng trước migration `014` trên DB có dữ liệu cũ, và thay avatar. Migration `012`–`017` đã chạy trên DB mới.
-2. Chốt thiết kế B16/B17/B20/C03/C04, hoàn thiện mã và kiểm thử nhiều instance.
-3. Đo baseline p50/p95, CPU/RAM và query plan trên dữ liệu đủ lớn trước khi quyết định C06/C07/C15/C17.
-4. Kiểm tra lại dependency advisories định kỳ; kiểm tra proxy, restore backup và kịch bản rollback trên môi trường triển khai thực.
+1. Chạy preflight seat trùng trước migration `014` trên bản sao dữ liệu production; xác minh upload/avatar với provider S3 thật.
+2. Kiểm thử browser qua reverse proxy production: Origin/CSRF, IP gốc, timeout và sticky session nếu tăng PM2 quá một instance.
+3. Lặp benchmark home/feed/search/history, scoring và ACK p95 trên dữ liệu/tải đại diện production trước khi chốt thêm index hoặc incremental stats.
+4. Diễn tập rollback migration/ứng dụng và restore backup trên staging; cấu hình monitoring tập trung và cảnh báo hạ tầng.
