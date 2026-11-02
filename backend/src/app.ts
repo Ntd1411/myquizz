@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import { createAdapter } from '@socket.io/redis-adapter'
 import { env } from './infrastructure/config/envconfig.js'
 import { runMigrations } from './infrastructure/database/migrate.js'
 import { authRouter } from './modules/auth/auth.route.js'
@@ -51,6 +52,10 @@ const io = new Server(httpServer, {
     credentials: true
   }
 })
+const socketPubClient = redisClient.duplicate()
+const socketSubClient = redisClient.duplicate()
+await Promise.all([socketPubClient.ping(), socketSubClient.ping()])
+io.adapter(createAdapter(socketPubClient, socketSubClient))
 
 app.use((_req, res, next) => {
   const requestId = randomUUID()
@@ -165,7 +170,9 @@ httpServer.listen(port, () => {
 const shutdown = () => {
   stopScoringScheduler()
   void io.close()
-    .then(() => Promise.all([closePool(), RedisClient.disconnect()]))
+    .then(() => Promise.all([
+      closePool(), RedisClient.disconnect(), socketPubClient.quit(), socketSubClient.quit()
+    ]))
     .then(() => process.exit(0))
     .catch((error) => {
       console.error('Shutdown failed:', error)

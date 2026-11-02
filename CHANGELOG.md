@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 15:24:41 GMT+7
+
+### Socket.IO nhiều backend instance
+
+- Gắn Socket.IO Redis adapter bằng pub/sub connection riêng; room broadcast và socket lookup hoạt động giữa các process, trong khi Redis host lock tiếp tục tuần tự hóa transition/timer.
+- Xác minh: backend lint/build và 49/49 test. Docker chạy hai backend ở cổng 3000/3001: host nối instance 1, player nối instance 2; start, answer, end và summary đều qua. Container instance 2 đã được xóa sau test.
+- PM2 production vẫn để một instance cho đến khi reverse proxy có sticky session cho polling fallback; WebSocket test hai instance đã qua.
+
 ## 2026-11-02 15:20:39 GMT+7
 
 ### Guest token cho lịch sử trận

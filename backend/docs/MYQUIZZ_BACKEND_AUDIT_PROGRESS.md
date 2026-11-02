@@ -6,7 +6,7 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
 | B16 | Phase/deadline, pause remaining, player clock và player progress được checkpoint PostgreSQL; boot rehydrate Redis rồi dựng lại timer. Unit test và Docker restart giữa câu, pause/resume, solo self-paced đều qua; `FLUSHALL` Redis trước restart cũng qua cho classic, solo và paused classic. |
-| B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end và timer countdown/question/results; timer so lại phase/index/deadline sau khi lấy lock. `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end và unit test timer cũ chạy sau pause; chưa test nhiều instance hoặc tranh chấp thật qua Socket.IO. |
+| B17 | Redis lock tuần tự hóa host action và timer; timer so lại phase/index/deadline sau lock. Socket.IO Redis adapter chia sẻ room/event giữa process. Đã test hai host cạnh tranh và Docker hai backend: host instance 1, player instance 2 chạy trọn start/answer/end. |
 | B20 | Game writes fail-closed khi Redis lỗi; cache warming của đường đọc vẫn optional. Claim answer, player snapshot và leaderboard là một Lua transaction, sau đó checkpoint DB. Docker ngắt Redis: lobby GET 200, join 503 trong ~12 ms, bật lại Redis join 201; xóa Redis rồi restart vẫn giữ tiến trình qua DB checkpoint. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
 | B41 | Đã tách DB connect khỏi import, thêm live/ready và shutdown; readiness chưa đo khả năng phục hồi room realtime. |
@@ -15,13 +15,13 @@ Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 | --- | --- |
 | C01 | Backend unit và API/Redis/PostgreSQL/Socket.IO smoke test chạy ở CI cho nhánh tính năng và trước deploy `main`; chưa có test nhiều backend instance hoặc tải/race dài hạn. |
 | C02 | Lobby, kết quả, profile và session trong summary lịch sử có projection tường minh; lobby trả host ID, summary trả `finished_at` theo frontend. Còn response DTO khác cần rà soát. |
-| C03 | PostgreSQL là recovery checkpoint; Redis là hot state và lock. Timer dùng deadline chung, boot rehydrate Redis. Chưa kiểm thử adapter/broadcast nhiều backend instance. |
+| C03 | PostgreSQL là recovery checkpoint; Redis là hot state, lock và Socket.IO pub/sub adapter. Timer dùng deadline chung, boot rehydrate Redis. Docker hai backend đã xác nhận cross-instance broadcast; PM2 vẫn 1 instance chờ sticky session cho polling fallback. |
 | C04 | Guest join nhận token lịch sử có chữ ký và TTL; frontend gửi `x-guest-token`. UUID thô chỉ dùng rejoin seat và bị từ chối ở history. Socket token vẫn gắn room/player riêng. |
 | C05 | Origin check cho cookie mutation đã có; cần test browser/subdomain/proxy thật. |
 | C06–C07 | Chưa có benchmark/EXPLAIN và tối ưu trigger theo số liệu. |
 | C08 | Quiz CRUD đổi cache generation nguyên tử; thay đổi featured trực tiếp trong DB chưa tăng generation. |
 | C09 | Continue-playing lọc trạng thái room/player. |
-| C10 | Giới hạn handshake, socket/IP, event và payload trong một process; rate limiter HTTP dùng fallback ngay khi Redis disconnected. Chưa đo ACK p95 hoặc bảo vệ nhiều instance. |
+| C10 | Giới hạn handshake, socket/IP, event và payload; HTTP limiter fallback ngay khi Redis disconnected. Redis adapter chia sẻ event nhiều instance; counter socket vẫn theo process. Chưa đo ACK p95 tải lớn. |
 | C11 | Có request ID/log JSON không ghi query; chưa có monitoring tập trung. |
 | C12 | Kiểm tra nonempty JWT secrets, port và TTL; cần xác minh trên cấu hình production thực. |
 | C13 | Giới hạn JSON, headers và timeout; cần test reverse proxy và IP gốc. |

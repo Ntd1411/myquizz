@@ -7,6 +7,7 @@ if (process.env.MYQUIZZ_INTEGRATION_DISPOSABLE !== '1') {
 }
 
 const base = process.env.MYQUIZZ_API_URL ?? 'http://localhost:3000'
+const playerSocketBase = process.env.MYQUIZZ_PLAYER_SOCKET_URL ?? base
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) {
   throw new Error('Integration smoke tests are restricted to localhost')
 }
@@ -61,7 +62,9 @@ guestToken = joined.guestToken
 assert.equal(typeof guestToken, 'string')
 const hostToken = (await call('POST', `/games/${session.id}/host-token`)).hostToken.socketToken
 const host = io(`${base}/game`, { auth: { token: hostToken }, transports: ['websocket'] })
-const player = io(`${base}/game`, { auth: { token: joined.socketToken }, transports: ['websocket'] })
+const player = io(`${playerSocketBase}/game`, {
+  auth: { token: joined.socketToken }, transports: ['websocket']
+})
 
 try {
   await Promise.all([once(host, 'connect'), once(player, 'connect')])
