@@ -303,6 +303,14 @@ export const listPlayerSessions = async (gameSessionId: number): Promise<PlayerS
 }
 
 // Session state: phase / status / index / timestamps
+export const listRecoverableSessionIds = async (): Promise<number[]> => {
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM game_sessions
+     WHERE session_status IN ('active', 'paused') AND deleted_at IS NULL`
+  )
+  return rows.map((row) => row.id)
+}
+
 export type SessionStatePatch = Partial<
   Pick<GameSessionRow, 'session_status' | 'current_phase' | 'phase_ends_at' | 'current_question_index'>
 > & { started_at?: string | null; finished_at?: string | null }

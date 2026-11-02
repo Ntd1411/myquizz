@@ -142,7 +142,8 @@ router.use('/games', gameRouter)
 router.use('/storage', storageRouter)
 router.use('/admin', adminRouter)
 
-new GameSocket(io)
+const gameSocket = new GameSocket(io)
+await gameSocket.recover()
 
 app.use('/v1', apiRateLimiter, router)
 app.use(errorHandler)

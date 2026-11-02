@@ -6,6 +6,9 @@ const copy = (value) => structuredClone(value)
 const cache = {
   requireGameState: () => {},
   withHostTransition: async (_id, work) => work(),
+  setPausedRemaining: async () => {},
+  getPausedRemaining: async () => 30_000,
+  clearPausedRemaining: async () => {},
   getPlayerClock: async () => null,
   getSession: async () => copy(session),
   patchSession: async (_id, patch) => copy(session = { ...session, ...patch }),
@@ -23,6 +26,7 @@ const cache = {
 }
 mock.module('../dist/modules/game/game.cache.js', { namedExports: cache })
 mock.module('../dist/modules/game/game.repository.js', { namedExports: {
+  listRecoverableSessionIds: async () => [session.id],
   getSnapshotQuestions: async () => copy(questions),
   flushPlayers: async (rows) => { persisted = copy(rows) },
   updateSessionState: async (_id, patch) => copy(session = { ...session, ...patch })
@@ -225,6 +229,7 @@ test('pause/resume broadcasts no private or live grading; host retains monitorin
   assert.equal(message(first, 'game:state').personal_result, null)
   assert.equal(message(host, 'game:state').leaderboard[0].streak, 3)
   game.timer = () => {}
+  game.paused.clear() // mimic a process restart before the host resumes
   await game.onResume(host)
   assert.deepEqual(message(first, 'game:state').leaderboard, [])
   await game.emitLobby(session)
@@ -291,6 +296,15 @@ test('all-answered closure completes inside the answer queue without deadlock', 
   assert.equal(session.current_phase, 'showing_results')
   assert.equal(message(first, 'question:personal-results').streak, 3)
   assert.equal(message(second, 'question:personal-results').streak, 0)
+})
+
+test('restart recovery closes an expired host-paced question', async () => {
+  const { game, first } = setup()
+  session.phase_ends_at = new Date(Date.now() - 1000).toISOString()
+  await game.recover()
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(session.current_phase, 'showing_results')
+  assert.equal(message(first, 'question:locked').index, 2)
 })
 
 test('a correct answer after a missed question starts a new streak at one', async () => {

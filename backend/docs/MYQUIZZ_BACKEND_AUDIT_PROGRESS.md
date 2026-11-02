@@ -1,11 +1,11 @@
 # Tiến độ triển khai audit backend
 
-Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Đã chạy Compose với PostgreSQL/Redis mới, migration và smoke API/Socket.IO. Chưa chạy S3 HEAD, restart/recovery, benchmark hoặc restore backup.
+Cập nhật: 2026-11-02 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) để đọc tiêu chí của từng ID. Bảng này phân biệt mã đã sửa với phần đã kiểm thử trên dịch vụ thật. Đã chạy Compose với PostgreSQL/Redis mới, migration và smoke API/Socket.IO. Test Docker đã xác nhận phục hồi câu đang mở và pause/resume sau restart backend. Chưa chạy S3 HEAD, benchmark hoặc restore backup.
 
 | Nhóm | Trạng thái |
 | --- | --- |
 | B01–B15, B18–B19, B21–B37, B39–B40 | Đã sửa mã và có lint/build; test tự động bao phủ một phần, chưa xác nhận tích hợp đầy đủ. |
-| B16 | Chưa triển khai checkpoint và phục hồi toàn bộ timer/game state sau restart. |
+| B16 | Đã dựng lại timer host-paced từ phase/deadline Redis khi boot, khôi phục per-player clock self-paced và lưu thời gian pause còn lại vào Redis. Unit test và Docker restart giữa câu, pause/resume qua. Chưa test self-paced restart; nếu Redis hot state/clock mất hoặc quá TTL, phòng chưa tự phục hồi (room 9 thực tế đã ghi log thiếu state); DB phase chưa checkpoint mỗi lần đổi. |
 | B17 | Redis lock tuần tự hóa thao tác host start/next/pause/resume/end; `game:next` mang index và phase kỳ vọng. Đã test hai host socket đồng thời cho start/next/end trên một backend instance; chưa test nhiều instance hoặc timer cạnh tranh với host. |
 | B20 | Answer, player-next, host transition và player clock kiểm tra Redis ready trước thao tác; Docker test ngắt Redis giữa câu trả `SERVICE_UNAVAILABLE` thay vì treo quá 15 giây. Các đường ghi cache game khác vẫn có thể fail-open hoặc mất trạng thái nếu Redis hỏng giữa claim và cập nhật player. |
 | B38 | Đã xác nhận key, chủ sở hữu và metadata S3 HEAD; chưa đọc lại nội dung thực để phát hiện MIME giả. |
@@ -38,7 +38,7 @@ Cập nhật: 2026-11-01 (GMT+7). Xem [bản audit](MYQUIZZ_BACKEND_AUDIT.md) đ
 
 ## Việc bắt buộc trước khi triển khai
 
-1. Dùng PostgreSQL/Redis/S3 cô lập để chạy migration `012`–`017`, rà soát seat trùng trước `014`, test refresh/reset/join/timeout/restart và thay avatar.
+1. Trên PostgreSQL/Redis/S3 cô lập, tiếp tục test refresh/reset/timeout/restart, seat trùng trước migration `014` trên DB có dữ liệu cũ, và thay avatar. Migration `012`–`017` đã chạy trên DB mới.
 2. Chốt thiết kế B16/B17/B20/C03/C04, hoàn thiện mã và kiểm thử nhiều instance.
 3. Đo baseline p50/p95, CPU/RAM và query plan trên dữ liệu đủ lớn trước khi quyết định C06/C07/C15/C17.
 4. Kiểm tra lại dependency advisories định kỳ; kiểm tra proxy, restore backup và kịch bản rollback trên môi trường triển khai thực.

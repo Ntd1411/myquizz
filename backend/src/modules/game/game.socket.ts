@@ -98,6 +98,60 @@ export class GameSocket {
     this.init()
   }
 
+  // Re-arm deadlines after a backend restart. Redis keeps the hot phase and
+  // player clocks while PostgreSQL identifies rooms that were not closed.
+  public async recover() {
+    const gameIds = await repo.listRecoverableSessionIds()
+    if (gameIds.length) cache.requireGameState()
+    for (const gameId of gameIds) {
+      const session = await cache.getSession(gameId)
+      if (!session) {
+        console.error(`[game.socket] Cannot recover room ${gameId}: hot state is missing`)
+        continue
+      }
+      if (session.session_status !== 'active') continue
+
+      if (session.config.flow.pacing === 'self') {
+        for (const player of await this.loadPlayers(gameId)) {
+          if (player.status === 'finished' || player.status === 'eliminated') continue
+          if (!(await cache.getPlayerClock(gameId, player.id))) {
+            console.error(`[game.socket] Cannot recover player ${player.id}: clock is missing`)
+            continue
+          }
+          const target: PlayerSocket = {
+            data: { playerSessionId: player.id },
+            emit: (() => true) as Socket['emit']
+          }
+          await this.sendSelfQuestion(target, session)
+        }
+        continue
+      }
+
+      const remaining = session.phase_ends_at
+        ? Math.max(0, Date.parse(session.phase_ends_at) - Date.now()) : null
+      if (session.current_phase === 'countdown' && remaining !== null) {
+        this.timer(gameId, remaining, async () => {
+          const fresh = await this.loadSession(gameId)
+          if (fresh.session_status === 'active' && fresh.current_phase === 'countdown')
+            await this.beginFirstQuestion(fresh)
+        })
+      } else if (session.current_phase === 'question_active' && remaining !== null) {
+        this.timer(gameId, remaining, () => this.lockQuestion(gameId, true))
+      } else if (session.current_phase === 'question_locked') {
+        await this.showResults(session)
+      } else if (session.current_phase === 'showing_results' &&
+        session.config.timing.autoAdvance && remaining !== null) {
+        this.timer(gameId, remaining, async () => {
+          const fresh = await this.loadSession(gameId)
+          if (fresh.session_status !== 'active' || fresh.current_phase !== 'showing_results') return
+          const questions = await this.loadQuestions(gameId)
+          if (fresh.current_question_index + 1 >= questions.length) await this.endGame(fresh)
+          else await this.startQuestion(fresh, fresh.current_question_index + 1)
+        })
+      }
+    }
+  }
+
   private init() {
     // socketAuth is async -> wrap and void it to match the middleware signature
     this.nsp.use((socket, next) => {
@@ -905,6 +959,7 @@ export class GameSocket {
 
     const remaining = session.phase_ends_at ? Date.parse(session.phase_ends_at) - Date.now() : 0
     this.paused.set(gameId, Math.max(0, remaining)) // keep the leftover time of the current phase
+    await cache.setPausedRemaining(gameId, Math.max(0, remaining))
     this.clearTimer(gameId)
     // host-paced only has the phase timer; self-paced also has one clock per player
     await this.shiftClocks(session, 'freeze')
@@ -926,7 +981,9 @@ export class GameSocket {
     if (session.session_status !== 'paused')
       throw new AppError(409, 'game is not paused', 'GAME_NOT_PAUSED')
 
-    const remaining = this.paused.get(gameId) ?? 0
+    const remaining = this.paused.get(gameId) ?? await cache.getPausedRemaining(gameId)
+    if (remaining === null)
+      throw new AppError(503, 'Paused clock is unavailable', 'SERVICE_UNAVAILABLE')
     this.paused.delete(gameId)
     // give back exactly the time that was frozen, and re-arm the marathon deadlines
     await this.shiftClocks(session, 'resume')
@@ -934,6 +991,7 @@ export class GameSocket {
     const endsAt = remaining > 0 ? iso(Date.now() + remaining) : null
     const updated = await this.patchSession(gameId, { session_status: 'active', phase_ends_at: endsAt })
     await repo.updateSessionState(gameId, { session_status: 'active' })
+    await cache.clearPausedRemaining(gameId)
     this.nsp.to(this.room(updated.session_code)).except(this.hostRoom(updated.session_code))
       .emit('game:state', await this.snapshot(updated))
     await this.emitHostState(updated)

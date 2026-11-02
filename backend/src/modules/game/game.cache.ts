@@ -18,7 +18,8 @@ export const key = {
   answers: (gameId: number, qIndex: number) => `game:${gameId}:answers:${qIndex}`,
   answerKeys: (gameId: number) => `game:${gameId}:answer_keys`,
   codeToId: (code: string) => `game:code:${code.toUpperCase()}`,
-  clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`
+  clock: (gameId: number, playerId: number) => `game:${gameId}:clock:${playerId}`,
+  pausedRemaining: (gameId: number) => `game:${gameId}:paused_remaining`
 }
 
 export const requireGameState = () => {
@@ -207,6 +208,21 @@ export const recordAnswer = async (
 export const countAnswers = async (gameId: number, qIndex: number) =>
   safe(() => redis.hlen(key.answers(gameId, qIndex)), 0)
 
+export const setPausedRemaining = async (gameId: number, remainingMs: number) => {
+  requireGameState()
+  await redis.set(key.pausedRemaining(gameId), String(remainingMs), 'EX', TTL.session)
+}
+
+export const getPausedRemaining = async (gameId: number): Promise<number | null> => {
+  requireGameState()
+  const raw = await redis.get(key.pausedRemaining(gameId))
+  return raw === null ? null : Number(raw)
+}
+
+export const clearPausedRemaining = async (gameId: number) => {
+  await safe(() => redis.del(key.pausedRemaining(gameId)), 0)
+}
+
 // stats for each question (use with question:results)
 export const getAnswerStats = async (gameId: number, qIndex: number) =>
   safe(async () => {
@@ -232,6 +248,7 @@ export const clearGame = async (session: GameSessionRow) =>
       .del(key.players(session.id))
       .del(key.playersComplete(session.id))
       .del(key.leaderboard(session.id))
+      .del(key.pausedRemaining(session.id))
       .del(key.codeToId(session.session_code))
     for (const answerKey of await redis.smembers(key.answerKeys(session.id))) pipeline.del(answerKey)
     pipeline.del(key.answerKeys(session.id))

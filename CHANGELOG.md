@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:14:54 GMT+7
+
+### Phục hồi deadline game sau backend restart
+
+- Tái hiện trên Docker trước sửa: restart backend giữa câu để phòng ở `question_active` sau khi deadline hết.
+- Khi boot, đọc các phòng active/paused từ PostgreSQL và hot state Redis để dựng lại timer countdown/câu/kết quả và clock self-paced; lưu thời gian còn lại khi pause vào Redis để resume sau restart.
+- Xác minh: backend lint/build và 43/43 test; Docker restart giữa câu và pause/resume rồi restart đều đưa trận đến `finished` sau deadline. Chưa test self-paced restart; còn thiếu checkpoint DB và phục hồi khi Redis mất hot state.
+
 ## 2026-11-01 23:23:18 GMT+7
 
 ### URL API cho frontend Compose
