@@ -2,6 +2,13 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-02 12:31:44 GMT+7
+
+### Projection phòng lịch sử
+
+- `GET /games/:id/summary` trả danh sách trường session tường minh, gồm `finished_at` mà màn lịch sử đang dùng; cột DB thêm sau này không tự lộ ra response. Bổ sung schema OpenAPI riêng.
+- Xác minh: backend lint/build và 47/47 test; Docker trả summary 200 cho guest thuộc trận 16, có `finished_at` và không có `quiz_snapshot_id`/`deleted_at`. Frontend lint/build qua; suite Vitest đầy đủ còn 6 lỗi ở test cũ.
+
 ## 2026-11-02 12:28:06 GMT+7
 
 ### Timer game và thao tác host

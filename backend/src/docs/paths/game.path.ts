@@ -644,7 +644,7 @@ export const gamePaths: PathMap = {
   '/games/{id}/summary': {
     get: {
       summary: 'Retrieve one past match',
-      description: `Overview of a closed match: the room row, the quiz as it was played (from the snapshot), the final standings, and perQuestion for the host only, since per-question accuracy describes the room rather than one player. ${OPTIONAL_AUTH_NOTE} Guests are identified by the x-guest-id header. Only the host of that match and the players who held a seat in it may read it: a session id is a small number, so a stranger is refused rather than shown somebody else's match. Unlike GET /{id}/review this needs no socket token, which is what makes a match readable in a new tab or days later.`,
+      description: `Overview of a closed match: a projected room, the quiz as it was played (from the snapshot), the final standings, and perQuestion for the host only, since per-question accuracy describes the room rather than one player. ${OPTIONAL_AUTH_NOTE} Guests are identified by the x-guest-id header. Only the host of that match and the players who held a seat in it may read it: a session id is a small number, so a stranger is refused rather than shown somebody else's match. Unlike GET /{id}/review this needs no socket token, which is what makes a match readable in a new tab or days later.`,
       tags: [gameTag.name],
       parameters: [
         idParam,
@@ -664,7 +664,7 @@ export const gamePaths: PathMap = {
             {
               summary: object(
                 {
-                  session: ref('GameSession'),
+                  session: ref('GameHistorySession'),
                   quiz: object({
                     id: { type: 'integer', nullable: true },
                     quiz_name: { type: 'string', nullable: true },

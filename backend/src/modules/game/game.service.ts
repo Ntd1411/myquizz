@@ -53,6 +53,20 @@ const publicSession = (session: GameSessionRow) => {
   }
 }
 
+const historySession = (session: GameSessionRow) => {
+  const dates = session as GameSessionRow & {
+    started_at?: string | null
+    finished_at?: string | null
+    created_at?: string | null
+  }
+  return {
+    ...publicSession(session),
+    started_at: dates.started_at ?? null,
+    finished_at: dates.finished_at ?? null,
+    created_at: dates.created_at ?? null
+  }
+}
+
 // GET /game-modes
 // listModes() returns mode names, so the handler has to be looked up per mode
 export const listGameModes = () =>
@@ -371,7 +385,7 @@ export const getHistorySummary = async (gameId: number, viewer: HistoryViewer) =
   if (!isHost && !seat) throw new AppError(403, 'Not part of this match', 'GAME_FORBIDDEN')
 
   return {
-    session,
+    session: historySession(session),
     quiz: snapshotQuizView(await repo.getSnapshotQuiz(gameId)),
     // The host always sees the full standings, exactly as in the end-of-game report.
     leaderboard: await repo.getLeaderboard(gameId),

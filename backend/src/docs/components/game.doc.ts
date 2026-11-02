@@ -212,6 +212,30 @@ export const gameSchemas: SchemaMap = {
     }
   },
 
+  GameHistorySession: {
+    type: 'object',
+    description: 'Closed room projection returned to its host or a player in the match.',
+    properties: {
+      id: { type: 'integer' },
+      session_name: { type: 'string' },
+      session_code: { type: 'string' },
+      session_host: { type: 'integer' },
+      session_host_name: { type: 'string', nullable: true },
+      session_host_avatar: { type: 'string', nullable: true },
+      game_mode: ref('GameMode'),
+      session_status: { type: 'string', enum: ['finished', 'cancelled'] },
+      total_players: { type: 'integer' },
+      total_questions: { type: 'integer' },
+      current_question_index: { type: 'integer' },
+      current_phase: { type: 'string' },
+      phase_ends_at: { type: 'string', format: 'date-time', nullable: true },
+      config: ref('GameConfig'),
+      started_at: { type: 'string', format: 'date-time', nullable: true },
+      finished_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time', nullable: true }
+    }
+  },
+
   PlayerSession: {
     type: 'object',
     properties: {

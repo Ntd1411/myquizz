@@ -72,6 +72,27 @@ test('public lobby explicitly projects cached player fields and host identity', 
   assert.deepEqual(result.players, [{ id: 3, player_name: 'Guest', player_avatar: null, status: 'connected' }])
 })
 
+test('history summary projects room fields and keeps the end time used by the web page', async () => {
+  const session = {
+    id: 1, session_code: 'TEST', session_name: 'Round', session_host: 7,
+    session_host_name: 'Host', session_status: 'finished', game_mode: 'classic',
+    total_players: 1, total_questions: 2, current_question_index: 1,
+    current_phase: 'finished', phase_ends_at: null, config: {},
+    finished_at: '2026-11-02T05:00:00.000Z',
+    quiz_snapshot_id: 88, internal_secret: 'never expose'
+  }
+  const service = gameService(session, [], {
+    getSessionByIdIncludingDeleted: async () => session,
+    getSnapshotQuiz: async () => null
+  })
+  const result = await service.getHistorySummary(1, { userId: 7, guestId: null })
+  assert.equal(result.session.finished_at, session.finished_at)
+  assert.equal(result.session.session_host_name, 'Host')
+  assert.equal(result.session.session_name, 'Round')
+  assert.equal('quiz_snapshot_id' in result.session, false)
+  assert.equal('internal_secret' in result.session, false)
+})
+
 test('results stay hidden until finished and never mode is host only', async () => {
   const session = { id: 1, session_code: 'TEST', session_status: 'active', session_host: 7,
     config: { flow: { showLeaderboard: 'never' } } }
