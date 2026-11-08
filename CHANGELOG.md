@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-08 15:52:46 GMT+7
+
+### Demo seed tương thích ràng buộc game
+
+- Chọn registered player không lặp trong từng room để tuân thủ unique seat index của migration `014`.
+- Sinh config từ default handler của từng game mode, bỏ mode `team` không được hỗ trợ và không tạo active room giả thiếu timer/player clock khiến recovery lỗi sau restart.
+- Xác minh: backend lint/build và 54/54 test; `db:seed:demo` tạo 14 user, 54 quiz tính cả listing edge case, 253 game session và 1.321 player session; scoring cập nhật 35 quiz; backend restart healthy và readiness trả đủ DB/Redis/realtime.
+
 ## 2026-11-02 17:16:47 GMT+7
 
 ### Tài liệu bàn giao audit

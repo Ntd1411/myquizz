@@ -1,6 +1,11 @@
 import bcrypt from 'bcrypt'
 import type { PoolClient, QueryResult } from 'pg'
 import { closePool, withTransaction } from './connection.js'
+import { classicMode } from '../../modules/game/engine/modes/classic.mode.js'
+import { marathonMode } from '../../modules/game/engine/modes/marathon.mode.js'
+import { practiceMode } from '../../modules/game/engine/modes/practice.mode.js'
+import { soloMode } from '../../modules/game/engine/modes/solo.mode.js'
+import { survivalMode } from '../../modules/game/engine/modes/survival.mode.js'
 
 /**
  * Demo seed for local development and manual testing of the home page.
@@ -44,6 +49,12 @@ function randInt(min: number, max: number): number {
 
 function pick<T>(items: readonly T[]): T {
   return items[Math.floor(random() * items.length)] as T
+}
+
+/** Picks and removes one item so a value cannot be selected twice in a group. */
+function takeRandom<T>(items: T[]): T {
+  if (items.length === 0) throw new Error('Cannot take an item from an empty collection')
+  return items.splice(randInt(0, items.length - 1), 1)[0] as T
 }
 
 function chance(probability: number): boolean {
@@ -146,6 +157,16 @@ const QUESTION_TYPES = [
   'short_answer',
   'long_answer'
 ] as const
+
+const GAME_MODES = ['classic', 'solo', 'marathon', 'survival', 'practice'] as const
+
+const MODE_HANDLERS = {
+  classic: classicMode,
+  solo: soloMode,
+  marathon: marathonMode,
+  survival: survivalMode,
+  practice: practiceMode
+}
 
 // Popularity profile drives how many sessions a quiz gets and how recent they
 // are. This is what makes hot_score differ between quizzes after scoring.
@@ -453,10 +474,15 @@ async function seedSnapshotsAndSessions(
 
     for (let i = 0; i < sessions; i += 1) {
       const createdAt = daysAgo(sessionAgeFor(quiz.popularity))
-      const gameMode = pick(['classic', 'classic', 'solo', 'marathon', 'team', 'survival', 'practice'] as const)
-      // Most sessions are done; the rest exercise the other states.
-      const status = pick(['finished', 'finished', 'finished', 'finished', 'cancelled', 'lobby', 'active'] as const)
+      const gameMode = pick([...GAME_MODES, 'classic', 'classic'] as const)
+      // Seed cannot create valid in-flight timers/clocks without replaying the
+      // realtime engine. Keep rooms closed or in lobby so a backend restart does
+      // not try to recover synthetic active state.
+      const status = pick(['finished', 'finished', 'finished', 'finished', 'cancelled', 'lobby'] as const)
       const isOver = status === 'finished' || status === 'cancelled'
+
+      const gameConfig = MODE_HANDLERS[gameMode].defaultConfig()
+      gameConfig.flow.shuffleQuestions = chance(0.5)
 
       const startedAt = status === 'lobby' ? null : new Date(createdAt.getTime() + 60_000)
       const finishedAt =
@@ -481,7 +507,7 @@ async function seedSnapshotsAndSessions(
           quiz.questionIds.length,
           status,
           gameMode,
-          JSON.stringify({ shuffle_questions: chance(0.5), show_leaderboard: true }),
+          JSON.stringify(gameConfig),
           isOver ? quiz.questionIds.length : randInt(0, quiz.questionIds.length - 1),
           status === 'lobby' ? 'lobby' : isOver ? 'ended' : 'question',
           startedAt,
@@ -493,10 +519,15 @@ async function seedSnapshotsAndSessions(
       const sessionId = firstRow(sessionResult, 'insert game_sessions').id
       sessionTotal += 1
 
+      // Migration 014 enforces one seat per registered user in a room. Select
+      // registered players without replacement so deterministic demo data obeys
+      // the same invariant as the join service. Guest ids are already unique.
+      const availableUserIds = [...userIds]
+
       for (let p = 0; p < playerCount; p += 1) {
         // Registered player most of the time, guest otherwise.
-        const isGuest = chance(0.3)
-        const playerId = isGuest ? null : pick(userIds)
+        const isGuest = chance(0.3) || availableUserIds.length === 0
+        const playerId = isGuest ? null : takeRandom(availableUserIds)
 
         let playerStatus: 'connected' | 'disconnected' | 'eliminated' | 'finished'
         if (status === 'lobby') {

@@ -21,6 +21,18 @@ function load(file, mocks = {}) {
   return mod.exports
 }
 
+test('demo seed obeys unique seats and does not fabricate active rooms', () => {
+  const source = fs.readFileSync(
+    path.join(base, 'src/infrastructure/database/seed.demo.ts'),
+    'utf8'
+  )
+  assert.match(source, /const availableUserIds = \[\.\.\.userIds\]/)
+  assert.match(source, /takeRandom\(availableUserIds\)/)
+  assert.doesNotMatch(source, /playerId = isGuest \? null : pick\(userIds\)/)
+  assert.match(source, /MODE_HANDLERS\[gameMode\]\.defaultConfig\(\)/)
+  assert.doesNotMatch(source, /const status = pick\([^\n]*'active'/)
+})
+
 test('join transaction preserves max seats and lets an existing seat rejoin when full', async () => {
   const seats = []
   let lockSeen = false
