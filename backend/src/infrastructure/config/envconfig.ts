@@ -7,6 +7,10 @@ const duration = z.string().refine((value) => {
   const parsed = ms(value as ms.StringValue)
   return typeof parsed === 'number' && Number.isFinite(parsed) && parsed > 0
 }, 'Invalid duration')
+const optionalUrl = z.preprocess(
+  value => value === '' ? undefined : value,
+  z.url().optional()
+)
 
 const envSchema = z.object({
   NODE_ENV: z
@@ -23,7 +27,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.url(),
   // Public origin of this API, e.g. https://api.example.com (no trailing slash).
   // Optional so local development keeps working without it.
-  API_PUBLIC_URL: z.string().url().optional(),
+  API_PUBLIC_URL: optionalUrl,
   DB_USER: z.string(),
   DB_PASSWORD: z.string(),
   DB_HOST: z.string(),
