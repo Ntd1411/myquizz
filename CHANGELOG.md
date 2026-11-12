@@ -2,6 +2,14 @@
 
 Thời gian ghi theo GMT+7 (UTC+07:00). Ghi công việc thực tế đã hoàn thành; kế hoạch chưa triển khai nằm trong tài liệu riêng.
 
+## 2026-11-12 21:19:39 GMT+7
+
+### Biến API public tùy chọn trong CI
+
+- Cho phép `API_PUBLIC_URL` để rỗng đúng như tài liệu và hai file `.env.example`, tránh backend thoát ngay khi integration gate dựng môi trường Docker tạm.
+- Thêm regression test cho cấu hình rỗng và xuất log container backend khi integration gate thất bại.
+- Xác minh: backend lint, build và 7/7 test file; Docker Compose integration gate với `.env.example`; smoke test API/Socket.IO đầy đủ.
+
 ## 2026-11-08 15:52:46 GMT+7
 
 ### Demo seed tương thích ràng buộc game

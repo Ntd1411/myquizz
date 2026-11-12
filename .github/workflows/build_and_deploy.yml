@@ -56,6 +56,10 @@ jobs:
           docker compose up -d --build --wait backend
           cd backend && pnpm test:integration
 
+      - name: Show backend logs on failure
+        if: failure()
+        run: docker compose logs --no-color backend
+
       - name: Stop disposable Docker environment
         if: always()
         run: docker compose down -v
